@@ -101,15 +101,29 @@
 <body>
 
 <h1>Society Events — UI Wireframes</h1>
-<p class="subtitle">5 key screens · Prestige Verdant Heights, Bengaluru</p>
+<p class="subtitle">10 key screens · Prestige Verdant Heights, Bengaluru</p>
 
 <div class="toc">
-  <div class="fw mb8">Screens</div>
+  <div class="fw mb8">Resident Screens</div>
   <a href="#s1">1. Event Listing (Home)</a>
   <a href="#s2">2. Event Detail</a>
   <a href="#s3">3. Checkout / Payment</a>
   <a href="#s4">4. My Tickets</a>
-  <a href="#s5">5. Admin Dashboard</a>
+  <div class="fw mb8 mt8">Registration Screens</div>
+  <a href="#s11">11. Landing Page (unauthenticated)</a>
+  <a href="#s12">12. Pending Approval</a>
+  <div class="fw mb8 mt8">Role-specific Screens</div>
+  <a href="#s13">13. Committee Member Home (manage events + register)</a>
+  <a href="#s14">14. Security Guard Home (QR scanner + entry log)</a>
+  <div class="fw mb8 mt8">Admin Screens</div>
+  <a href="#s15">15. Admin Home (all cards — resident + management)</a>
+  <a href="#s16">16. Admin — My Tickets (personal registrations)</a>
+  <a href="#s5">5. Admin Dashboard (event management overview)</a>
+  <a href="#s6">6. Admin — Users Management</a>
+  <a href="#s7">7. Admin — Society Settings</a>
+  <a href="#s8">8. Admin — Event Categories</a>
+  <a href="#s9">9. Admin — Create / Edit Event</a>
+  <a href="#s10">10. Admin — Payments &amp; Refunds</a>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -662,6 +676,1335 @@
       </table>
 
     </div><!-- /main -->
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 11: Landing Page (unauthenticated)                       -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s11">
+  <div class="screen-label">Screen 11 — Landing Page · Public (not logged in)</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Events</span>
+    <span class="grow"></span>
+    <button class="btn-out btn-sm">Sign In</button>
+    <button class="btn btn-sm">Register as Member</button>
+  </nav>
+
+  <!-- Hero -->
+  <div style="background:linear-gradient(135deg,#1e293b 0%,#312e81 100%);color:#fff;padding:64px 24px;text-align:center">
+    <div style="font-size:48px;margin-bottom:12px">🏛</div>
+    <div style="font-size:32px;font-weight:800;margin-bottom:8px">Prestige Verdant Heights</div>
+    <div style="font-size:15px;color:#c7d2fe;margin-bottom:32px">Bengaluru · Resident Events &amp; Community Portal</div>
+
+    <div class="flex gap12" style="justify-content:center;flex-wrap:wrap;margin-bottom:16px">
+      <button class="btn" style="padding:12px 32px;font-size:15px;background:#6366f1;border-color:#6366f1">👤 Sign In</button>
+      <button class="btn-out" style="padding:12px 32px;font-size:15px;color:#fff;border-color:rgba(255,255,255,0.5)">✏️ Register as Member</button>
+    </div>
+
+    <div style="font-size:12px;color:rgba(203,213,225,0.7)">
+      New members: register with your email — committee will activate your account within 24 hours.
+    </div>
+  </div>
+
+  <!-- Features row -->
+  <div class="p" style="padding:48px 24px;background:#f8fafc">
+    <div class="fw center mb24" style="font-size:18px">Everything your community needs</div>
+    <div class="grid3" style="max-width:800px;margin:0 auto;text-align:center">
+      <div class="fcol gap8" style="align-items:center">
+        <div style="font-size:32px">📅</div>
+        <div class="fw">Browse Events</div>
+        <div class="sm mute">Festivals, sports, wellness sessions and community meetings.</div>
+      </div>
+      <div class="fcol gap8" style="align-items:center">
+        <div style="font-size:32px">🎟</div>
+        <div class="fw">Book &amp; Pay Online</div>
+        <div class="sm mute">Reserve seats and pay via UPI or card. QR-code ticket instantly.</div>
+      </div>
+      <div class="fcol gap8" style="align-items:center">
+        <div style="font-size:32px">👥</div>
+        <div class="fw">Community First</div>
+        <div class="sm mute">Stay connected with announcements from the committee.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom CTA -->
+  <div class="p center" style="background:#fff;border-top:1px solid #e2e8f0">
+    <div class="mute mb12 med">Already a member?</div>
+    <button class="btn" style="padding:10px 32px">Sign In to Your Account</button>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 12: Pending Approval                                     -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s12">
+  <div class="screen-label">Screen 12 — Pending Approval · New user (no role assigned)</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Events</span>
+    <span class="grow"></span>
+    <div class="avatar" style="background:#94a3b8">NR</div>
+  </nav>
+
+  <div style="min-height:480px;display:flex;align-items:center;justify-content:center;background:#f8fafc;padding:32px">
+
+    <div class="box" style="max-width:480px;width:100%;text-align:center;padding:40px 32px">
+
+      <div style="font-size:52px;margin-bottom:16px">⏳</div>
+      <div style="font-size:20px;font-weight:bold;margin-bottom:8px">Almost there, Nisha!</div>
+      <div class="mute med mb24">Your account has been created. A committee member will review and activate your membership — usually within 24 hours.</div>
+
+      <!-- Step progress -->
+      <div class="steps mb24" style="justify-content:center">
+        <div class="step done">
+          <div class="step-num">✓</div>
+          <span class="sm fw">Registered</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step">
+          <div class="step-num" style="border-color:#d97706;color:#d97706">2</div>
+          <span class="sm" style="color:#d97706">Admin Review</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step">
+          <div class="step-num" style="border-color:#bbb;color:#bbb">3</div>
+          <span class="sm mute">Access Granted</span>
+        </div>
+      </div>
+
+      <!-- Registration details -->
+      <div class="card mb16" style="text-align:left;background:#f8fafc">
+        <div class="lbl mb8">Your Registration Details</div>
+        <div class="flex gap8 mb4"><span class="mute sm" style="min-width:56px">Name</span><span class="sm fw">Nisha Reddy</span></div>
+        <div class="flex gap8 mb4"><span class="mute sm" style="min-width:56px">Email</span><span class="sm fw">nisha.reddy@gmail.com</span></div>
+        <div class="flex gap8"><span class="mute sm" style="min-width:56px">Status</span><span class="badge badge-amber">Pending</span></div>
+      </div>
+
+      <div class="sm mute mb20">
+        You'll receive an email at <strong>nisha.reddy@gmail.com</strong> once your account is activated.
+        If you haven't heard back in 48 hours, contact the society office.
+      </div>
+
+      <button class="btn-out btn-sm">Sign Out</button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 13: Committee Member Home                                -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s13">
+  <div class="screen-label">Screen 13 — Committee Member Home · Meera Krishnan</div>
+
+  <nav style="background:#1e293b;color:#fff">
+    <span class="nav-logo" style="color:#fff">🏛 PVH Events</span>
+    <span class="grow"></span>
+    <span class="nav-link" style="color:rgba(203,213,225,0.9)">Home</span>
+    <span class="nav-link" style="color:rgba(203,213,225,0.9)">Events</span>
+    <span class="nav-link" style="color:rgba(203,213,225,0.9)">My Tickets</span>
+    <span class="nav-link active" style="color:#fff;border-color:#6366f1">Manage</span>
+    <div class="bell-wrap" style="color:#fff">🔔<div class="bell-badge">1</div></div>
+    <div class="avatar" style="background:#0ea5e9">MK</div>
+  </nav>
+
+  <!-- Hero -->
+  <div style="background:linear-gradient(135deg,#1e293b 0%,#312e81 100%);color:#fff;padding:48px 24px">
+    <div style="max-width:1100px;margin:0 auto">
+      <div style="font-size:12px;color:#a5b4fc;margin-bottom:6px">Prestige Verdant Heights · Bengaluru</div>
+      <div style="font-size:28px;font-weight:800;margin-bottom:8px">Welcome back, Meera 👋</div>
+      <div style="font-size:15px;color:#c7d2fe;margin-bottom:24px">You can create and manage events — and register for them just like any resident.</div>
+      <button class="btn" style="background:#6366f1;border-color:#6366f1;padding:10px 24px">Browse Events →</button>
+    </div>
+  </div>
+
+  <div class="p" style="max-width:1100px;margin:0 auto">
+
+    <!-- Quick stats for committee member -->
+    <div class="grid4 mb16 mt16">
+      <div class="stat"><div class="stat-lbl">My Events (Managing)</div><div class="stat-num">3</div></div>
+      <div class="stat"><div class="stat-lbl">Open Registrations</div><div class="stat-num">382</div></div>
+      <div class="stat"><div class="stat-lbl">My Own Tickets</div><div class="stat-num">2</div></div>
+      <div class="stat"><div class="stat-lbl">Pending Announcements</div><div class="stat-num">1</div></div>
+    </div>
+
+    <div class="fw mb12" style="font-size:17px">What would you like to do?</div>
+
+    <!-- MFE cards — shows both resident AND committee cards -->
+    <div class="grid3 mb24">
+
+      <!-- Resident cards (available to committee too) -->
+      <div class="card fcol gap8">
+        <div style="width:48px;height:48px;background:#6366f1;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff">📅</div>
+        <div class="fw" style="font-size:16px">Events</div>
+        <div class="sm mute" style="flex:1">Browse and register for upcoming festivals, sports days and more.</div>
+        <span style="font-size:13px;font-weight:600;color:#6366f1">Browse Events →</span>
+      </div>
+
+      <div class="card fcol gap8">
+        <div style="width:48px;height:48px;background:#10b981;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff">🎟</div>
+        <div class="fw" style="font-size:16px">My Tickets</div>
+        <div class="sm mute" style="flex:1">View your own registrations and QR codes at the gate.</div>
+        <span style="font-size:13px;font-weight:600;color:#10b981">View Tickets →</span>
+      </div>
+
+      <div class="card fcol gap8">
+        <div style="width:48px;height:48px;background:#f59e0b;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff">💰</div>
+        <div class="fw" style="font-size:16px">Payments</div>
+        <div class="sm mute" style="flex:1">Check your own payment history and manage refunds.</div>
+        <span style="font-size:13px;font-weight:600;color:#f59e0b">Payment History →</span>
+      </div>
+
+      <!-- Committee-only card (highlighted) -->
+      <div class="card fcol gap8" style="border:2px solid #0ea5e9">
+        <div class="flex gap8" style="align-items:center">
+          <div style="width:48px;height:48px;background:#0ea5e9;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff">✏️</div>
+          <span class="badge badge-blue" style="font-size:10px">Committee Only</span>
+        </div>
+        <div class="fw" style="font-size:16px">Manage Events</div>
+        <div class="sm mute" style="flex:1">Create, publish and manage events. Post announcements to registered users.</div>
+        <span style="font-size:13px;font-weight:600;color:#0ea5e9">Go to Event Manager →</span>
+      </div>
+
+    </div>
+
+    <!-- Events I'm managing (committee-specific section) -->
+    <div class="fw mb8" style="font-size:16px">Events I'm Managing</div>
+    <table class="mb24">
+      <thead>
+        <tr>
+          <th>Event</th>
+          <th>Date</th>
+          <th>Status</th>
+          <th>Registrations</th>
+          <th>My Registration</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="fw">Annual Sports Day 2026</td>
+          <td>31 Jan 2026</td>
+          <td><span class="badge badge-green">Published</span></td>
+          <td>42 / 200</td>
+          <td><span class="badge badge-green">Registered ✓</span></td>
+          <td><span style="color:#2563eb;cursor:pointer">Edit</span> · <span style="color:#444;cursor:pointer">Announce</span></td>
+        </tr>
+        <tr>
+          <td class="fw">Diwali Mela 2025</td>
+          <td>25 Oct 2025</td>
+          <td><span class="badge badge-green">Published</span></td>
+          <td>312 / 500</td>
+          <td><span class="badge badge-gray">Not Registered</span></td>
+          <td><span style="color:#2563eb;cursor:pointer">Edit</span> · <span style="color:#16a34a;cursor:pointer">Register Myself</span></td>
+        </tr>
+        <tr>
+          <td class="fw">Annual General Meeting</td>
+          <td>31 May 2025</td>
+          <td><span class="badge badge-amber">Draft</span></td>
+          <td>1 / 150</td>
+          <td><span class="badge badge-gray">Not Registered</span></td>
+          <td><span style="color:#16a34a;cursor:pointer;font-weight:bold">Publish</span> · <span style="color:#2563eb;cursor:pointer">Edit</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="sm mute">Note: Committee members register for events through the same Events page as residents. "Register Myself" here is a shortcut.</div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 14: Security Guard Home (QR Scanner + Entry Log)        -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s14">
+  <div class="screen-label">Screen 14 — Security Guard Home · Suresh Kumar (security_guard)</div>
+
+  <nav style="background:#1e293b;color:#fff">
+    <span class="nav-logo" style="color:#fff">🏛 PVH Events</span>
+    <span class="grow"></span>
+    <span class="nav-link" style="color:rgba(203,213,225,0.9)">QR Scanner</span>
+    <button class="btn" style="background:#10b981;border-color:#10b981;padding:6px 16px;font-size:13px">📷 Scan QR</button>
+    <div class="avatar" style="background:#f59e0b">SK</div>
+  </nav>
+
+  <!-- Focused hero for guard -->
+  <div style="background:linear-gradient(135deg,#1e293b 0%,#064e3b 100%);color:#fff;padding:40px 24px;text-align:center">
+    <div style="font-size:40px;margin-bottom:8px">📷</div>
+    <div style="font-size:24px;font-weight:800;margin-bottom:6px">Entry Gate — QR Scanner</div>
+    <div style="color:#6ee7b7;margin-bottom:24px">Prestige Verdant Heights · Main Gate</div>
+    <button class="btn" style="background:#10b981;border-color:#10b981;padding:14px 40px;font-size:16px;font-weight:700">Open QR Scanner</button>
+  </div>
+
+  <div class="p">
+
+    <!-- Today's stats -->
+    <div class="grid4 mb16">
+      <div class="stat"><div class="stat-lbl">Checked In Today</div><div class="stat-num green">28</div></div>
+      <div class="stat"><div class="stat-lbl">Active Events Today</div><div class="stat-num">1</div></div>
+      <div class="stat"><div class="stat-lbl">Invalid Scans</div><div class="stat-num red">2</div></div>
+      <div class="stat"><div class="stat-lbl">Remaining Capacity</div><div class="stat-num">172</div></div>
+    </div>
+
+    <!-- Active event being scanned -->
+    <div class="card mb16 flex gap16" style="align-items:center;border:2px solid #10b981">
+      <div style="font-size:28px">🏆</div>
+      <div class="grow">
+        <div class="fw" style="font-size:15px">Annual Sports Day 2026</div>
+        <div class="sm mute">7:00 AM – 3:00 PM · Society Sports Ground</div>
+        <div class="sm mt4">28 of 200 checked in · Gate closes at 8:30 AM</div>
+      </div>
+      <button class="btn" style="background:#10b981;border-color:#10b981;flex-shrink:0">Scan Tickets</button>
+    </div>
+
+    <!-- QR Scan result panel (shows after a scan) -->
+    <div class="box mb16" style="border-color:#16a34a;max-width:480px">
+      <div class="fw mb8 green">✅ Last Scan Result — Valid</div>
+      <div class="grid2">
+        <div>
+          <div class="lbl mb2">Resident</div>
+          <div class="fw">Arjun Sharma</div>
+          <div class="sm mute">Flat C-301</div>
+        </div>
+        <div>
+          <div class="lbl mb2">Ticket</div>
+          <div class="fw">2 tickets · ₹300 paid</div>
+          <div class="badge badge-green mt4">CONFIRMED</div>
+        </div>
+      </div>
+      <hr class="divider" />
+      <div class="flex gap8" style="align-items:center">
+        <span class="green fw">✔ Entry Allowed</span>
+        <span class="grow"></span>
+        <span class="sm mute">Scanned 07:22 AM</span>
+      </div>
+    </div>
+
+    <!-- Invalid scan example -->
+    <div class="box mb16" style="border-color:#dc2626;max-width:480px">
+      <div class="fw mb8 red">❌ Last Scan Result — Invalid</div>
+      <div class="sm mute mb4">Ticket already used or cancelled.</div>
+      <div class="flex gap8" style="align-items:center">
+        <span class="red fw">✖ Entry Denied</span>
+        <span class="grow"></span>
+        <span class="sm mute">Scanned 07:45 AM</span>
+      </div>
+    </div>
+
+    <!-- Today's entry log -->
+    <div class="fw mb8 mt16" style="font-size:15px">Today's Entry Log — Sports Day 2026</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Resident</th>
+          <th>Flat</th>
+          <th>Tickets</th>
+          <th>Event</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mute sm">07:22 AM</td>
+          <td>Arjun Sharma</td>
+          <td>C-301</td>
+          <td class="center">2</td>
+          <td>Annual Sports Day 2026</td>
+          <td><span class="badge badge-green">✓ Entered</span></td>
+        </tr>
+        <tr>
+          <td class="mute sm">07:18 AM</td>
+          <td>Priya Desai</td>
+          <td>A-205</td>
+          <td class="center">1</td>
+          <td>Annual Sports Day 2026</td>
+          <td><span class="badge badge-green">✓ Entered</span></td>
+        </tr>
+        <tr style="background:#fef2f2">
+          <td class="mute sm">07:45 AM</td>
+          <td class="mute">Unknown</td>
+          <td class="mute">—</td>
+          <td class="center mute">—</td>
+          <td class="mute">—</td>
+          <td><span class="badge badge-red">✖ Invalid</span></td>
+        </tr>
+        <tr>
+          <td class="mute sm">07:51 AM</td>
+          <td>Kiran Nair</td>
+          <td>B-108</td>
+          <td class="center">3</td>
+          <td>Annual Sports Day 2026</td>
+          <td><span class="badge badge-green">✓ Entered</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 6: Admin — Users Management                             -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s6">
+  <div class="screen-label">Screen 6 — Admin · Users Management · Rajesh Iyer (admin)</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Admin</span>
+    <span class="grow"></span>
+    <div class="bell-wrap">🔔<div class="bell-badge">2</div></div>
+    <div class="avatar" style="background:#7c3aed">RI</div>
+  </nav>
+
+  <div class="flex" style="align-items:flex-start;min-height:520px">
+    <div class="sidebar">
+      <div class="sidebar-item">📅 Events</div>
+      <div class="sidebar-item active">👥 Users</div>
+      <div class="sidebar-item">💰 Payments</div>
+      <div class="sidebar-item">📂 Categories</div>
+      <div class="sidebar-item">📢 Announcements</div>
+      <div class="sidebar-item">🏛 Society</div>
+      <div class="sidebar-item">🌐 Currencies</div>
+    </div>
+
+    <div class="p grow">
+      <!-- Stats -->
+      <div class="grid4 mb16" style="grid-template-columns:repeat(5,1fr)">
+        <div class="stat"><div class="stat-lbl">Total Users</div><div class="stat-num">48</div></div>
+        <div class="stat"><div class="stat-lbl">Admins</div><div class="stat-num">1</div></div>
+        <div class="stat"><div class="stat-lbl">Committee</div><div class="stat-num">3</div></div>
+        <div class="stat"><div class="stat-lbl">Residents</div><div class="stat-num">42</div></div>
+        <div class="stat"><div class="stat-lbl">Security</div><div class="stat-num">2</div></div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="flex gap8 mb12" style="align-items:center">
+        <input placeholder="Search by name, email or flat…" style="flex:1;max-width:320px" />
+        <select style="width:auto;font-size:12px;padding:5px 8px">
+          <option>All Roles</option>
+          <option>admin</option>
+          <option>committee_member</option>
+          <option>resident</option>
+          <option>security_guard</option>
+        </select>
+        <select style="width:auto;font-size:12px;padding:5px 8px">
+          <option>All Status</option>
+          <option>Active</option>
+          <option>Inactive</option>
+        </select>
+        <span class="grow"></span>
+        <button class="btn btn-sm">⟳ Sync from Keycloak</button>
+        <button class="btn btn-sm">+ Add User</button>
+      </div>
+
+      <!-- Users Table -->
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Flat / Unit</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Registered Events</th>
+            <th>Last Login</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><div class="flex gap8" style="align-items:center"><div class="avatar" style="width:24px;height:24px;font-size:9px;background:#7c3aed">RI</div><span class="fw">Rajesh Iyer</span></div></td>
+            <td>rajesh.iyer@pvheights.in</td>
+            <td>A-101</td>
+            <td><span class="badge badge-blue">admin</span></td>
+            <td><span class="badge badge-green">Active</span></td>
+            <td class="center">12</td>
+            <td class="mute sm">2 min ago</td>
+            <td><span style="color:#2563eb;cursor:pointer">Edit Role</span></td>
+          </tr>
+          <tr>
+            <td><div class="flex gap8" style="align-items:center"><div class="avatar" style="width:24px;height:24px;font-size:9px;background:#0ea5e9">MK</div><span class="fw">Meera Krishnan</span></div></td>
+            <td>meera.k@pvheights.in</td>
+            <td>B-204</td>
+            <td><span class="badge badge-blue">committee_member</span></td>
+            <td><span class="badge badge-green">Active</span></td>
+            <td class="center">8</td>
+            <td class="mute sm">1 hr ago</td>
+            <td><span style="color:#2563eb;cursor:pointer">Edit Role</span> · <span style="color:#dc2626;cursor:pointer">Deactivate</span></td>
+          </tr>
+          <tr>
+            <td><div class="flex gap8" style="align-items:center"><div class="avatar" style="width:24px;height:24px;font-size:9px;background:#10b981">AS</div><span class="fw">Arjun Sharma</span></div></td>
+            <td>arjun.sharma@gmail.com</td>
+            <td>C-301</td>
+            <td><span class="badge badge-green">resident</span></td>
+            <td><span class="badge badge-green">Active</span></td>
+            <td class="center">4</td>
+            <td class="mute sm">3 hrs ago</td>
+            <td><span style="color:#2563eb;cursor:pointer">Edit Role</span> · <span style="color:#dc2626;cursor:pointer">Deactivate</span></td>
+          </tr>
+          <tr>
+            <td><div class="flex gap8" style="align-items:center"><div class="avatar" style="width:24px;height:24px;font-size:9px;background:#10b981">PD</div><span class="fw">Priya Desai</span></div></td>
+            <td>priya.desai@gmail.com</td>
+            <td>A-205</td>
+            <td><span class="badge badge-green">resident</span></td>
+            <td><span class="badge badge-green">Active</span></td>
+            <td class="center">2</td>
+            <td class="mute sm">Yesterday</td>
+            <td><span style="color:#2563eb;cursor:pointer">Edit Role</span> · <span style="color:#dc2626;cursor:pointer">Deactivate</span></td>
+          </tr>
+          <tr>
+            <td><div class="flex gap8" style="align-items:center"><div class="avatar" style="width:24px;height:24px;font-size:9px;background:#f59e0b">SK</div><span class="fw">Suresh Kumar</span></div></td>
+            <td>suresh.k@pvheights.in</td>
+            <td>Gate 1</td>
+            <td><span class="badge badge-amber">security_guard</span></td>
+            <td><span class="badge badge-green">Active</span></td>
+            <td class="center">0</td>
+            <td class="mute sm">Today</td>
+            <td><span style="color:#2563eb;cursor:pointer">Edit Role</span> · <span style="color:#dc2626;cursor:pointer">Deactivate</span></td>
+          </tr>
+          <tr style="background:#fffbeb">
+            <td><div class="flex gap8" style="align-items:center"><div class="avatar" style="width:24px;height:24px;font-size:9px;background:#94a3b8">NR</div><span class="fw">Nisha Reddy</span></div></td>
+            <td>nisha.reddy@gmail.com</td>
+            <td>—</td>
+            <td><span class="badge badge-amber">pending</span></td>
+            <td><span class="badge badge-amber">Pending</span></td>
+            <td class="center">—</td>
+            <td class="mute sm">Just now</td>
+            <td>
+              <select style="width:auto;font-size:11px;padding:2px 6px;border:1px solid #aaa">
+                <option>Assign role…</option>
+                <option>resident</option>
+                <option>committee_member</option>
+                <option>security_guard</option>
+                <option>admin</option>
+              </select>
+              &nbsp;<span style="color:#16a34a;cursor:pointer;font-weight:bold">Approve</span>
+              · <span style="color:#dc2626;cursor:pointer">Reject</span>
+            </td>
+          </tr>
+          <tr style="opacity:0.6">
+            <td><div class="flex gap8" style="align-items:center"><div class="avatar" style="width:24px;height:24px;font-size:9px;background:#aaa">VR</div><span class="fw">Venkat Rao</span></div></td>
+            <td>venkat.rao@gmail.com</td>
+            <td>D-102</td>
+            <td><span class="badge badge-green">resident</span></td>
+            <td><span class="badge badge-gray">Inactive</span></td>
+            <td class="center">0</td>
+            <td class="mute sm">30 days ago</td>
+            <td><span style="color:#16a34a;cursor:pointer">Activate</span> · <span style="color:#2563eb;cursor:pointer">Edit Role</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="flex mt12" style="align-items:center;justify-content:space-between">
+        <span class="sm mute">Showing 6 of 48 users</span>
+        <div class="flex gap4">
+          <button class="btn-out btn-sm">← Prev</button>
+          <button class="btn btn-sm">Next →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 7: Admin — Society Settings                             -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s7">
+  <div class="screen-label">Screen 7 — Admin · Society Settings</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Admin</span>
+    <span class="grow"></span>
+    <div class="avatar" style="background:#7c3aed">RI</div>
+  </nav>
+
+  <div class="flex" style="align-items:flex-start;min-height:520px">
+    <div class="sidebar">
+      <div class="sidebar-item">📅 Events</div>
+      <div class="sidebar-item">👥 Users</div>
+      <div class="sidebar-item">💰 Payments</div>
+      <div class="sidebar-item">📂 Categories</div>
+      <div class="sidebar-item">📢 Announcements</div>
+      <div class="sidebar-item active">🏛 Society</div>
+      <div class="sidebar-item">🌐 Currencies</div>
+    </div>
+
+    <div class="p grow">
+      <div class="fw mb16" style="font-size:16px">Society Settings</div>
+
+      <div class="grid2" style="max-width:780px;gap:24px;align-items:flex-start">
+
+        <!-- Left column -->
+        <div class="fcol gap16">
+
+          <div class="box">
+            <div class="fw mb12">Identity</div>
+            <div class="lbl mb4">Society Full Name</div>
+            <input value="Prestige Verdant Heights" class="mb10" />
+            <div class="lbl mb4">Short Name / Abbreviation</div>
+            <input value="PVH" class="mb10" />
+            <div class="lbl mb4">City</div>
+            <input value="Bengaluru" class="mb10" />
+            <div class="lbl mb4">Full Address</div>
+            <textarea style="height:64px">Prestige Verdant Heights, Whitefield, Bengaluru — 560066</textarea>
+          </div>
+
+          <div class="box">
+            <div class="fw mb12">Contact</div>
+            <div class="lbl mb4">Admin Email</div>
+            <input value="admin@pvheights.in" class="mb10" />
+            <div class="lbl mb4">Office Phone</div>
+            <input value="+91 80 4567 8901" />
+          </div>
+
+        </div>
+
+        <!-- Right column -->
+        <div class="fcol gap16">
+
+          <div class="box">
+            <div class="fw mb12">Logo</div>
+            <div class="ph mb8" style="height:80px;font-size:12px">[ Society Logo — 256×256 PNG ]</div>
+            <button class="btn-out btn-sm">Upload New Logo</button>
+          </div>
+
+          <div class="box">
+            <div class="fw mb12">Defaults</div>
+            <div class="lbl mb4">Base Currency</div>
+            <select class="mb10">
+              <option selected>INR — Indian Rupee</option>
+              <option>USD — US Dollar</option>
+              <option>GBP — British Pound</option>
+            </select>
+            <div class="lbl mb4">Timezone</div>
+            <select class="mb10">
+              <option selected>Asia/Kolkata (IST +5:30)</option>
+              <option>UTC</option>
+            </select>
+            <div class="lbl mb4">Max Tickets per Apartment (default)</div>
+            <input value="6" type="number" />
+          </div>
+
+          <div class="box">
+            <div class="fw mb12">Notification Preferences</div>
+            <div class="flex gap8 mb8" style="align-items:center">
+              <input type="checkbox" checked style="width:auto" />
+              <span class="med">Email on new registration</span>
+            </div>
+            <div class="flex gap8 mb8" style="align-items:center">
+              <input type="checkbox" checked style="width:auto" />
+              <span class="med">Email on payment received</span>
+            </div>
+            <div class="flex gap8" style="align-items:center">
+              <input type="checkbox" style="width:auto" />
+              <span class="med">Daily summary digest</span>
+            </div>
+          </div>
+
+          <div class="flex gap8">
+            <button class="btn" style="flex:1;padding:10px">Save Changes</button>
+            <button class="btn-out" style="padding:10px 16px">Reset</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 8: Admin — Event Categories                             -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s8">
+  <div class="screen-label">Screen 8 — Admin · Event Categories</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Admin</span>
+    <span class="grow"></span>
+    <div class="avatar" style="background:#7c3aed">RI</div>
+  </nav>
+
+  <div class="flex" style="align-items:flex-start;min-height:480px">
+    <div class="sidebar">
+      <div class="sidebar-item">📅 Events</div>
+      <div class="sidebar-item">👥 Users</div>
+      <div class="sidebar-item">💰 Payments</div>
+      <div class="sidebar-item active">📂 Categories</div>
+      <div class="sidebar-item">📢 Announcements</div>
+      <div class="sidebar-item">🏛 Society</div>
+      <div class="sidebar-item">🌐 Currencies</div>
+    </div>
+
+    <div class="p grow">
+      <div class="flex mb16" style="align-items:center">
+        <div class="fw grow" style="font-size:16px">Event Categories</div>
+        <button class="btn btn-sm">+ Add Category</button>
+      </div>
+
+      <!-- Categories table -->
+      <table class="mb24">
+        <thead>
+          <tr>
+            <th>Icon</th>
+            <th>Name</th>
+            <th>Slug</th>
+            <th>Description</th>
+            <th>Events (total)</th>
+            <th>Events (active)</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="font-size:20px">🎆</td>
+            <td class="fw">Festival</td>
+            <td><code style="background:#f3f3f3;padding:2px 6px;font-size:11px">festival</code></td>
+            <td class="mute sm">Cultural celebrations, fairs and seasonal events</td>
+            <td class="center">2</td>
+            <td class="center"><span class="badge badge-green">2</span></td>
+            <td><span style="color:#2563eb;cursor:pointer">Edit</span> · <span style="color:#dc2626;cursor:pointer">Delete</span></td>
+          </tr>
+          <tr>
+            <td style="font-size:20px">🏆</td>
+            <td class="fw">Sports</td>
+            <td><code style="background:#f3f3f3;padding:2px 6px;font-size:11px">sports</code></td>
+            <td class="mute sm">Competitions, tournaments and fitness activities</td>
+            <td class="center">1</td>
+            <td class="center"><span class="badge badge-green">1</span></td>
+            <td><span style="color:#2563eb;cursor:pointer">Edit</span> · <span style="color:#dc2626;cursor:pointer">Delete</span></td>
+          </tr>
+          <tr>
+            <td style="font-size:20px">💜</td>
+            <td class="fw">Wellness</td>
+            <td><code style="background:#f3f3f3;padding:2px 6px;font-size:11px">wellness</code></td>
+            <td class="mute sm">Yoga, meditation and health workshops</td>
+            <td class="center">3</td>
+            <td class="center"><span class="badge badge-green">1</span></td>
+            <td><span style="color:#2563eb;cursor:pointer">Edit</span> · <span style="color:#dc2626;cursor:pointer">Delete</span></td>
+          </tr>
+          <tr>
+            <td style="font-size:20px">🏛</td>
+            <td class="fw">Governance</td>
+            <td><code style="background:#f3f3f3;padding:2px 6px;font-size:11px">governance</code></td>
+            <td class="mute sm">AGM, committee meetings and resident forums</td>
+            <td class="center">4</td>
+            <td class="center"><span class="badge badge-amber">1</span></td>
+            <td><span style="color:#2563eb;cursor:pointer">Edit</span> · <span style="color:#dc2626;cursor:pointer">Delete</span></td>
+          </tr>
+          <tr>
+            <td style="font-size:20px">⭐</td>
+            <td class="fw">Kids</td>
+            <td><code style="background:#f3f3f3;padding:2px 6px;font-size:11px">kids</code></td>
+            <td class="mute sm">Children's activities, carnivals and workshops</td>
+            <td class="center">2</td>
+            <td class="center"><span class="badge badge-green">2</span></td>
+            <td><span style="color:#2563eb;cursor:pointer">Edit</span> · <span style="color:#dc2626;cursor:pointer">Delete</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Inline Add / Edit form -->
+      <div class="box" style="max-width:560px">
+        <div class="fw mb12">Add New Category</div>
+        <div class="grid2 mb10">
+          <div>
+            <div class="lbl mb4">Display Name</div>
+            <input placeholder="e.g. Music" />
+          </div>
+          <div>
+            <div class="lbl mb4">Slug (auto-generated)</div>
+            <input placeholder="e.g. music" style="background:#f9f9f9" />
+          </div>
+        </div>
+        <div class="lbl mb4">Icon (emoji)</div>
+        <input placeholder="🎵" class="mb10" style="max-width:80px" />
+        <div class="lbl mb4">Description</div>
+        <input placeholder="Short description shown on category filter" class="mb12" />
+        <div class="flex gap8">
+          <button class="btn btn-sm">Save Category</button>
+          <button class="btn-out btn-sm">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 9: Admin — Create / Edit Event                          -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s9">
+  <div class="screen-label">Screen 9 — Admin · Create / Edit Event</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Admin</span>
+    <span class="grow center fw" style="font-size:14px">✏️ Edit Event — Annual Sports Day 2026</span>
+    <div class="avatar" style="background:#7c3aed">RI</div>
+  </nav>
+
+  <div class="flex" style="align-items:flex-start;min-height:600px">
+    <div class="sidebar">
+      <div class="sidebar-item active">📅 Events</div>
+      <div class="sidebar-item">👥 Users</div>
+      <div class="sidebar-item">💰 Payments</div>
+      <div class="sidebar-item">📂 Categories</div>
+      <div class="sidebar-item">📢 Announcements</div>
+      <div class="sidebar-item">🏛 Society</div>
+      <div class="sidebar-item">🌐 Currencies</div>
+    </div>
+
+    <div class="p grow">
+
+      <div class="flex gap24" style="align-items:flex-start">
+
+        <!-- Left: core details -->
+        <div class="grow fcol gap16">
+
+          <div class="box">
+            <div class="fw mb12">Basic Details</div>
+            <div class="lbl mb4">Event Title *</div>
+            <input value="Annual Sports Day 2026" class="mb10" />
+            <div class="lbl mb4">Category *</div>
+            <select class="mb10">
+              <option>🎆 Festival</option>
+              <option selected>🏆 Sports</option>
+              <option>💜 Wellness</option>
+              <option>🏛 Governance</option>
+              <option>⭐ Kids</option>
+            </select>
+            <div class="lbl mb4">Description</div>
+            <textarea style="height:96px">Cricket, badminton, throwball, tug-of-war and 100m sprint. Medals and trophies for top three in each category. Registration fee covers sports kit and refreshments for the day.</textarea>
+          </div>
+
+          <div class="box">
+            <div class="fw mb12">Date, Time &amp; Venue</div>
+            <div class="grid2 mb10">
+              <div>
+                <div class="lbl mb4">Event Date *</div>
+                <input type="date" value="2026-01-31" />
+              </div>
+              <div>
+                <div class="lbl mb4">Venue *</div>
+                <input value="Society Sports Ground" />
+              </div>
+            </div>
+            <div class="grid2">
+              <div>
+                <div class="lbl mb4">Start Time *</div>
+                <input type="time" value="07:00" />
+              </div>
+              <div>
+                <div class="lbl mb4">End Time</div>
+                <input type="time" value="15:00" />
+              </div>
+            </div>
+          </div>
+
+          <div class="box">
+            <div class="fw mb12">Capacity</div>
+            <div class="grid2">
+              <div>
+                <div class="lbl mb4">Max Capacity *</div>
+                <input type="number" value="200" />
+              </div>
+              <div>
+                <div class="lbl mb4">Max Tickets per Apartment</div>
+                <input type="number" value="6" />
+              </div>
+            </div>
+          </div>
+
+          <div class="box">
+            <div class="fw mb12">Banner Image</div>
+            <div class="ph mb8" style="height:100px;font-size:12px">[ Current Banner — 1200×400 px ]</div>
+            <div class="flex gap8">
+              <button class="btn-out btn-sm">Replace Image</button>
+              <span class="sm mute" style="align-self:center">JPG / PNG · Max 2 MB</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right: pricing, status, actions -->
+        <div style="width:260px;flex-shrink:0" class="fcol gap16">
+
+          <div class="box">
+            <div class="fw mb12">Status</div>
+            <select>
+              <option>Draft</option>
+              <option selected>Published</option>
+              <option>Cancelled</option>
+            </select>
+            <div class="sm mute mt8">Published events are visible to all residents.</div>
+          </div>
+
+          <div class="box">
+            <div class="fw mb12">Pricing</div>
+            <div class="flex gap12 mb10" style="align-items:center">
+              <label class="flex gap4 med" style="align-items:center;cursor:pointer">
+                <input type="radio" name="ptype" style="width:auto" /> Free
+              </label>
+              <label class="flex gap4 med" style="align-items:center;cursor:pointer">
+                <input type="radio" name="ptype" checked style="width:auto" /> Paid
+              </label>
+            </div>
+            <div class="lbl mb4">Price per Ticket (INR) *</div>
+            <input type="number" value="150" class="mb10" />
+            <div class="lbl mb4">Accepted Currencies</div>
+            <div class="fcol gap4">
+              <label class="flex gap6 sm" style="align-items:center"><input type="checkbox" checked style="width:auto" /> INR (base)</label>
+              <label class="flex gap6 sm" style="align-items:center"><input type="checkbox" checked style="width:auto" /> USD</label>
+              <label class="flex gap6 sm" style="align-items:center"><input type="checkbox" style="width:auto" /> GBP</label>
+              <label class="flex gap6 sm" style="align-items:center"><input type="checkbox" style="width:auto" /> SGD</label>
+              <label class="flex gap6 sm" style="align-items:center"><input type="checkbox" style="width:auto" /> AED</label>
+            </div>
+          </div>
+
+          <div class="box">
+            <div class="fw mb12">Cancellation Policy</div>
+            <select>
+              <option>No cancellation allowed</option>
+              <option selected>Cancel up to 48 hrs before</option>
+              <option>Cancel up to 24 hrs before</option>
+              <option>Cancel anytime (full refund)</option>
+            </select>
+          </div>
+
+          <div class="fcol gap8">
+            <button class="btn" style="padding:10px;width:100%">💾 Save Changes</button>
+            <button class="btn-out" style="padding:8px;width:100%">Save as Draft</button>
+            <hr class="divider" />
+            <button class="btn-out" style="padding:8px;width:100%;color:#dc2626;border-color:#dc2626">🗑 Cancel Event</button>
+          </div>
+
+          <div class="card sm mute">
+            <div class="fw mb4" style="color:#222">Registrations</div>
+            42 registered · 158 seats left<br/>
+            <span style="color:#dc2626">Cannot reduce capacity below 42</span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 10: Admin — Payments & Refunds                          -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s10">
+  <div class="screen-label">Screen 10 — Admin · Payments &amp; Refunds</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Admin</span>
+    <span class="grow"></span>
+    <div class="bell-wrap">🔔<div class="bell-badge">2</div></div>
+    <div class="avatar" style="background:#7c3aed">RI</div>
+  </nav>
+
+  <div class="flex" style="align-items:flex-start;min-height:540px">
+    <div class="sidebar">
+      <div class="sidebar-item">📅 Events</div>
+      <div class="sidebar-item">👥 Users</div>
+      <div class="sidebar-item active">💰 Payments</div>
+      <div class="sidebar-item">📂 Categories</div>
+      <div class="sidebar-item">📢 Announcements</div>
+      <div class="sidebar-item">🏛 Society</div>
+      <div class="sidebar-item">🌐 Currencies</div>
+    </div>
+
+    <div class="p grow">
+
+      <!-- Stats -->
+      <div class="grid4 mb16">
+        <div class="stat"><div class="stat-lbl">Total Collected</div><div class="stat-num green">₹750</div></div>
+        <div class="stat"><div class="stat-lbl">Refunds Issued</div><div class="stat-num red">₹100</div></div>
+        <div class="stat"><div class="stat-lbl">Pending</div><div class="stat-num" style="color:#d97706">₹200</div></div>
+        <div class="stat"><div class="stat-lbl">Failed / Void</div><div class="stat-num" style="color:#6b7280">₹0</div></div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="flex gap8 mb12" style="align-items:center">
+        <input placeholder="Search by transaction ID, user or event…" style="flex:1;max-width:300px" />
+        <select style="width:auto;font-size:12px;padding:5px 8px">
+          <option>All Events</option>
+          <option>Annual Sports Day 2026</option>
+          <option>Children's Day Carnival</option>
+          <option>Diwali Mela 2025</option>
+        </select>
+        <select style="width:auto;font-size:12px;padding:5px 8px">
+          <option>All Status</option>
+          <option>completed</option>
+          <option>pending</option>
+          <option>refunded</option>
+          <option>failed</option>
+        </select>
+        <select style="width:auto;font-size:12px;padding:5px 8px">
+          <option>All Currencies</option>
+          <option>INR</option>
+          <option>USD</option>
+        </select>
+        <span class="grow"></span>
+        <button class="btn-out btn-sm">⬇ Export CSV</button>
+      </div>
+
+      <!-- Payments Table -->
+      <table>
+        <thead>
+          <tr>
+            <th>Txn ID</th>
+            <th>User</th>
+            <th>Event</th>
+            <th>Tickets</th>
+            <th>Amount (INR)</th>
+            <th>Currency Paid</th>
+            <th>Method</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code style="font-size:10px;background:#f3f3f3;padding:2px 5px">PAY-0042</code></td>
+            <td>Arjun Sharma</td>
+            <td>Annual Sports Day 2026</td>
+            <td class="center">2</td>
+            <td class="fw">₹300.00</td>
+            <td class="mute sm">INR · ₹300.00</td>
+            <td class="sm">Razorpay UPI</td>
+            <td><span class="badge badge-green">completed</span></td>
+            <td class="sm mute">10 May 2026</td>
+            <td><span style="color:#dc2626;cursor:pointer">Refund</span> · <span style="color:#444;cursor:pointer">Receipt</span></td>
+          </tr>
+          <tr>
+            <td><code style="font-size:10px;background:#f3f3f3;padding:2px 5px">PAY-0041</code></td>
+            <td>Priya Desai</td>
+            <td>Annual Sports Day 2026</td>
+            <td class="center">1</td>
+            <td class="fw">₹150.00</td>
+            <td class="mute sm">USD · $1.80</td>
+            <td class="sm">Razorpay Card</td>
+            <td><span class="badge badge-green">completed</span></td>
+            <td class="sm mute">09 May 2026</td>
+            <td><span style="color:#dc2626;cursor:pointer">Refund</span> · <span style="color:#444;cursor:pointer">Receipt</span></td>
+          </tr>
+          <tr style="background:#fffbeb">
+            <td><code style="font-size:10px;background:#f3f3f3;padding:2px 5px">PAY-0040</code></td>
+            <td>Kiran Nair</td>
+            <td>Children's Day Carnival</td>
+            <td class="center">2</td>
+            <td class="fw" style="color:#d97706">₹200.00</td>
+            <td class="mute sm">INR · ₹200.00</td>
+            <td class="sm mute">—</td>
+            <td><span class="badge badge-amber">pending</span></td>
+            <td class="sm mute">08 May 2026</td>
+            <td><span style="color:#d97706;cursor:pointer">Send Reminder</span> · <span style="color:#dc2626;cursor:pointer">Void</span></td>
+          </tr>
+          <tr style="background:#fef2f2">
+            <td><code style="font-size:10px;background:#f3f3f3;padding:2px 5px">PAY-0039</code></td>
+            <td>Suresh Balan</td>
+            <td>Annual Sports Day 2026</td>
+            <td class="center">3</td>
+            <td class="fw" style="color:#dc2626">₹450.00 → refund ₹100</td>
+            <td class="mute sm">INR</td>
+            <td class="sm">Razorpay UPI</td>
+            <td><span class="badge badge-red">refunded (partial)</span></td>
+            <td class="sm mute">05 May 2026</td>
+            <td><span style="color:#444;cursor:pointer">Receipt</span></td>
+          </tr>
+          <tr>
+            <td><code style="font-size:10px;background:#f3f3f3;padding:2px 5px">PAY-0038</code></td>
+            <td>Meera Krishnan</td>
+            <td>Children's Day Carnival</td>
+            <td class="center">2</td>
+            <td class="fw">₹200.00</td>
+            <td class="mute sm">INR</td>
+            <td class="sm">Razorpay NetBanking</td>
+            <td><span class="badge badge-green">completed</span></td>
+            <td class="sm mute">04 May 2026</td>
+            <td><span style="color:#dc2626;cursor:pointer">Refund</span> · <span style="color:#444;cursor:pointer">Receipt</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Refund panel (inline example) -->
+      <div class="box mt16" style="max-width:520px;border-color:#dc2626">
+        <div class="fw mb8 red">Initiate Refund — PAY-0042</div>
+        <div class="sm mute mb10">Arjun Sharma · Annual Sports Day 2026 · 2 tickets · ₹300.00 paid</div>
+        <div class="grid2 mb10">
+          <div>
+            <div class="lbl mb4">Refund Amount (INR)</div>
+            <input type="number" value="300" />
+          </div>
+          <div>
+            <div class="lbl mb4">Reason</div>
+            <select>
+              <option>Event cancelled</option>
+              <option>User request</option>
+              <option>Duplicate payment</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="sm mute mb10">Refund will be processed via Razorpay to original payment method (5–7 business days)</div>
+        <div class="flex gap8">
+          <button class="btn btn-sm" style="background:#dc2626;border-color:#dc2626">Confirm Refund ₹300.00</button>
+          <button class="btn-out btn-sm">Cancel</button>
+        </div>
+      </div>
+
+      <div class="flex mt12" style="align-items:center;justify-content:space-between">
+        <span class="sm mute">Showing 5 of 42 transactions</span>
+        <div class="flex gap4">
+          <button class="btn-out btn-sm">← Prev</button>
+          <button class="btn btn-sm">Next →</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 15: Admin Home — all cards incl. My Tickets             -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s15">
+  <div class="screen-label">Screen 15 — Admin Home · Rajesh Iyer · all role cards visible</div>
+
+  <!-- Admin nav — all 5 links -->
+  <nav style="background:#1e293b;color:#fff">
+    <span class="nav-logo" style="color:#fff">🏛 PVH Events</span>
+    <span class="grow"></span>
+    <span class="nav-link active" style="color:#fff;border-bottom:2px solid #6366f1">Home</span>
+    <span class="nav-link" style="color:rgba(203,213,225,0.9)">Events</span>
+    <span class="nav-link" style="color:rgba(203,213,225,0.9)">My Tickets</span>
+    <span class="nav-link" style="color:rgba(203,213,225,0.9)">Manage</span>
+    <span class="nav-link" style="color:rgba(203,213,225,0.9)">Admin</span>
+    <div class="bell-wrap" style="color:#fff">🔔<div class="bell-badge">2</div></div>
+    <div class="avatar" style="background:#7c3aed">RI</div>
+  </nav>
+
+  <!-- Hero -->
+  <div style="background:linear-gradient(135deg,#1e293b 0%,#312e81 100%);color:#fff;padding:48px 24px">
+    <div style="max-width:1100px;margin:0 auto">
+      <div style="font-size:12px;color:#a5b4fc;margin-bottom:6px">Prestige Verdant Heights · Bengaluru</div>
+      <div style="font-size:30px;font-weight:800;margin-bottom:8px">Welcome back, Rajesh 👋</div>
+      <div style="font-size:15px;color:#c7d2fe;margin-bottom:24px">
+        You have full admin access. You can also browse events and register as a resident.
+      </div>
+      <button class="btn" style="background:#6366f1;border-color:#6366f1;padding:10px 24px">Browse Events →</button>
+    </div>
+  </div>
+
+  <div class="p" style="max-width:1100px;margin:0 auto">
+
+    <!-- Note callout -->
+    <div class="card mt16 mb16 flex gap12" style="background:#eff6ff;border-color:#bfdbfe;align-items:flex-start">
+      <div style="font-size:20px;flex-shrink:0">ℹ️</div>
+      <div class="sm" style="color:#1e40af;line-height:1.6">
+        <strong>Admin = Resident too.</strong> Rajesh can register for any event just like other residents.
+        His admin role only adds management capabilities — it does not replace his resident access.
+        "My Tickets" below shows <em>his personal registrations</em>, separate from the admin event reports.
+      </div>
+    </div>
+
+    <div class="fw mb12" style="font-size:17px">What would you like to do?</div>
+
+    <!-- All 5 cards: 3 resident + 1 committee + 1 admin -->
+    <div class="grid3 mb8">
+
+      <!-- Resident card 1 -->
+      <div class="card fcol gap8">
+        <div style="width:48px;height:48px;background:#6366f1;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff">📅</div>
+        <div class="fw" style="font-size:16px">Events</div>
+        <div class="sm mute" style="flex:1">Browse upcoming festivals, sports days, wellness sessions and more.</div>
+        <span style="font-size:13px;font-weight:600;color:#6366f1">Browse Events →</span>
+      </div>
+
+      <!-- Resident card 2 — MY TICKETS (highlighted as the focus of this screen) -->
+      <div class="card fcol gap8" style="border:2px solid #10b981;position:relative">
+        <div style="position:absolute;top:-10px;left:12px;background:#10b981;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px">Personal Access</div>
+        <div style="width:48px;height:48px;background:#10b981;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff">🎟</div>
+        <div class="fw" style="font-size:16px">My Tickets</div>
+        <div class="sm mute" style="flex:1">
+          View <strong>your personal registrations</strong> and show the QR code at the gate.
+          Currently: 2 confirmed tickets.
+        </div>
+        <span style="font-size:13px;font-weight:600;color:#10b981">View My Tickets →</span>
+      </div>
+
+      <!-- Resident card 3 -->
+      <div class="card fcol gap8">
+        <div style="width:48px;height:48px;background:#f59e0b;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff">💰</div>
+        <div class="fw" style="font-size:16px">My Payments</div>
+        <div class="sm mute" style="flex:1">Your personal payment history and refund requests.</div>
+        <span style="font-size:13px;font-weight:600;color:#f59e0b">Payment History →</span>
+      </div>
+
+      <!-- Committee card -->
+      <div class="card fcol gap8" style="border:2px solid #0ea5e9">
+        <div class="flex gap8 mb4" style="align-items:center">
+          <div style="width:48px;height:48px;background:#0ea5e9;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff">✏️</div>
+          <span class="badge badge-blue" style="font-size:10px">Committee+</span>
+        </div>
+        <div class="fw" style="font-size:16px">Manage Events</div>
+        <div class="sm mute" style="flex:1">Create, publish and manage events. Post announcements.</div>
+        <span style="font-size:13px;font-weight:600;color:#0ea5e9">Go to Event Manager →</span>
+      </div>
+
+      <!-- Admin-only card -->
+      <div class="card fcol gap8" style="border:2px solid #7c3aed">
+        <div class="flex gap8 mb4" style="align-items:center">
+          <div style="width:48px;height:48px;background:#7c3aed;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff">🛡</div>
+          <span class="badge" style="border-color:#7c3aed;color:#7c3aed;font-size:10px">Admin Only</span>
+        </div>
+        <div class="fw" style="font-size:16px">Admin Panel</div>
+        <div class="sm mute" style="flex:1">User roles, revenue reports, categories and society settings.</div>
+        <span style="font-size:13px;font-weight:600;color:#7c3aed">Open Admin Panel →</span>
+      </div>
+
+    </div>
+
+    <!-- Quick glance at personal tickets -->
+    <div class="card mt16 flex gap16" style="align-items:center;background:#f0fdf4;border-color:#bbf7d0">
+      <div style="font-size:24px">🎟</div>
+      <div class="grow">
+        <div class="fw">Your upcoming ticket — Annual Sports Day 2026</div>
+        <div class="sm mute">Sat, 31 Jan 2026 · 7:00 AM · 2 tickets · ₹300 paid</div>
+      </div>
+      <button class="btn-out btn-sm" style="border-color:#10b981;color:#10b981;flex-shrink:0">Show QR Code</button>
+      <button class="btn-out btn-sm" style="flex-shrink:0">All My Tickets</button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 16: Admin — My Tickets (personal registrations)         -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s16">
+  <div class="screen-label">Screen 16 — Admin · My Tickets (personal) · Rajesh Iyer</div>
+
+  <!-- Admin nav with My Tickets active -->
+  <nav style="background:#1e293b;color:#fff">
+    <span class="nav-logo" style="color:#fff">🏛 PVH Events</span>
+    <span class="grow"></span>
+    <span class="nav-link" style="color:rgba(203,213,225,0.9)">Home</span>
+    <span class="nav-link" style="color:rgba(203,213,225,0.9)">Events</span>
+    <span class="nav-link active" style="color:#fff;border-bottom:2px solid #6366f1">My Tickets</span>
+    <span class="nav-link" style="color:rgba(203,213,225,0.9)">Manage</span>
+    <span class="nav-link" style="color:rgba(203,213,225,0.9)">Admin</span>
+    <div class="bell-wrap" style="color:#fff">🔔<div class="bell-badge">2</div></div>
+    <div class="avatar" style="background:#7c3aed">RI</div>
+  </nav>
+
+  <div class="p">
+
+    <!-- Page header with distinction callout -->
+    <div class="flex gap8 mb8" style="align-items:flex-start">
+      <div class="grow">
+        <div class="fw mb4" style="font-size:18px">My Tickets</div>
+        <div class="sm mute">Your personal event registrations — as a resident of Prestige Verdant Heights.</div>
+      </div>
+      <div class="flex gap4">
+        <span class="chip active">All</span>
+        <span class="chip">Upcoming</span>
+        <span class="chip">Past</span>
+      </div>
+    </div>
+
+    <!-- Distinction note -->
+    <div class="card mb16 flex gap12" style="background:#f5f3ff;border-color:#ddd6fe;align-items:flex-start">
+      <div style="font-size:16px;flex-shrink:0">🛡</div>
+      <div class="sm" style="color:#5b21b6;line-height:1.6">
+        This is <strong>your personal tickets page</strong> — the same view any resident sees.
+        To see <em>all registrations</em> across all residents and events, go to
+        <span style="text-decoration:underline;cursor:pointer">Admin → Registrations</span>.
+      </div>
+    </div>
+
+    <div class="fcol gap12">
+
+      <!-- Ticket 1: Confirmed paid (as a resident) -->
+      <div class="card flex gap16" style="align-items:flex-start">
+        <div class="ph" style="width:72px;height:72px;flex-shrink:0;font-size:10px">[ QR Code ]</div>
+        <div class="grow">
+          <div class="flex gap8 mb4" style="align-items:center">
+            <span class="fw">Annual Sports Day 2026</span>
+            <span class="badge badge-green">CONFIRMED</span>
+            <span class="tag" style="font-size:10px">🏆 Sports</span>
+          </div>
+          <div class="sm mute">📅 Sat, 31 Jan 2026 · 7:00 AM – 3:00 PM</div>
+          <div class="sm mute">📍 Society Sports Ground</div>
+          <div class="sm mt4">2 tickets &nbsp;·&nbsp; <span class="fw">₹300.00 paid</span> &nbsp;·&nbsp; <span class="mute">Razorpay UPI</span></div>
+        </div>
+        <div class="fcol gap6" style="flex-shrink:0;align-items:flex-end">
+          <button class="btn btn-sm">Show QR</button>
+          <button class="btn-out btn-sm">Download</button>
+          <span class="sm red" style="cursor:pointer">Cancel</span>
+        </div>
+      </div>
+
+      <!-- Ticket 2: Free confirmed -->
+      <div class="card flex gap16" style="align-items:flex-start">
+        <div class="ph" style="width:72px;height:72px;flex-shrink:0;font-size:10px">[ QR Code ]</div>
+        <div class="grow">
+          <div class="flex gap8 mb4" style="align-items:center">
+            <span class="fw">Diwali Mela 2025</span>
+            <span class="badge badge-green">CONFIRMED</span>
+            <span class="tag" style="font-size:10px">🎆 Festival</span>
+          </div>
+          <div class="sm mute">📅 Sat, 25 Oct 2025 · 6:00 PM – 11:00 PM</div>
+          <div class="sm mute">📍 Society Clubhouse &amp; Garden</div>
+          <div class="sm mt4">4 tickets &nbsp;·&nbsp; <span class="green fw">FREE</span></div>
+        </div>
+        <div class="fcol gap6" style="flex-shrink:0;align-items:flex-end">
+          <button class="btn btn-sm">Show QR</button>
+          <span class="sm red" style="cursor:pointer">Cancel</span>
+        </div>
+      </div>
+
+      <!-- Ticket 3: Past / attended -->
+      <div class="card flex gap16" style="align-items:flex-start;opacity:0.75">
+        <div class="ph" style="width:72px;height:72px;flex-shrink:0;font-size:10px">✓ Used</div>
+        <div class="grow">
+          <div class="flex gap8 mb4" style="align-items:center">
+            <span class="fw">Sunday Morning Yoga</span>
+            <span class="badge badge-gray">ATTENDED</span>
+            <span class="tag" style="font-size:10px">💜 Wellness</span>
+          </div>
+          <div class="sm mute">📅 Sun, 11 May 2025 · 6:30 AM – 7:30 AM</div>
+          <div class="sm mute">📍 Rooftop Terrace — Block A</div>
+          <div class="sm mt4">1 ticket &nbsp;·&nbsp; <span class="fw">FREE</span></div>
+        </div>
+        <div class="fcol gap6" style="flex-shrink:0;align-items:flex-end">
+          <button class="btn-out btn-sm">Receipt</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Admin shortcut to all registrations -->
+    <div class="card mt16 flex gap12" style="background:#f8fafc;border-color:#e2e8f0;align-items:center">
+      <div class="grow">
+        <div class="fw sm">Need to see all residents' registrations?</div>
+        <div class="sm mute">Go to Admin Panel → Registrations for the full list with filters and export.</div>
+      </div>
+      <button class="btn-out btn-sm" style="flex-shrink:0">Admin → Registrations</button>
+    </div>
+
   </div>
 </div>
 

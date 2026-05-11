@@ -21,6 +21,9 @@ interface AuthContextValue {
   isLoading: boolean;
   user: AuthUser | null;
   token: string | null;
+  isPending: boolean; // registered in Keycloak but no role assigned yet
+  login: () => void;
+  register: () => void;
   logout: () => void;
 }
 
@@ -57,7 +60,7 @@ function parseUser(kc: typeof keycloak): AuthUser | null {
 
   const primaryRole = realmRoles.sort(
     (a, b) => (ROLE_RANK[a] ?? 99) - (ROLE_RANK[b] ?? 99),
-  )[0] ?? 'resident';
+  )[0] ?? 'pending';
 
   return {
     sub:  t['sub'] as string,
@@ -77,8 +80,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token,     setToken]       = useState<string | null>(null);
   const refreshTimer                = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const logout = useCallback(() => {
-    keycloak.logout({ redirectUri: window.location.origin });
+  const login    = useCallback(() => keycloak.login(), []);
+  const register = useCallback(() => keycloak.register(), []);
+  const logout   = useCallback(() => {
+    // Trailing slash ensures the URI matches the "http://localhost:3000/*" pattern in Keycloak
+    keycloak.logout({ redirectUri: window.location.origin + '/' });
   }, []);
 
   useEffect(() => {
@@ -87,7 +93,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     keycloak
       .init({
-        onLoad: 'login-required',
+        onLoad: 'check-sso',
+        // Silent iframe avoids a full redirect to Keycloak when no session exists.
+        // Without this, keycloak-js v21+ falls back to a redirect flow that briefly
+        // shows the Keycloak login page on first load and after logout.
+        silentCheckSsoRedirectUri: window.location.origin + '/silent-check-sso.html',
         checkLoginIframe: false,
         pkceMethod: 'S256',
       })
@@ -118,8 +128,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const isPending = !!user && user.primaryRole === 'pending';
+
   return (
-    <AuthContext.Provider value={{ isLoading, user, token, logout }}>
+    <AuthContext.Provider value={{ isLoading, user, token, isPending, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

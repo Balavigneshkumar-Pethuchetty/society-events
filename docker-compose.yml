@@ -30,7 +30,7 @@ services:
     restart: unless-stopped
     # start-dev = embedded H2 disabled; KC_DB routes it to postgres
     # --import-realm auto-imports every .json in /opt/keycloak/data/import
-    command: start-dev --import-realm
+    command: start-dev --import-realm --spi-theme-cache-themes=false --spi-theme-cache-templates=false
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
@@ -45,6 +45,7 @@ services:
       KC_LOG_LEVEL: INFO
     volumes:
       - ./keycloak:/opt/keycloak/data/import:ro
+      - ./keycloak/themes:/opt/keycloak/themes:ro
     ports:
       - "${KEYCLOAK_PORT:-8080}:8080"
     depends_on:
@@ -129,9 +130,6 @@ services:
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-3000}:80"
-    depends_on:
-      keycloak:
-        condition: service_healthy
     networks:
       - society_net
 

@@ -1,10 +1,12 @@
 {
   "id": "society-events",
   "realm": "society-events",
-  "displayName": "Society Events Portal",
+  "displayName": "Prestige Verdant Heights",
+  "displayNameHtml": "Prestige Verdant Heights",
+  "loginTheme": "society-events",
   "enabled": true,
   "loginWithEmailAllowed": true,
-  "registrationAllowed": false,
+  "registrationAllowed": true,
   "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
   "sslRequired": "external",
@@ -15,20 +17,30 @@
   "refreshTokenMaxReuse": 0,
   "revokeRefreshToken": true,
   "bruteForceProtected": true,
-
   "roles": {
     "realm": [
-      { "name": "admin",            "description": "Society administrator — full access" },
-      { "name": "committee_member", "description": "Can create and manage events" },
-      { "name": "resident",         "description": "Can register for events and make payments" },
-      { "name": "security_guard",   "description": "Can scan QR codes at entry" }
+      {
+        "name": "admin",
+        "description": "Society administrator \u2014 full access"
+      },
+      {
+        "name": "committee_member",
+        "description": "Can create and manage events"
+      },
+      {
+        "name": "resident",
+        "description": "Can register for events and make payments"
+      },
+      {
+        "name": "security_guard",
+        "description": "Can scan QR codes at entry"
+      }
     ]
   },
-
   "clients": [
     {
       "clientId": "society-frontend",
-      "name": "Society Events — Web App",
+      "name": "Society Events \u2014 Web App",
       "description": "Public PKCE client for the React/Vue micro-frontend",
       "enabled": true,
       "publicClient": true,
@@ -50,11 +62,16 @@
       "attributes": {
         "pkce.code.challenge.method": "S256"
       },
-      "defaultClientScopes": ["openid", "profile", "email", "roles"]
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles"
+      ]
     },
     {
       "clientId": "society-api",
-      "name": "Society Events — API Gateway",
+      "name": "Society Events \u2014 API Gateway",
       "description": "Confidential client for backend microservices to validate tokens",
       "enabled": true,
       "publicClient": false,
@@ -64,10 +81,14 @@
       "serviceAccountsEnabled": true,
       "protocol": "openid-connect",
       "secret": "society-api-secret-change-in-prod",
-      "defaultClientScopes": ["openid", "profile", "email", "roles"]
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles"
+      ]
     }
   ],
-
   "users": [
     {
       "id": "a1000000-0000-0000-0000-000000000001",
@@ -77,8 +98,18 @@
       "lastName": "Iyer",
       "enabled": true,
       "emailVerified": true,
-      "credentials": [{ "type": "password", "value": "Test@1234", "temporary": false }],
-      "realmRoles": ["admin", "committee_member", "resident"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test@1234",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin",
+        "committee_member",
+        "resident"
+      ]
     },
     {
       "id": "a1000000-0000-0000-0000-000000000002",
@@ -88,8 +119,17 @@
       "lastName": "Krishnan",
       "enabled": true,
       "emailVerified": true,
-      "credentials": [{ "type": "password", "value": "Test@1234", "temporary": false }],
-      "realmRoles": ["committee_member", "resident"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test@1234",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "committee_member",
+        "resident"
+      ]
     },
     {
       "id": "a1000000-0000-0000-0000-000000000003",
@@ -99,8 +139,16 @@
       "lastName": "Sharma",
       "enabled": true,
       "emailVerified": true,
-      "credentials": [{ "type": "password", "value": "Test@1234", "temporary": false }],
-      "realmRoles": ["resident"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test@1234",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "resident"
+      ]
     },
     {
       "id": "a1000000-0000-0000-0000-000000000004",
@@ -110,8 +158,16 @@
       "lastName": "Nair",
       "enabled": true,
       "emailVerified": true,
-      "credentials": [{ "type": "password", "value": "Test@1234", "temporary": false }],
-      "realmRoles": ["resident"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test@1234",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "resident"
+      ]
     },
     {
       "id": "a1000000-0000-0000-0000-000000000005",
@@ -121,8 +177,16 @@
       "lastName": "Mehta",
       "enabled": true,
       "emailVerified": true,
-      "credentials": [{ "type": "password", "value": "Test@1234", "temporary": false }],
-      "realmRoles": ["resident"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test@1234",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "resident"
+      ]
     },
     {
       "id": "a1000000-0000-0000-0000-000000000006",
@@ -132,8 +196,18 @@
       "lastName": "Patel",
       "enabled": true,
       "emailVerified": true,
-      "credentials": [{ "type": "password", "value": "Test@1234", "temporary": false }],
-      "realmRoles": ["resident"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test@1234",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "resident"
+      ]
     }
-  ]
+  ],
+  "registrationEmailAsUsername": false,
+  "verifyEmail": false
 }

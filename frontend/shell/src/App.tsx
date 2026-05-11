@@ -6,6 +6,8 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SocietyProvider } from './contexts/SocietyContext';
 import { Nav } from './components/Nav';
 import { Home } from './pages/Home';
+import { Landing } from './pages/Landing';
+import { PendingApproval } from './pages/PendingApproval';
 import { theme } from './theme';
 
 function LoadingScreen() {
@@ -63,9 +65,31 @@ function Placeholder({ label }: { label: string }) {
 }
 
 function AppShell() {
-  const { isLoading } = useAuth();
+  const { isLoading, user, isPending } = useAuth();
+
   if (isLoading) return <LoadingScreen />;
 
+  // Not logged in → show public landing page
+  if (!user) {
+    return (
+      <BrowserRouter>
+        <Nav />
+        <Landing />
+      </BrowserRouter>
+    );
+  }
+
+  // Logged in but no role assigned yet → awaiting admin approval
+  if (isPending) {
+    return (
+      <BrowserRouter>
+        <Nav />
+        <PendingApproval />
+      </BrowserRouter>
+    );
+  }
+
+  // Fully activated member → full app
   return (
     <BrowserRouter>
       <Nav />
@@ -74,6 +98,10 @@ function AppShell() {
         <Route path="/events"       element={<Placeholder label="Events MFE" />} />
         <Route path="/tickets"      element={<Placeholder label="Booking MFE" />} />
         <Route path="/checkout/:id" element={<Placeholder label="Payment MFE" />} />
+        <Route path="/payments"     element={<Placeholder label="Payments MFE" />} />
+        <Route path="/manage/*"     element={<Placeholder label="Event Manager MFE — Committee &amp; Admin" />} />
+        <Route path="/scanner"      element={<Placeholder label="QR Scanner MFE — Security Guard" />} />
+        <Route path="/entry-log"    element={<Placeholder label="Entry Log MFE — Security Guard" />} />
         <Route path="/admin/*"      element={<Placeholder label="Admin MFE" />} />
         <Route path="*"             element={<Placeholder label="404 — Page not found" />} />
       </Routes>
