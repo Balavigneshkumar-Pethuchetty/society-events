@@ -1,0 +1,151 @@
+services:
+
+  # ─── Primary Database ──────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: society_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: society_events
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d society_events"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - society_net
+
+  # ─── Keycloak (OAuth 2.0 / OIDC) ──────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    container_name: society_keycloak
+    restart: unless-stopped
+    # start-dev = embedded H2 disabled; KC_DB routes it to postgres
+    # --import-realm auto-imports every .json in /opt/keycloak/data/import
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_LOG_LEVEL: INFO
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - society_net
+
+  # ─── pgAdmin 4 (Database GUI) ──────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: society_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGADMIN_CONFIG_LOGIN_BANNER: "'Society Events — Local Dev'"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./db/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - society_net
+
+  # ─── Redis (Session cache / rate-limiting for microservices) ───────────────
+  redis:
+    image: redis:7-alpine
+    container_name: society_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - society_net
+
+  # ─── Mailpit (Local SMTP + inbox UI for notification testing) ─────────────
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: society_mailpit
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_UI_AUTH_FILE: ""          # no auth in dev
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"   # SMTP endpoint for services
+      - "${MAILPIT_UI_PORT:-8025}:8025"     # Web inbox UI
+    networks:
+      - society_net
+
+  # ─── Shell App (production build) ─────────────────────────────────────────
+  # Opt-in only: docker compose --profile frontend up -d --build
+  # For local dev use: make frontend  (Vite hot-reload, no Docker needed)
+  frontend:
+    profiles: [frontend]
+    build:
+      context: ./frontend/shell
+      dockerfile: Dockerfile
+    container_name: society_frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    networks:
+      - society_net
+
+# ─── Volumes ─────────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+    name: society_postgres_data
+  pgadmin_data:
+    name: society_pgadmin_data
+  redis_data:
+    name: society_redis_data
+
+# ─── Network ──────────────────────────────────────────────────────────────────
+networks:
+  society_net:
+    name: society_network
+    driver: bridge

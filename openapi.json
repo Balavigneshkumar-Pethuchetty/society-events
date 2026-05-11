@@ -1,0 +1,867 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Society Events API",
+    "description": "REST API for the Society Events platform — Prestige Verdant Heights, Bengaluru.\n\nAll endpoints require a Bearer JWT issued by Keycloak **except** `/payments/webhook`.\n\n**Roles:**\n- `resident` — browse, register, pay\n- `committee_member` — create/manage events, send announcements\n- `admin` — full access including user management and reports\n- `security_guard` — mark attendance via QR scan\n\n**Obtain a token:**\n```\nPOST http://localhost:8080/realms/society-events/protocol/openid-connect/token\nContent-Type: application/x-www-form-urlencoded\n\nclient_id=society-frontend&grant_type=password&username=rajesh.iyer@pvh-blr.in&password=Test@1234\n```",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Society Admin",
+      "email": "admin@pvh-blr.in"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000/api/v1",
+      "description": "Local API Gateway"
+    }
+  ],
+  "security": [
+    { "bearerAuth": [] }
+  ],
+  "tags": [
+    { "name": "Users",         "description": "User profiles and role management" },
+    { "name": "Events",        "description": "Event lifecycle and categories" },
+    { "name": "Registrations", "description": "Ticket booking, QR codes and attendance" },
+    { "name": "Payments",      "description": "Payment orders, verification and refunds" },
+    { "name": "Notifications", "description": "In-app notifications and announcements" },
+    { "name": "Currencies",    "description": "Currency list and live exchange rates" },
+    { "name": "Admin",         "description": "Admin-only reports and overrides" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "UUID": {
+        "type": "string",
+        "format": "uuid",
+        "example": "51100000-0000-0000-0000-000000000001"
+      },
+      "Error": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code":    { "type": "string", "example": "RESOURCE_NOT_FOUND" },
+          "message": { "type": "string", "example": "Event not found" }
+        }
+      },
+      "PaginationMeta": {
+        "type": "object",
+        "properties": {
+          "page":  { "type": "integer", "example": 1 },
+          "limit": { "type": "integer", "example": 20 },
+          "total": { "type": "integer", "example": 42 }
+        }
+      },
+      "Apartment": {
+        "type": "object",
+        "properties": {
+          "id":          { "$ref": "#/components/schemas/UUID" },
+          "society_id":  { "$ref": "#/components/schemas/UUID" },
+          "block":       { "type": "string", "example": "A" },
+          "unit_number": { "type": "string", "example": "101" },
+          "type":        { "type": "string", "enum": ["1BHK", "2BHK", "3BHK", "Villa"] }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id":           { "$ref": "#/components/schemas/UUID" },
+          "name":         { "type": "string", "example": "Rajesh Iyer" },
+          "email":        { "type": "string", "format": "email", "example": "rajesh.iyer@pvh-blr.in" },
+          "phone":        { "type": "string", "example": "+91-98450-11111" },
+          "role":         { "type": "string", "enum": ["admin", "committee_member", "resident", "security_guard"] },
+          "apartment_id": { "$ref": "#/components/schemas/UUID" },
+          "apartment":    { "$ref": "#/components/schemas/Apartment" },
+          "is_active":    { "type": "boolean" },
+          "created_at":   { "type": "string", "format": "date-time" }
+        }
+      },
+      "UpdateProfileRequest": {
+        "type": "object",
+        "properties": {
+          "name":  { "type": "string" },
+          "phone": { "type": "string" }
+        }
+      },
+      "UpdateRoleRequest": {
+        "type": "object",
+        "required": ["role"],
+        "properties": {
+          "role": { "type": "string", "enum": ["admin", "committee_member", "resident", "security_guard"] }
+        }
+      },
+      "EventCategory": {
+        "type": "object",
+        "properties": {
+          "id":        { "$ref": "#/components/schemas/UUID" },
+          "name":      { "type": "string", "example": "Festival" },
+          "icon":      { "type": "string", "example": "sparkles" },
+          "color_hex": { "type": "string", "example": "#F59E0B" }
+        }
+      },
+      "Event": {
+        "type": "object",
+        "properties": {
+          "id":             { "$ref": "#/components/schemas/UUID" },
+          "society_id":     { "$ref": "#/components/schemas/UUID" },
+          "category_id":    { "$ref": "#/components/schemas/UUID" },
+          "organizer_id":   { "$ref": "#/components/schemas/UUID" },
+          "title":          { "type": "string", "example": "Diwali Mela 2025" },
+          "description":    { "type": "string" },
+          "start_time":     { "type": "string", "format": "date-time" },
+          "end_time":       { "type": "string", "format": "date-time" },
+          "venue":          { "type": "string", "example": "Society Clubhouse & Garden" },
+          "capacity":       { "type": "integer", "example": 500 },
+          "status":         { "type": "string", "enum": ["draft", "published", "cancelled", "completed"] },
+          "ticket_price":   { "type": "number", "format": "double", "example": 150.00 },
+          "price_currency": { "type": "string", "example": "INR" },
+          "is_free":        { "type": "boolean" },
+          "created_at":     { "type": "string", "format": "date-time" },
+          "category":       { "$ref": "#/components/schemas/EventCategory" },
+          "organizer":      { "$ref": "#/components/schemas/User" },
+          "registration_count": { "type": "integer", "example": 312, "description": "Total registrations so far" }
+        }
+      },
+      "CreateEventRequest": {
+        "type": "object",
+        "required": ["title", "start_time", "end_time", "venue"],
+        "properties": {
+          "title":          { "type": "string" },
+          "description":    { "type": "string" },
+          "category_id":    { "$ref": "#/components/schemas/UUID" },
+          "start_time":     { "type": "string", "format": "date-time" },
+          "end_time":       { "type": "string", "format": "date-time" },
+          "venue":          { "type": "string" },
+          "capacity":       { "type": "integer", "minimum": 1 },
+          "ticket_price":   { "type": "number", "default": 0 },
+          "price_currency": { "type": "string", "default": "INR" },
+          "is_free":        { "type": "boolean", "default": true }
+        }
+      },
+      "UpdateEventStatusRequest": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": { "type": "string", "enum": ["published", "cancelled", "completed"] }
+        }
+      },
+      "CreateCategoryRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name":      { "type": "string" },
+          "icon":      { "type": "string" },
+          "color_hex": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+        }
+      },
+      "Registration": {
+        "type": "object",
+        "properties": {
+          "id":               { "$ref": "#/components/schemas/UUID" },
+          "event_id":         { "$ref": "#/components/schemas/UUID" },
+          "user_id":          { "$ref": "#/components/schemas/UUID" },
+          "ticket_count":     { "type": "integer", "example": 2 },
+          "total_amount":     { "type": "number", "example": 300.00 },
+          "display_currency": { "type": "string", "example": "INR" },
+          "status":           { "type": "string", "enum": ["pending", "confirmed", "cancelled", "attended"] },
+          "qr_code":          { "type": "string", "description": "Base64 QR or short token; null until payment confirmed" },
+          "registered_at":    { "type": "string", "format": "date-time" },
+          "event":            { "$ref": "#/components/schemas/Event" }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["ticket_count"],
+        "properties": {
+          "ticket_count":     { "type": "integer", "minimum": 1, "example": 2 },
+          "display_currency": { "type": "string", "default": "INR", "example": "USD" }
+        }
+      },
+      "Payment": {
+        "type": "object",
+        "properties": {
+          "id":                 { "$ref": "#/components/schemas/UUID" },
+          "registration_id":   { "$ref": "#/components/schemas/UUID" },
+          "gateway_name":      { "type": "string", "example": "razorpay" },
+          "gateway_order_id":  { "type": "string" },
+          "gateway_txn_id":    { "type": "string" },
+          "original_amount":   { "type": "number", "example": 1.80 },
+          "original_currency": { "type": "string", "example": "USD" },
+          "settled_amount":    { "type": "number", "example": 150.30 },
+          "settled_currency":  { "type": "string", "example": "INR" },
+          "exchange_rate_used":{ "type": "number", "example": 83.5 },
+          "status":            { "type": "string", "enum": ["pending", "success", "failed", "refunded"] },
+          "paid_at":           { "type": "string", "format": "date-time" },
+          "created_at":        { "type": "string", "format": "date-time" }
+        }
+      },
+      "PaymentOrder": {
+        "type": "object",
+        "description": "Returned to frontend to initialise Razorpay checkout",
+        "properties": {
+          "order_id":          { "type": "string", "example": "order_RZP_abc123" },
+          "amount":            { "type": "number", "example": 300.00 },
+          "currency":          { "type": "string", "example": "INR" },
+          "key_id":            { "type": "string", "example": "rzp_test_xxxxxxxxxxxx" },
+          "registration_id":   { "$ref": "#/components/schemas/UUID" }
+        }
+      },
+      "CreatePaymentOrderRequest": {
+        "type": "object",
+        "required": ["registration_id"],
+        "properties": {
+          "registration_id": { "$ref": "#/components/schemas/UUID" },
+          "currency":        { "type": "string", "default": "INR", "example": "USD" }
+        }
+      },
+      "VerifyPaymentRequest": {
+        "type": "object",
+        "required": ["razorpay_order_id", "razorpay_payment_id", "razorpay_signature"],
+        "properties": {
+          "razorpay_order_id":   { "type": "string" },
+          "razorpay_payment_id": { "type": "string" },
+          "razorpay_signature":  { "type": "string" }
+        }
+      },
+      "RefundRequest": {
+        "type": "object",
+        "required": ["reason"],
+        "properties": {
+          "reason": { "type": "string" },
+          "amount": { "type": "number", "description": "Partial refund amount in original currency. Omit for full refund." }
+        }
+      },
+      "Refund": {
+        "type": "object",
+        "properties": {
+          "id":                     { "$ref": "#/components/schemas/UUID" },
+          "payment_id":             { "$ref": "#/components/schemas/UUID" },
+          "original_refund_amount": { "type": "number" },
+          "original_currency":      { "type": "string" },
+          "settled_refund_amount":  { "type": "number" },
+          "reason":                 { "type": "string" },
+          "status":                 { "type": "string", "enum": ["pending", "processed", "failed"] },
+          "gateway_refund_id":      { "type": "string" },
+          "created_at":             { "type": "string", "format": "date-time" }
+        }
+      },
+      "Notification": {
+        "type": "object",
+        "properties": {
+          "id":         { "$ref": "#/components/schemas/UUID" },
+          "event_id":   { "$ref": "#/components/schemas/UUID" },
+          "type":       { "type": "string", "enum": ["registration_confirmed", "payment_success", "event_reminder", "event_cancelled", "refund_processed", "announcement"] },
+          "title":      { "type": "string" },
+          "message":    { "type": "string" },
+          "is_read":    { "type": "boolean" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Announcement": {
+        "type": "object",
+        "properties": {
+          "id":        { "$ref": "#/components/schemas/UUID" },
+          "event_id":  { "$ref": "#/components/schemas/UUID" },
+          "author_id": { "$ref": "#/components/schemas/UUID" },
+          "author":    { "$ref": "#/components/schemas/User" },
+          "title":     { "type": "string" },
+          "body":      { "type": "string" },
+          "sent_at":   { "type": "string", "format": "date-time" }
+        }
+      },
+      "CreateAnnouncementRequest": {
+        "type": "object",
+        "required": ["title", "body"],
+        "properties": {
+          "title": { "type": "string" },
+          "body":  { "type": "string" }
+        }
+      },
+      "Currency": {
+        "type": "object",
+        "properties": {
+          "code":      { "type": "string", "example": "USD" },
+          "name":      { "type": "string", "example": "US Dollar" },
+          "symbol":    { "type": "string", "example": "$" },
+          "is_active": { "type": "boolean" },
+          "is_base":   { "type": "boolean" }
+        }
+      },
+      "ExchangeRate": {
+        "type": "object",
+        "properties": {
+          "id":            { "$ref": "#/components/schemas/UUID" },
+          "from_currency": { "type": "string", "example": "USD" },
+          "to_currency":   { "type": "string", "example": "INR" },
+          "rate":          { "type": "number", "example": 83.5 },
+          "source":        { "type": "string", "example": "manual" },
+          "valid_from":    { "type": "string", "format": "date-time" }
+        }
+      },
+      "RevenueReport": {
+        "type": "object",
+        "properties": {
+          "total_revenue_inr":    { "type": "number", "example": 750.30 },
+          "total_registrations":  { "type": "integer", "example": 318 },
+          "paid_registrations":   { "type": "integer", "example": 3 },
+          "free_registrations":   { "type": "integer", "example": 315 },
+          "refunds_total_inr":    { "type": "number", "example": 100.00 },
+          "by_event": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "event_id":     { "$ref": "#/components/schemas/UUID" },
+                "event_title":  { "type": "string" },
+                "registrations":{ "type": "integer" },
+                "revenue_inr":  { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid JWT",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Forbidden": {
+        "description": "Insufficient role",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Conflict": {
+        "description": "Conflict — e.g. already registered for this event",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    },
+    "parameters": {
+      "PageParam": {
+        "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 }
+      },
+      "LimitParam": {
+        "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20, "maximum": 100 }
+      }
+    }
+  },
+
+  "paths": {
+
+    "/users/me": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "Get my profile",
+        "responses": {
+          "200": { "description": "Current user profile", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "put": {
+        "tags": ["Users"],
+        "summary": "Update my profile (name, phone)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateProfileRequest" } } } },
+        "responses": {
+          "200": { "description": "Updated profile", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+
+    "/users": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "List all users — admin only",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/LimitParam" },
+          { "name": "role", "in": "query", "schema": { "type": "string", "enum": ["admin", "committee_member", "resident", "security_guard"] } },
+          { "name": "q", "in": "query", "description": "Search by name or email", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated user list",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "meta": { "$ref": "#/components/schemas/PaginationMeta" }, "data": { "type": "array", "items": { "$ref": "#/components/schemas/User" } } } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+
+    "/users/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/UUID" } }],
+      "get": {
+        "tags": ["Users"],
+        "summary": "Get user by ID — admin only",
+        "responses": {
+          "200": { "description": "User", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
+    "/users/{id}/role": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/UUID" } }],
+      "put": {
+        "tags": ["Users"],
+        "summary": "Update user role — admin only",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateRoleRequest" } } } },
+        "responses": {
+          "200": { "description": "Updated user", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/User" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
+    "/events": {
+      "get": {
+        "tags": ["Events"],
+        "summary": "List events (public within society)",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/LimitParam" },
+          { "name": "status",      "in": "query", "schema": { "type": "string", "enum": ["draft", "published", "cancelled", "completed"] } },
+          { "name": "category_id", "in": "query", "schema": { "$ref": "#/components/schemas/UUID" } },
+          { "name": "is_free",     "in": "query", "schema": { "type": "boolean" } },
+          { "name": "q",           "in": "query", "description": "Full-text search on title (pg_trgm)", "schema": { "type": "string" } },
+          { "name": "from",        "in": "query", "description": "Filter events starting after this date", "schema": { "type": "string", "format": "date-time" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated event list",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "meta": { "$ref": "#/components/schemas/PaginationMeta" }, "data": { "type": "array", "items": { "$ref": "#/components/schemas/Event" } } } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["Events"],
+        "summary": "Create an event — committee_member or admin",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateEventRequest" } } } },
+        "responses": {
+          "201": { "description": "Created event (status = draft)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Event" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+
+    "/events/categories": {
+      "get": {
+        "tags": ["Events"],
+        "summary": "List all event categories",
+        "responses": {
+          "200": { "description": "Categories", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/EventCategory" } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["Events"],
+        "summary": "Create a category — admin only",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateCategoryRequest" } } } },
+        "responses": {
+          "201": { "description": "Created category", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EventCategory" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+
+    "/events/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/UUID" } }],
+      "get": {
+        "tags": ["Events"],
+        "summary": "Get event detail",
+        "responses": {
+          "200": { "description": "Event with category and organizer", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Event" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "tags": ["Events"],
+        "summary": "Update event — organizer or admin",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateEventRequest" } } } },
+        "responses": {
+          "200": { "description": "Updated event", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Event" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Events"],
+        "summary": "Delete event — admin only (only draft events)",
+        "responses": {
+          "204": { "description": "Deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
+    "/events/{id}/status": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/UUID" } }],
+      "patch": {
+        "tags": ["Events"],
+        "summary": "Publish, cancel or complete an event — organizer or admin",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateEventStatusRequest" } } } },
+        "responses": {
+          "200": { "description": "Updated event", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Event" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
+    "/events/{id}/register": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/UUID" } }],
+      "post": {
+        "tags": ["Registrations"],
+        "summary": "Register for an event",
+        "description": "Creates a registration. For free events status is immediately `confirmed`. For paid events status is `pending` until payment is verified.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterRequest" } } } },
+        "responses": {
+          "201": { "description": "Registration created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Registration" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      },
+      "delete": {
+        "tags": ["Registrations"],
+        "summary": "Cancel my registration for this event",
+        "responses": {
+          "204": { "description": "Registration cancelled" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
+    "/events/{id}/registrations": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/UUID" } }],
+      "get": {
+        "tags": ["Registrations"],
+        "summary": "List all registrations for an event — organizer or admin",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/LimitParam" },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["pending", "confirmed", "cancelled", "attended"] } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Registrations with user details",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "meta": { "$ref": "#/components/schemas/PaginationMeta" }, "data": { "type": "array", "items": { "$ref": "#/components/schemas/Registration" } } } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+
+    "/events/{id}/announcements": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/UUID" } }],
+      "get": {
+        "tags": ["Notifications"],
+        "summary": "Get announcements for an event",
+        "responses": {
+          "200": { "description": "Announcements list", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Announcement" } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "tags": ["Notifications"],
+        "summary": "Send an announcement to all registrants — organizer or admin",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateAnnouncementRequest" } } } },
+        "responses": {
+          "201": { "description": "Announcement created and emails queued", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Announcement" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+
+    "/registrations/my": {
+      "get": {
+        "tags": ["Registrations"],
+        "summary": "Get my registrations (all events)",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/LimitParam" },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["pending", "confirmed", "cancelled", "attended"] } }
+        ],
+        "responses": {
+          "200": {
+            "description": "My registrations with event details",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "meta": { "$ref": "#/components/schemas/PaginationMeta" }, "data": { "type": "array", "items": { "$ref": "#/components/schemas/Registration" } } } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+
+    "/registrations/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/UUID" } }],
+      "get": {
+        "tags": ["Registrations"],
+        "summary": "Get a registration by ID",
+        "responses": {
+          "200": { "description": "Registration detail", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Registration" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
+    "/registrations/{id}/qr": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/UUID" } }],
+      "get": {
+        "tags": ["Registrations"],
+        "summary": "Get QR code for a confirmed registration",
+        "responses": {
+          "200": {
+            "description": "QR code as PNG image or base64 JSON",
+            "content": {
+              "image/png": { "schema": { "type": "string", "format": "binary" } },
+              "application/json": { "schema": { "type": "object", "properties": { "qr_code": { "type": "string" }, "token": { "type": "string" } } } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
+    "/registrations/{id}/attend": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/UUID" } }],
+      "post": {
+        "tags": ["Registrations"],
+        "summary": "Mark registration as attended — security_guard or admin",
+        "description": "Called when security guard scans the QR code at the gate.",
+        "responses": {
+          "200": { "description": "Registration marked attended", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Registration" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
+    "/payments/order": {
+      "post": {
+        "tags": ["Payments"],
+        "summary": "Create a Razorpay payment order",
+        "description": "Returns `order_id` and `key_id` to initialise Razorpay checkout on the frontend.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreatePaymentOrderRequest" } } } },
+        "responses": {
+          "201": { "description": "Razorpay order details", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaymentOrder" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
+    "/payments/verify": {
+      "post": {
+        "tags": ["Payments"],
+        "summary": "Verify Razorpay payment signature after checkout",
+        "description": "Verifies HMAC signature, updates payment status to `success`, confirms registration, and triggers notification.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VerifyPaymentRequest" } } } },
+        "responses": {
+          "200": { "description": "Payment verified and registration confirmed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Payment" } } } },
+          "400": { "description": "Invalid signature", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+
+    "/payments/webhook": {
+      "post": {
+        "tags": ["Payments"],
+        "summary": "Razorpay webhook receiver (no auth — verified by Razorpay signature header)",
+        "security": [],
+        "parameters": [
+          { "name": "X-Razorpay-Signature", "in": "header", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": {
+          "200": { "description": "Webhook processed" },
+          "400": { "description": "Invalid signature" }
+        }
+      }
+    },
+
+    "/payments/my": {
+      "get": {
+        "tags": ["Payments"],
+        "summary": "Get my payment history",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/LimitParam" }
+        ],
+        "responses": {
+          "200": {
+            "description": "My payments",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "meta": { "$ref": "#/components/schemas/PaginationMeta" }, "data": { "type": "array", "items": { "$ref": "#/components/schemas/Payment" } } } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+
+    "/payments/{id}": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/UUID" } }],
+      "get": {
+        "tags": ["Payments"],
+        "summary": "Get payment by ID",
+        "responses": {
+          "200": { "description": "Payment detail", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Payment" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
+    "/payments/{id}/refund": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/UUID" } }],
+      "post": {
+        "tags": ["Payments"],
+        "summary": "Request a refund — admin only",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RefundRequest" } } } },
+        "responses": {
+          "201": { "description": "Refund initiated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Refund" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
+    "/notifications": {
+      "get": {
+        "tags": ["Notifications"],
+        "summary": "Get my notifications",
+        "parameters": [
+          { "$ref": "#/components/parameters/PageParam" },
+          { "$ref": "#/components/parameters/LimitParam" },
+          { "name": "unread", "in": "query", "description": "Filter to unread only", "schema": { "type": "boolean" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notifications",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "unread_count": { "type": "integer" }, "meta": { "$ref": "#/components/schemas/PaginationMeta" }, "data": { "type": "array", "items": { "$ref": "#/components/schemas/Notification" } } } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+
+    "/notifications/{id}/read": {
+      "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "$ref": "#/components/schemas/UUID" } }],
+      "put": {
+        "tags": ["Notifications"],
+        "summary": "Mark a notification as read",
+        "responses": {
+          "200": { "description": "Notification marked read", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Notification" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+
+    "/notifications/read-all": {
+      "put": {
+        "tags": ["Notifications"],
+        "summary": "Mark all my notifications as read",
+        "responses": {
+          "200": { "description": "All notifications marked read", "content": { "application/json": { "schema": { "type": "object", "properties": { "updated": { "type": "integer" } } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+
+    "/currencies": {
+      "get": {
+        "tags": ["Currencies"],
+        "summary": "List supported currencies",
+        "responses": {
+          "200": { "description": "Currency list", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Currency" } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+
+    "/currencies/rates": {
+      "get": {
+        "tags": ["Currencies"],
+        "summary": "Get active exchange rates (to INR)",
+        "parameters": [
+          { "name": "from", "in": "query", "description": "Filter by source currency e.g. USD", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Exchange rates", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ExchangeRate" } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+
+    "/admin/reports/revenue": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Revenue report — admin only",
+        "parameters": [
+          { "name": "from", "in": "query", "schema": { "type": "string", "format": "date" } },
+          { "name": "to",   "in": "query", "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": {
+          "200": { "description": "Revenue summary", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RevenueReport" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+
+    "/admin/reports/events": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "Event statistics report — admin only",
+        "responses": {
+          "200": {
+            "description": "Event stats",
+            "content": { "application/json": { "schema": { "type": "object", "properties": {
+              "total_events":      { "type": "integer" },
+              "published_events":  { "type": "integer" },
+              "cancelled_events":  { "type": "integer" },
+              "total_capacity":    { "type": "integer" },
+              "total_registered":  { "type": "integer" },
+              "occupancy_pct":     { "type": "number", "example": 63.4 }
+            } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    }
+
+  }
+}

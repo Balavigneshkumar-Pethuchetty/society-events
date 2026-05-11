@@ -1,0 +1,3 @@
+/* MUI CssBaseline handles the box-sizing reset, font, and body styles.
+   Only keep things MUI doesn't cover. */
+html { font-size: 15px; }

@@ -1,0 +1,139 @@
+{
+  "id": "society-events",
+  "realm": "society-events",
+  "displayName": "Society Events Portal",
+  "enabled": true,
+  "loginWithEmailAllowed": true,
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "sslRequired": "external",
+  "defaultSignatureAlgorithm": "RS256",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "refreshTokenMaxReuse": 0,
+  "revokeRefreshToken": true,
+  "bruteForceProtected": true,
+
+  "roles": {
+    "realm": [
+      { "name": "admin",            "description": "Society administrator — full access" },
+      { "name": "committee_member", "description": "Can create and manage events" },
+      { "name": "resident",         "description": "Can register for events and make payments" },
+      { "name": "security_guard",   "description": "Can scan QR codes at entry" }
+    ]
+  },
+
+  "clients": [
+    {
+      "clientId": "society-frontend",
+      "name": "Society Events — Web App",
+      "description": "Public PKCE client for the React/Vue micro-frontend",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:4200/*",
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "http://localhost:4200",
+        "http://localhost:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": ["openid", "profile", "email", "roles"]
+    },
+    {
+      "clientId": "society-api",
+      "name": "Society Events — API Gateway",
+      "description": "Confidential client for backend microservices to validate tokens",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocol": "openid-connect",
+      "secret": "society-api-secret-change-in-prod",
+      "defaultClientScopes": ["openid", "profile", "email", "roles"]
+    }
+  ],
+
+  "users": [
+    {
+      "id": "a1000000-0000-0000-0000-000000000001",
+      "username": "rajesh.iyer",
+      "email": "rajesh.iyer@pvh-blr.in",
+      "firstName": "Rajesh",
+      "lastName": "Iyer",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Test@1234", "temporary": false }],
+      "realmRoles": ["admin", "committee_member", "resident"]
+    },
+    {
+      "id": "a1000000-0000-0000-0000-000000000002",
+      "username": "meera.krishnan",
+      "email": "meera.krishnan@gmail.com",
+      "firstName": "Meera",
+      "lastName": "Krishnan",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Test@1234", "temporary": false }],
+      "realmRoles": ["committee_member", "resident"]
+    },
+    {
+      "id": "a1000000-0000-0000-0000-000000000003",
+      "username": "arjun.sharma",
+      "email": "arjun.sharma@gmail.com",
+      "firstName": "Arjun",
+      "lastName": "Sharma",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Test@1234", "temporary": false }],
+      "realmRoles": ["resident"]
+    },
+    {
+      "id": "a1000000-0000-0000-0000-000000000004",
+      "username": "priya.nair",
+      "email": "priya.nair@gmail.com",
+      "firstName": "Priya",
+      "lastName": "Nair",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Test@1234", "temporary": false }],
+      "realmRoles": ["resident"]
+    },
+    {
+      "id": "a1000000-0000-0000-0000-000000000005",
+      "username": "sanjay.mehta",
+      "email": "sanjay.mehta@outlook.com",
+      "firstName": "Sanjay",
+      "lastName": "Mehta",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Test@1234", "temporary": false }],
+      "realmRoles": ["resident"]
+    },
+    {
+      "id": "a1000000-0000-0000-0000-000000000006",
+      "username": "vikram.patel",
+      "email": "vikram.patel@gmail.com",
+      "firstName": "Vikram",
+      "lastName": "Patel",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [{ "type": "password", "value": "Test@1234", "temporary": false }],
+      "realmRoles": ["resident"]
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+import React, { useState } from 'react';
+import {
+  Avatar, Box, Chip, Divider, IconButton,
+  ListItemIcon, Menu, MenuItem, Tooltip, Typography,
+} from '@mui/material';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import LogoutIcon from '@mui/icons-material/Logout';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import { useAuth } from '../contexts/AuthContext';
+import { ROLE_COLORS, ROLE_LABELS } from '../theme';
+
+export function UserMenu() {
+  const { user, logout } = useAuth();
+  const [anchor, setAnchor] = useState<null | HTMLElement>(null);
+
+  if (!user) return null;
+
+  const open      = Boolean(anchor);
+  const firstName = user.name.split(' ')[0];
+
+  return (
+    <>
+      <Tooltip title="Account">
+        <Box
+          component="button"
+          onClick={(e) => setAnchor(e.currentTarget)}
+          aria-haspopup="true"
+          aria-expanded={open}
+          sx={{
+            display: 'flex', alignItems: 'center', gap: 0.75,
+            px: 1, py: 0.5, border: 'none', borderRadius: 5,
+            bgcolor: 'transparent', cursor: 'pointer',
+            color: 'rgba(203,213,225,0.9)', transition: 'background 0.15s',
+            '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' },
+          }}
+        >
+          <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontSize: 12, fontWeight: 700 }}>
+            {user.initials}
+          </Avatar>
+          <Box component="span" sx={{ display: { xs: 'none', sm: 'block' }, fontSize: 13, fontWeight: 500, color: '#fff' }}>
+            {firstName}
+          </Box>
+          <KeyboardArrowDownIcon sx={{ fontSize: 16, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }} />
+        </Box>
+      </Tooltip>
+
+      <Menu
+        anchorEl={anchor}
+        open={open}
+        onClose={() => setAnchor(null)}
+        onClick={() => setAnchor(null)}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+        PaperProps={{ elevation: 4, sx: { width: 260, borderRadius: 1.5, mt: 1 } }}
+      >
+        {/* Identity block */}
+        <Box sx={{ px: 2, py: 1.5, bgcolor: 'grey.50', display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+          <Avatar sx={{ width: 42, height: 42, bgcolor: 'primary.main', fontSize: 15, fontWeight: 700 }}>
+            {user.initials}
+          </Avatar>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography fontWeight={600} fontSize={14} noWrap>{user.name}</Typography>
+            <Typography fontSize={12} color="text.secondary" noWrap>{user.email}</Typography>
+            <Chip
+              label={ROLE_LABELS[user.primaryRole] ?? user.primaryRole}
+              size="small"
+              sx={{
+                mt: 0.75, height: 20, fontSize: 11, fontWeight: 600,
+                bgcolor: ROLE_COLORS[user.primaryRole] ?? 'grey.400',
+                color: '#fff',
+                '& .MuiChip-label': { px: 1 },
+              }}
+            />
+          </Box>
+        </Box>
+
+        <Divider />
+
+        <MenuItem dense sx={{ gap: 1.25, py: 1.25 }}>
+          <ListItemIcon sx={{ minWidth: 0 }}><AccountCircleIcon fontSize="small" /></ListItemIcon>
+          My Profile
+        </MenuItem>
+
+        <MenuItem dense sx={{ gap: 1.25, py: 1.25 }}>
+          <ListItemIcon sx={{ minWidth: 0 }}><ConfirmationNumberIcon fontSize="small" /></ListItemIcon>
+          My Tickets
+        </MenuItem>
+
+        {(user.primaryRole === 'admin' || user.primaryRole === 'committee_member') && (
+          <MenuItem dense sx={{ gap: 1.25, py: 1.25 }}>
+            <ListItemIcon sx={{ minWidth: 0 }}><DashboardIcon fontSize="small" /></ListItemIcon>
+            Admin Dashboard
+          </MenuItem>
+        )}
+
+        <Divider />
+
+        <MenuItem dense onClick={logout} sx={{ gap: 1.25, py: 1.25, color: 'error.main' }}>
+          <ListItemIcon sx={{ minWidth: 0, color: 'error.main' }}><LogoutIcon fontSize="small" /></ListItemIcon>
+          Sign Out
+        </MenuItem>
+      </Menu>
+    </>
+  );
+}

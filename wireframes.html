@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Society Events — Wireframes</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 13px; background: #e8e8e8; padding: 24px; color: #222; }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .subtitle { color: #666; margin-bottom: 32px; font-size: 13px; }
+    .toc { background: #fff; border: 2px solid #333; padding: 16px; margin-bottom: 32px; max-width: 420px; }
+    .toc a { display: block; padding: 4px 0; color: #1d4ed8; text-decoration: none; font-size: 13px; }
+    .toc a:hover { text-decoration: underline; }
+
+    /* Screen wrapper */
+    .screen { background: #fff; border: 3px solid #222; max-width: 960px; margin: 0 auto 48px; box-shadow: 4px 4px 0 #999; }
+    .screen-label { background: #222; color: #fff; font-size: 13px; font-weight: bold; padding: 8px 14px; letter-spacing: 0.5px; }
+
+    /* Wireframe primitives */
+    .ph  { background: #ddd; border: 1px dashed #aaa; display: flex; align-items: center; justify-content: center; color: #888; font-size: 11px; }
+    .box { border: 2px solid #444; padding: 12px; }
+    .card { border: 1px solid #bbb; padding: 12px; }
+    .btn  { display: inline-block; border: 2px solid #222; padding: 6px 14px; background: #222; color: #fff; font-size: 12px; cursor: pointer; white-space: nowrap; }
+    .btn-sm { font-size: 11px; padding: 4px 10px; }
+    .btn-out { display: inline-block; border: 2px solid #222; padding: 6px 14px; background: #fff; color: #222; font-size: 12px; cursor: pointer; white-space: nowrap; }
+    .chip { display: inline-block; border: 1px solid #999; padding: 3px 10px; font-size: 11px; border-radius: 2px; cursor: pointer; }
+    .chip.active { background: #222; color: #fff; border-color: #222; }
+    .badge { display: inline-block; border: 1px solid; padding: 1px 7px; font-size: 10px; }
+    .badge-green { border-color: #16a34a; color: #16a34a; }
+    .badge-blue  { border-color: #2563eb; color: #2563eb; }
+    .badge-amber { border-color: #d97706; color: #d97706; }
+    .badge-red   { border-color: #dc2626; color: #dc2626; }
+    .badge-gray  { border-color: #6b7280; color: #6b7280; }
+    .tag { display: inline-block; background: #f3f3f3; border: 1px solid #ccc; padding: 2px 8px; font-size: 11px; }
+    .divider { border: none; border-top: 1px solid #ddd; margin: 10px 0; }
+    .lbl { font-size: 10px; color: #888; font-weight: bold; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
+    input, select { border: 1px solid #aaa; padding: 6px 10px; font-size: 13px; width: 100%; outline: none; }
+    textarea { border: 1px solid #aaa; padding: 6px 10px; font-size: 13px; width: 100%; outline: none; resize: vertical; }
+
+    /* Layout helpers */
+    .p { padding: 16px; }
+    .flex  { display: flex; }
+    .fcol  { display: flex; flex-direction: column; }
+    .gap4  { gap: 4px; }
+    .gap8  { gap: 8px; }
+    .gap12 { gap: 12px; }
+    .gap16 { gap: 16px; }
+    .gap24 { gap: 24px; }
+    .fw  { font-weight: bold; }
+    .sm  { font-size: 11px; }
+    .med { font-size: 12px; }
+    .mute{ color: #666; }
+    .red { color: #dc2626; }
+    .green { color: #16a34a; }
+    .mt4 { margin-top: 4px; }
+    .mt8 { margin-top: 8px; }
+    .mt12{ margin-top: 12px; }
+    .mt16{ margin-top: 16px; }
+    .mb8 { margin-bottom: 8px; }
+    .mb12{ margin-bottom: 12px; }
+    .mb16{ margin-bottom: 16px; }
+    .grow{ flex: 1; }
+    .center { text-align: center; }
+    .right  { text-align: right; }
+    .grid3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+    .grid2 { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; }
+    .grid4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
+
+    /* Nav */
+    nav { border-bottom: 2px solid #333; padding: 10px 16px; display: flex; align-items: center; gap: 16px; background: #fff; }
+    .nav-logo { font-weight: bold; font-size: 15px; }
+    .nav-link { font-size: 13px; color: #444; }
+    .nav-link.active { font-weight: bold; border-bottom: 2px solid #222; }
+    .bell-wrap { position: relative; font-size: 18px; }
+    .bell-badge { position: absolute; top: -5px; right: -8px; background: #dc2626; color: #fff; font-size: 9px; width: 15px; height: 15px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+    .avatar { width: 30px; height: 30px; background: #333; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; }
+
+    /* Sidebar */
+    .sidebar { width: 180px; border-right: 2px solid #ddd; flex-shrink: 0; padding: 0; }
+    .sidebar-item { padding: 10px 16px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #eee; }
+    .sidebar-item.active { background: #f0f0f0; font-weight: bold; }
+
+    /* Stat card */
+    .stat { border: 2px solid #ddd; padding: 14px; text-align: center; }
+    .stat-num { font-size: 26px; font-weight: bold; margin: 4px 0; }
+    .stat-lbl { font-size: 11px; color: #888; text-transform: uppercase; }
+
+    /* Table */
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; padding: 7px 8px; border-bottom: 2px solid #333; font-size: 11px; text-transform: uppercase; color: #555; }
+    td { padding: 7px 8px; border-bottom: 1px solid #eee; vertical-align: middle; }
+
+    /* Step indicator */
+    .steps { display: flex; align-items: center; gap: 0; margin-bottom: 20px; }
+    .step { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+    .step-num { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #333; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; }
+    .step.done .step-num { background: #333; color: #fff; }
+    .step-line { flex: 1; border-top: 1px dashed #aaa; margin: 0 8px; min-width: 32px; }
+  </style>
+</head>
+<body>
+
+<h1>Society Events — UI Wireframes</h1>
+<p class="subtitle">5 key screens · Prestige Verdant Heights, Bengaluru</p>
+
+<div class="toc">
+  <div class="fw mb8">Screens</div>
+  <a href="#s1">1. Event Listing (Home)</a>
+  <a href="#s2">2. Event Detail</a>
+  <a href="#s3">3. Checkout / Payment</a>
+  <a href="#s4">4. My Tickets</a>
+  <a href="#s5">5. Admin Dashboard</a>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 1: Event Listing                                        -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s1">
+  <div class="screen-label">Screen 1 — Event Listing (Home) · Resident view</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Events</span>
+    <span class="grow"></span>
+    <span class="nav-link active">Events</span>
+    <span class="nav-link">My Tickets</span>
+    <div class="bell-wrap">🔔<div class="bell-badge">3</div></div>
+    <div class="avatar">AS</div>
+  </nav>
+
+  <div class="p">
+    <!-- Search bar -->
+    <div class="flex gap8 mb16">
+      <input placeholder="Search events — e.g. yoga, sports, diwali…" style="flex:1" />
+      <button class="btn">Search</button>
+    </div>
+
+    <!-- Category filter chips -->
+    <div class="flex gap8 mb16" style="flex-wrap:wrap">
+      <span class="chip active">All</span>
+      <span class="chip">🎆 Festival</span>
+      <span class="chip">🏆 Sports</span>
+      <span class="chip">💜 Wellness</span>
+      <span class="chip">🏛 Governance</span>
+      <span class="chip">⭐ Kids</span>
+    </div>
+
+    <!-- Sort + count -->
+    <div class="flex gap8 mb12" style="align-items:center">
+      <span class="sm mute grow">5 events found</span>
+      <span class="sm mute">Sort by:</span>
+      <select style="width:auto;font-size:12px;padding:4px 8px">
+        <option>Date ↑</option>
+        <option>Price</option>
+        <option>Popularity</option>
+      </select>
+    </div>
+
+    <!-- Event Cards -->
+    <div class="grid3">
+
+      <!-- Card 1: Free -->
+      <div class="card fcol gap8">
+        <div class="ph" style="height:90px">[ Event Banner ]</div>
+        <div>
+          <div class="sm mute">🎆 Festival · 25 Oct 2025</div>
+          <div class="fw mt4">Diwali Mela 2025</div>
+          <div class="sm mute mt4">📍 Society Clubhouse & Garden</div>
+          <div class="sm mute">⏱ 6:00 PM – 11:00 PM · 5 hrs</div>
+        </div>
+        <hr class="divider" />
+        <div class="flex gap8" style="align-items:center;justify-content:space-between">
+          <span class="badge badge-green">FREE</span>
+          <span class="sm mute">312 / 500 seats</span>
+          <button class="btn btn-sm">Register →</button>
+        </div>
+      </div>
+
+      <!-- Card 2: Paid -->
+      <div class="card fcol gap8">
+        <div class="ph" style="height:90px">[ Event Banner ]</div>
+        <div>
+          <div class="sm mute">🏆 Sports · 31 Jan 2026</div>
+          <div class="fw mt4">Annual Sports Day 2026</div>
+          <div class="sm mute mt4">📍 Society Sports Ground</div>
+          <div class="sm mute">⏱ 7:00 AM – 3:00 PM · 8 hrs</div>
+        </div>
+        <hr class="divider" />
+        <div class="flex gap8" style="align-items:center;justify-content:space-between">
+          <span class="fw">₹150 / ticket</span>
+          <span class="sm mute">42 / 200</span>
+          <button class="btn btn-sm">Register →</button>
+        </div>
+      </div>
+
+      <!-- Card 3: Kids -->
+      <div class="card fcol gap8">
+        <div class="ph" style="height:90px">[ Event Banner ]</div>
+        <div>
+          <div class="sm mute">⭐ Kids · 23 Nov 2025</div>
+          <div class="fw mt4">Children's Day Carnival</div>
+          <div class="sm mute mt4">📍 Society Amphitheatre</div>
+          <div class="sm mute">⏱ 10:00 AM – 2:00 PM · 4 hrs</div>
+        </div>
+        <hr class="divider" />
+        <div class="flex gap8" style="align-items:center;justify-content:space-between">
+          <span class="fw">₹100 / ticket</span>
+          <span class="sm mute">28 / 100</span>
+          <button class="btn btn-sm">Register →</button>
+        </div>
+      </div>
+
+      <!-- Card 4: Free / Already registered -->
+      <div class="card fcol gap8" style="opacity:0.85">
+        <div class="ph" style="height:90px">[ Event Banner ]</div>
+        <div>
+          <div class="sm mute">💜 Wellness · 16 May 2025</div>
+          <div class="fw mt4">Sunday Morning Yoga</div>
+          <div class="sm mute mt4">📍 Rooftop Terrace — Block A</div>
+          <div class="sm mute">⏱ 6:30 AM – 7:30 AM</div>
+        </div>
+        <hr class="divider" />
+        <div class="flex gap8" style="align-items:center;justify-content:space-between">
+          <span class="badge badge-green">FREE</span>
+          <span class="badge badge-blue">Registered ✓</span>
+          <button class="btn-out btn-sm">View Ticket</button>
+        </div>
+      </div>
+
+      <!-- Card 5: Governance / Free -->
+      <div class="card fcol gap8">
+        <div class="ph" style="height:90px">[ Event Banner ]</div>
+        <div>
+          <div class="sm mute">🏛 Governance · 31 May 2025</div>
+          <div class="fw mt4">Annual General Meeting 2025</div>
+          <div class="sm mute mt4">📍 Conference Room, Clubhouse</div>
+          <div class="sm mute">⏱ 7:00 PM – 10:00 PM</div>
+        </div>
+        <hr class="divider" />
+        <div class="flex gap8" style="align-items:center;justify-content:space-between">
+          <span class="badge badge-green">FREE</span>
+          <span class="sm mute">1 / 150</span>
+          <button class="btn btn-sm">Register →</button>
+        </div>
+      </div>
+
+    </div><!-- /grid3 -->
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 2: Event Detail                                        -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s2">
+  <div class="screen-label">Screen 2 — Event Detail · Annual Sports Day 2026 (paid)</div>
+
+  <nav>
+    <span class="nav-link">← Back to Events</span>
+    <span class="grow"></span>
+    <div class="bell-wrap">🔔<div class="bell-badge">3</div></div>
+    <div class="avatar">AS</div>
+  </nav>
+
+  <div class="ph" style="height:160px;font-size:14px">[ Hero Banner / Event Photo ]</div>
+
+  <div class="p flex gap24" style="align-items:flex-start">
+
+    <!-- Left: event info -->
+    <div class="grow">
+      <div class="flex gap8 mb8">
+        <span class="tag">🏆 Sports</span>
+        <span class="badge badge-green">PUBLISHED</span>
+        <span class="badge badge-amber">PAID</span>
+      </div>
+      <div style="font-size:20px;font-weight:bold;margin-bottom:8px">Annual Sports Day 2026</div>
+      <div class="sm mute mb8">Organised by Meera Krishnan &nbsp;|&nbsp; Prestige Verdant Heights</div>
+
+      <div class="card mb12">
+        <div class="flex gap16">
+          <div>
+            <div class="lbl">Date & Time</div>
+            <div class="med fw">Sat, 31 Jan 2026</div>
+            <div class="med">7:00 AM – 3:00 PM</div>
+          </div>
+          <div>
+            <div class="lbl">Venue</div>
+            <div class="med fw">Society Sports Ground</div>
+          </div>
+          <div>
+            <div class="lbl">Capacity</div>
+            <div class="med">42 / 200 registered</div>
+            <div style="background:#e5e7eb;height:6px;margin-top:4px;width:120px">
+              <div style="background:#333;height:6px;width:25%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="fw mb8">About this event</div>
+      <div class="med mute mb16" style="line-height:1.7">
+        Cricket, badminton, throwball, tug-of-war and 100m sprint. Medals and trophies for top three in each category.
+        Registration fee covers sports kit and refreshments for the day. All residents are welcome.
+      </div>
+
+      <hr class="divider" />
+      <div class="fw mb8">Announcements <span class="badge badge-blue" style="font-size:10px;vertical-align:middle">1</span></div>
+      <div class="card fcol gap4">
+        <div class="fw med">Sports Day — Schedule Released</div>
+        <div class="sm mute">The final event schedule is now available. Cricket registration closes in 48 hours. Please confirm your team composition…</div>
+        <div class="sm mute">— Meera Krishnan · 1 day ago</div>
+      </div>
+    </div>
+
+    <!-- Right: Registration widget -->
+    <div class="box fcol gap12" style="width:260px;flex-shrink:0">
+      <div class="fw" style="font-size:15px">Book Tickets</div>
+      <div>
+        <div class="lbl">Ticket price</div>
+        <div style="font-size:22px;font-weight:bold">₹150<span class="sm mute fw" style="font-weight:normal"> / person</span></div>
+      </div>
+      <div>
+        <div class="lbl mb4">Number of tickets</div>
+        <div class="flex gap8" style="align-items:center">
+          <button class="btn-out" style="padding:4px 12px;font-size:16px">−</button>
+          <span style="font-size:18px;font-weight:bold;min-width:24px;text-align:center">2</span>
+          <button class="btn-out" style="padding:4px 12px;font-size:16px">+</button>
+        </div>
+        <div class="sm mute mt4">Max 6 tickets per apartment</div>
+      </div>
+      <hr class="divider" />
+      <div class="flex" style="justify-content:space-between">
+        <span class="med mute">Subtotal</span>
+        <span class="fw">₹300.00</span>
+      </div>
+      <button class="btn" style="width:100%;padding:10px;font-size:14px">Register & Pay →</button>
+      <div class="sm mute center">Free cancellation up to 48 hrs before event</div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 3: Checkout / Payment                                   -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s3">
+  <div class="screen-label">Screen 3 — Checkout / Payment · Sports Day 2026</div>
+
+  <nav>
+    <span class="nav-link">← Back to Event</span>
+    <span class="grow center fw" style="font-size:15px">Checkout</span>
+  </nav>
+
+  <div class="p">
+    <!-- Step indicator -->
+    <div class="steps mb16">
+      <div class="step done"><div class="step-num">1</div><span class="sm">Register</span></div>
+      <div class="step-line"></div>
+      <div class="step done"><div class="step-num">2</div><span class="sm fw">Payment</span></div>
+      <div class="step-line"></div>
+      <div class="step"><div class="step-num">3</div><span class="sm mute">Confirmation</span></div>
+    </div>
+
+    <div class="flex gap24" style="align-items:flex-start;max-width:780px;margin:0 auto">
+
+      <!-- Left: Order summary + currency + contact -->
+      <div class="grow fcol gap16">
+
+        <div class="box">
+          <div class="fw mb12">Order Summary</div>
+          <div class="med mute mb4">Annual Sports Day 2026</div>
+          <div class="sm mute mb12">📅 Sat, 31 Jan 2026 &nbsp; 7:00 AM &nbsp; · &nbsp; 📍 Society Sports Ground</div>
+          <hr class="divider" />
+          <div class="flex mb4" style="justify-content:space-between"><span class="med">2 × ₹150 (ticket)</span><span>₹300.00</span></div>
+          <div class="flex mb4" style="justify-content:space-between"><span class="med mute">GST</span><span class="mute">₹0.00</span></div>
+          <hr class="divider" />
+          <div class="flex" style="justify-content:space-between;font-weight:bold;font-size:15px"><span>Total</span><span>₹300.00</span></div>
+        </div>
+
+        <div class="box">
+          <div class="fw mb8">Pay in Currency <span class="tag" style="font-size:10px">NRI option</span></div>
+          <select>
+            <option>INR — Indian Rupee  (₹300.00)</option>
+            <option>USD — US Dollar  ($3.59)</option>
+            <option>GBP — British Pound  (£2.82)</option>
+            <option>SGD — Singapore Dollar  (S$4.80)</option>
+            <option>AED — UAE Dirham  (AED 13.19)</option>
+          </select>
+          <div class="sm mute mt4">Exchange rate locked at checkout. Rate: 1 USD = ₹83.50</div>
+        </div>
+
+        <div class="box">
+          <div class="fw mb10">Contact Details</div>
+          <div class="lbl mb4">Full Name</div>
+          <input value="Arjun Sharma" class="mb8" />
+          <div class="lbl mb4">Email</div>
+          <input value="arjun.sharma@gmail.com" />
+        </div>
+      </div>
+
+      <!-- Right: Pay button panel -->
+      <div class="box fcol gap12" style="width:240px;flex-shrink:0">
+        <div class="fw" style="font-size:15px">Payment</div>
+        <div class="card center fcol gap4">
+          <div class="sm mute">You will pay</div>
+          <div style="font-size:22px;font-weight:bold">₹300.00</div>
+          <div class="sm mute">via Razorpay</div>
+        </div>
+        <button class="btn" style="width:100%;padding:12px;font-size:14px">Pay ₹300.00</button>
+        <div class="sm mute center">🔒 Secured by Razorpay<br/>256-bit SSL encryption</div>
+        <hr class="divider" />
+        <div class="sm mute center">Accepted: UPI, Cards,<br/>NetBanking, Wallets</div>
+        <div class="flex gap8 center" style="justify-content:center">
+          <div class="ph" style="width:36px;height:20px;font-size:9px">UPI</div>
+          <div class="ph" style="width:36px;height:20px;font-size:9px">VISA</div>
+          <div class="ph" style="width:36px;height:20px;font-size:9px">MC</div>
+          <div class="ph" style="width:36px;height:20px;font-size:9px">SBI</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 4: My Tickets                                           -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s4">
+  <div class="screen-label">Screen 4 — My Tickets · Arjun Sharma (resident)</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Events</span>
+    <span class="grow"></span>
+    <span class="nav-link">Events</span>
+    <span class="nav-link active">My Tickets</span>
+    <div class="bell-wrap">🔔<div class="bell-badge">1</div></div>
+    <div class="avatar">AS</div>
+  </nav>
+
+  <div class="p">
+    <div class="flex gap8 mb16" style="align-items:center">
+      <div class="fw" style="font-size:16px;flex:1">My Registrations</div>
+      <div class="flex gap4">
+        <span class="chip active">All</span>
+        <span class="chip">Upcoming</span>
+        <span class="chip">Past</span>
+      </div>
+    </div>
+
+    <div class="fcol gap12">
+
+      <!-- Ticket 1: Confirmed + Paid -->
+      <div class="card flex gap16" style="align-items:flex-start">
+        <div class="ph" style="width:72px;height:72px;flex-shrink:0;font-size:10px">[ QR Code ]</div>
+        <div class="grow">
+          <div class="flex gap8 mb4" style="align-items:center">
+            <span class="fw">Annual Sports Day 2026</span>
+            <span class="badge badge-green">CONFIRMED</span>
+          </div>
+          <div class="sm mute">📅 Sat, 31 Jan 2026 · 7:00 AM</div>
+          <div class="sm mute">📍 Society Sports Ground</div>
+          <div class="sm mt4">2 tickets &nbsp;·&nbsp; <span class="fw">₹300.00 paid</span> &nbsp;·&nbsp; <span class="mute">Razorpay UPI</span></div>
+        </div>
+        <div class="fcol gap6" style="flex-shrink:0;align-items:flex-end">
+          <button class="btn btn-sm">Show QR</button>
+          <button class="btn-out btn-sm">Download</button>
+          <span class="sm red" style="cursor:pointer">Cancel</span>
+        </div>
+      </div>
+
+      <!-- Ticket 2: Free / Confirmed -->
+      <div class="card flex gap16" style="align-items:flex-start">
+        <div class="ph" style="width:72px;height:72px;flex-shrink:0;font-size:10px">[ QR Code ]</div>
+        <div class="grow">
+          <div class="flex gap8 mb4" style="align-items:center">
+            <span class="fw">Diwali Mela 2025</span>
+            <span class="badge badge-green">CONFIRMED</span>
+          </div>
+          <div class="sm mute">📅 Sat, 25 Oct 2025 · 6:00 PM</div>
+          <div class="sm mute">📍 Society Clubhouse & Garden</div>
+          <div class="sm mt4">3 tickets &nbsp;·&nbsp; <span class="green fw">FREE</span></div>
+        </div>
+        <div class="fcol gap6" style="flex-shrink:0;align-items:flex-end">
+          <button class="btn btn-sm">Show QR</button>
+          <span class="sm red" style="cursor:pointer">Cancel</span>
+        </div>
+      </div>
+
+      <!-- Ticket 3: Attended (past) -->
+      <div class="card flex gap16" style="align-items:flex-start;opacity:0.75">
+        <div class="ph" style="width:72px;height:72px;flex-shrink:0;font-size:10px">✓ Used</div>
+        <div class="grow">
+          <div class="flex gap8 mb4" style="align-items:center">
+            <span class="fw">Sunday Morning Yoga</span>
+            <span class="badge badge-gray">ATTENDED</span>
+          </div>
+          <div class="sm mute">📅 Sun, 11 May 2025 · 6:30 AM</div>
+          <div class="sm mute">📍 Rooftop Terrace — Block A</div>
+          <div class="sm mt4">1 ticket &nbsp;·&nbsp; <span class="fw">FREE</span></div>
+        </div>
+        <div class="fcol gap6" style="flex-shrink:0;align-items:flex-end">
+          <button class="btn-out btn-sm">Receipt</button>
+        </div>
+      </div>
+
+      <!-- Ticket 4: Pending payment -->
+      <div class="card flex gap16" style="align-items:flex-start;border-color:#d97706">
+        <div class="ph" style="width:72px;height:72px;flex-shrink:0;font-size:10px;color:#d97706;border-color:#d97706">Payment<br/>Pending</div>
+        <div class="grow">
+          <div class="flex gap8 mb4" style="align-items:center">
+            <span class="fw">Children's Day Carnival</span>
+            <span class="badge badge-amber">PENDING PAYMENT</span>
+          </div>
+          <div class="sm mute">📅 Sun, 23 Nov 2025 · 10:00 AM</div>
+          <div class="sm mute">📍 Society Amphitheatre</div>
+          <div class="sm mt4">2 tickets &nbsp;·&nbsp; ₹200.00 due</div>
+        </div>
+        <div class="fcol gap6" style="flex-shrink:0;align-items:flex-end">
+          <button class="btn btn-sm">Pay Now</button>
+          <span class="sm red" style="cursor:pointer">Cancel</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 5: Admin Dashboard                                      -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s5">
+  <div class="screen-label">Screen 5 — Admin Dashboard · Rajesh Iyer (admin)</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Admin</span>
+    <span class="grow"></span>
+    <div class="bell-wrap">🔔<div class="bell-badge">2</div></div>
+    <div class="avatar" style="background:#7c3aed">RI</div>
+  </nav>
+
+  <div class="flex" style="align-items:flex-start;min-height:480px">
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-item active">📅 Events</div>
+      <div class="sidebar-item">👥 Users</div>
+      <div class="sidebar-item">💰 Revenue</div>
+      <div class="sidebar-item">📢 Announcements</div>
+      <div class="sidebar-item">🎟 Registrations</div>
+      <div class="sidebar-item">🌐 Currencies</div>
+    </div>
+
+    <!-- Main -->
+    <div class="p grow">
+
+      <!-- Stats row -->
+      <div class="grid4 mb16">
+        <div class="stat">
+          <div class="stat-lbl">Active Events</div>
+          <div class="stat-num">5</div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Total Registrations</div>
+          <div class="stat-num">318</div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Revenue (INR)</div>
+          <div class="stat-num">₹750</div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Refunds Issued</div>
+          <div class="stat-num">₹100</div>
+        </div>
+      </div>
+
+      <!-- Revenue bar (simple) -->
+      <div class="card mb16">
+        <div class="fw mb8">Revenue by Event</div>
+        <div class="fcol gap6">
+          <div>
+            <div class="flex mb2" style="justify-content:space-between"><span class="sm">Annual Sports Day 2026</span><span class="sm fw">₹450.30</span></div>
+            <div style="background:#e5e7eb;height:8px"><div style="background:#333;height:8px;width:60%"></div></div>
+          </div>
+          <div>
+            <div class="flex mb2" style="justify-content:space-between"><span class="sm">Children's Day Carnival</span><span class="sm fw">₹200.00</span></div>
+            <div style="background:#e5e7eb;height:8px"><div style="background:#333;height:8px;width:27%"></div></div>
+          </div>
+          <div>
+            <div class="flex mb2" style="justify-content:space-between"><span class="sm">Diwali Mela 2025 (free)</span><span class="sm fw">₹0.00</span></div>
+            <div style="background:#e5e7eb;height:8px"><div style="background:#aaa;height:8px;width:2%"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Events Table -->
+      <div class="flex mb8" style="align-items:center">
+        <span class="fw grow">All Events</span>
+        <button class="btn btn-sm">+ Create Event</button>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Category</th>
+            <th>Date</th>
+            <th>Price</th>
+            <th>Status</th>
+            <th>Registrations</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="fw">Diwali Mela 2025</td>
+            <td>🎆 Festival</td>
+            <td>25 Oct 2025</td>
+            <td class="green">FREE</td>
+            <td><span class="badge badge-green">Published</span></td>
+            <td>312 / 500</td>
+            <td><span style="color:#2563eb;cursor:pointer">Edit</span> · <span style="color:#dc2626;cursor:pointer">Cancel</span> · <span style="color:#444;cursor:pointer">Announce</span></td>
+          </tr>
+          <tr>
+            <td class="fw">Annual Sports Day 2026</td>
+            <td>🏆 Sports</td>
+            <td>31 Jan 2026</td>
+            <td>₹150</td>
+            <td><span class="badge badge-green">Published</span></td>
+            <td>42 / 200</td>
+            <td><span style="color:#2563eb;cursor:pointer">Edit</span> · <span style="color:#dc2626;cursor:pointer">Cancel</span> · <span style="color:#444;cursor:pointer">Announce</span></td>
+          </tr>
+          <tr>
+            <td class="fw">Sunday Morning Yoga</td>
+            <td>💜 Wellness</td>
+            <td>16 May 2025</td>
+            <td class="green">FREE</td>
+            <td><span class="badge badge-green">Published</span></td>
+            <td>18 / 30</td>
+            <td><span style="color:#2563eb;cursor:pointer">Edit</span> · <span style="color:#dc2626;cursor:pointer">Cancel</span></td>
+          </tr>
+          <tr>
+            <td class="fw">Annual General Meeting</td>
+            <td>🏛 Governance</td>
+            <td>31 May 2025</td>
+            <td class="green">FREE</td>
+            <td><span class="badge badge-amber">Draft</span></td>
+            <td>1 / 150</td>
+            <td><span style="color:#16a34a;cursor:pointer;font-weight:bold">Publish</span> · <span style="color:#2563eb;cursor:pointer">Edit</span></td>
+          </tr>
+          <tr>
+            <td class="fw">Children's Day Carnival</td>
+            <td>⭐ Kids</td>
+            <td>23 Nov 2025</td>
+            <td>₹100</td>
+            <td><span class="badge badge-green">Published</span></td>
+            <td>28 / 100</td>
+            <td><span style="color:#2563eb;cursor:pointer">Edit</span> · <span style="color:#dc2626;cursor:pointer">Cancel</span> · <span style="color:#444;cursor:pointer">Announce</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+    </div><!-- /main -->
+  </div>
+</div>
+
+</body>
+</html>
