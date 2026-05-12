@@ -72,7 +72,10 @@ function parseUser(kc: typeof keycloak): AuthUser | null {
   };
 }
 
-let initCalled = false; // guard against React Strict Mode double-effect
+// Guard against React Strict Mode double-effect.
+// Stored on window so a Vite HMR module re-evaluation resets it properly
+// (window persists across HMR but module scope does not).
+declare global { interface Window { __kcInitCalled?: boolean } }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading]   = useState(true);
@@ -88,20 +91,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (initCalled) return;
-    initCalled = true;
+    if (window.__kcInitCalled) return;
+    window.__kcInitCalled = true;
+
+    console.debug('[AuthContext] keycloak.init() starting — href:', window.location.href);
 
     keycloak
       .init({
-        onLoad: 'check-sso',
-        // Silent iframe avoids a full redirect to Keycloak when no session exists.
-        // Without this, keycloak-js v21+ falls back to a redirect flow that briefly
-        // shows the Keycloak login page on first load and after logout.
-        silentCheckSsoRedirectUri: window.location.origin + '/silent-check-sso.html',
+        // onLoad omitted intentionally: 'check-sso' triggers an iframe to the
+        // Keycloak origin (port 8080) which is blocked by its own X-Frame-Options
+        // header when the app runs on a different origin (port 3000). Without
+        // onLoad, keycloak-js still processes the auth-code callback in the URL
+        // and restores tokens from sessionStorage on subsequent page loads.
         checkLoginIframe: false,
         pkceMethod: 'S256',
       })
       .then((authenticated) => {
+        console.debug('[AuthContext] keycloak.init() resolved — authenticated:', authenticated, '| error:', (keycloak as any).authServerUrl);
         if (authenticated) {
           setUser(parseUser(keycloak));
           setToken(keycloak.token ?? null);
@@ -121,7 +127,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         setIsLoading(false);
       })
-      .catch(() => setIsLoading(false));
+      .catch((err) => {
+        console.error('[AuthContext] keycloak.init() failed:', err);
+        setIsLoading(false);
+      });
 
     return () => {
       if (refreshTimer.current) clearInterval(refreshTimer.current);

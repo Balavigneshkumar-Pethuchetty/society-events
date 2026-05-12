@@ -19,18 +19,23 @@ help: ## Show this help
 up: .env ## Start all services (detached)
 	docker compose up -d --build
 	@echo ""
-	@echo "  $(CYAN)Services starting…$(RESET)"
-	@echo "  pgAdmin   → http://localhost:5050"
-	@echo "  Keycloak  → http://localhost:8080"
-	@echo "  Mailpit   → http://localhost:8025"
+	@echo "  $(CYAN)Services starting… (all routed through nginx on port $${NGINX_PORT:-8080})$(RESET)"
+	@echo "  Frontend  → http://localhost:$${NGINX_PORT:-8080}/          (requires --profile frontend)"
+	@echo "  Keycloak  → http://localhost:$${NGINX_PORT:-8080}/admin/"
+	@echo "  pgAdmin   → http://localhost:$${NGINX_PORT:-8080}/pgadmin/  (nginx basic auth)"
+	@echo "  Mailpit   → http://localhost:$${NGINX_PORT:-8080}/mail/     (nginx basic auth)"
 	@echo ""
+	@echo "  Postgres and Redis are internal only (no host port)."
 	@echo "  Run 'make logs' to follow logs or 'make ps' to check health."
+	@echo ""
+	@echo "  For LAN access run scripts/wsl2_port_forward.ps1 as Administrator."
 
 down: ## Stop and remove containers (data volumes preserved)
 	docker compose down
 
-restart: ## Restart all services
-	docker compose restart
+restart: ## Restart all services (rebuilds frontend to pick up code changes)
+	docker compose --profile frontend up -d --build frontend
+	docker compose restart nginx keycloak postgres redis mailpit pgadmin
 
 ps: ## Show service status and health
 	docker compose ps
@@ -87,9 +92,9 @@ frontend: ## Start the Shell App dev server on http://localhost:3000 (hot-reload
 frontend-install: ## Install frontend dependencies only
 	cd frontend/shell && npm install
 
-frontend-docker: ## Build and run the production frontend container on http://localhost:3000
-	docker compose --profile frontend up -d --build
-	@echo "  Shell App → http://localhost:3000"
+frontend-docker: ## Build and run the production frontend container (served by nginx at /)
+	docker compose --profile frontend up -d --build frontend
+	@echo "  Shell App → http://localhost:$${NGINX_PORT:-8080}/"
 
 ## ── Helpers ─────────────────────────────────────────────────────────────────
 .env:   ## Auto-create .env from .env.example if missing
