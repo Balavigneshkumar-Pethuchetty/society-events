@@ -1,13 +1,14 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { Alert, Box, Button, Typography } from '@mui/material';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { SocietyProvider } from './contexts/SocietyContext';
+import { SocietyProvider, useSociety } from './contexts/SocietyContext';
 import { UserServiceProvider } from './contexts/UserServiceContext';
 import { Nav } from './components/Nav';
 import { Home } from './pages/Home';
 import { Landing } from './pages/Landing';
+import { ForgotPassword } from './pages/ForgotPassword';
 import { PendingApproval } from './pages/PendingApproval';
 import { Profile } from './pages/Profile';
 import { theme } from './theme';
@@ -24,6 +25,11 @@ interface AdminRoutesProps {
 interface ManageRoutesProps {
   page?: string;
   id?: string;
+}
+
+interface EventsAppProps {
+  societyName?: string;
+  city?: string;
 }
 
 interface SponsorAppProps {
@@ -105,7 +111,7 @@ const RemoteSponsorApp = React.lazy(() =>
 
 const RemoteEventsApp = React.lazy(() =>
   import('mfe_events/EventsApp')
-    .then((m) => ({ default: getRemoteComponent<Record<string, never>>(m, 'EventsApp') }))
+    .then((m) => ({ default: getRemoteComponent<EventsAppProps>(m, 'EventsApp') }))
     .catch(() => ({ default: () => <MfeUnavailable name="Events" /> }))
 );
 
@@ -246,14 +252,21 @@ function AdminWrapper() {
 // ── App shell ─────────────────────────────────────────────────────────────────
 function AppShell() {
   const { isLoading, user, isPending } = useAuth();
+  const { name: societyName, city } = useSociety();
+
+  useEffect(() => {
+    document.title = `${societyName} Events`;
+  }, [societyName]);
 
   if (isLoading) return <LoadingScreen />;
 
   if (!user) {
     return (
       <BrowserRouter>
-        <Nav />
-        <Landing />
+        <Routes>
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="*" element={<><Nav /><Landing /></>} />
+        </Routes>
       </BrowserRouter>
     );
   }
@@ -276,7 +289,7 @@ function AppShell() {
 
         <Route path="/events/*" element={
           <React.Suspense fallback={<MfeFallback label="Events" />}>
-            <RemoteEventsApp />
+            <RemoteEventsApp societyName={societyName} city={city} />
           </React.Suspense>
         } />
 

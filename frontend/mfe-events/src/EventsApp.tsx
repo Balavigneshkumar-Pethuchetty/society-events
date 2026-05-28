@@ -61,7 +61,7 @@ const CATEGORIES = ['All', 'Sports', 'Festival', 'Kids', 'Wellness', 'Entertainm
 
 // ── Event Detail ──────────────────────────────────────────────────────────────
 
-function EventDetail({ event, onBack }: { event: Event; onBack: () => void }) {
+function EventDetail({ event, onBack, societyName = 'GM Global Techies Town' }: { event: Event; onBack: () => void; societyName?: string }) {
   const [qty, setQty] = useState(1);
   const total = event.price !== null ? event.price * qty : 0;
 
@@ -89,7 +89,7 @@ function EventDetail({ event, onBack }: { event: Event; onBack: () => void }) {
             <Grid item xs={12} md={7}>
               <Typography fontWeight={700} mb={1}>About this event</Typography>
               <Typography color="text.secondary" fontSize={14} lineHeight={1.8}>
-                Join us for one of the most anticipated events at Prestige Verdant Heights.
+                Join us for one of the most anticipated events at {societyName}.
                 A great opportunity to connect with neighbours, enjoy activities, and celebrate as a community.
                 All residents and their guests are welcome.
               </Typography>
@@ -164,7 +164,13 @@ function EventDetail({ event, onBack }: { event: Event; onBack: () => void }) {
 
 // ── Event Listing ─────────────────────────────────────────────────────────────
 
-export function EventsApp() {
+export function EventsApp({
+  societyName = 'GM Global Techies Town',
+  city = 'Bengaluru',
+}: {
+  societyName?: string;
+  city?: string;
+}) {
   const [search,   setSearch]   = useState('');
   const [category, setCategory] = useState('All');
   const [selected, setSelected] = useState<Event | null>(null);
@@ -175,7 +181,7 @@ export function EventsApp() {
       && (category === 'All' || e.category === category);
   });
 
-  if (selected) return <EventDetail event={selected} onBack={() => setSelected(null)} />;
+  if (selected) return <EventDetail event={selected} onBack={() => setSelected(null)} societyName={societyName} />;
 
   return (
     <Box component="main" sx={{ bgcolor: '#f8fafc', minHeight: 'calc(100vh - 64px)', py: 4 }}>
@@ -184,7 +190,7 @@ export function EventsApp() {
         <Box sx={{ mb: 3 }}>
           <Typography variant="h4" fontWeight={800} color="#0f172a">Upcoming Events</Typography>
           <Typography color="text.secondary" mt={0.5}>
-            Prestige Verdant Heights · {EVENTS.length} events this season
+            {societyName} · {EVENTS.length} events this season
           </Typography>
         </Box>
 

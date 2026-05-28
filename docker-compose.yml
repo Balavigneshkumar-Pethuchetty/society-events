@@ -60,6 +60,7 @@ services:
       KC_HTTP_ENABLED:         "true"
       KC_HEALTH_ENABLED:       "true"
       KC_LOG_LEVEL:            INFO
+      KC_HOSTNAME_URL:         ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}  # public URL for email links
     ports:
       - "8081:8080"
     volumes:
@@ -121,21 +122,6 @@ services:
     networks:
       - society_net
 
-  # ─── Mailpit (Local SMTP + inbox UI) — UI served at /mail/ ───────────────
-  mailpit:
-    image: axllent/mailpit:latest
-    container_name: society_mailpit
-    restart: always
-    environment:
-      MP_MAX_MESSAGES: 500
-      MP_WEBROOT:      /mail/   # serve UI under /mail/ so nginx can proxy it
-    ports:
-      # SMTP port: localhost-only so app code running outside Docker can send mail.
-      # Docker services on society_net use mailpit:1025 directly (no host binding needed).
-      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
-    # UI port 8025 is NOT published — accessed through nginx at /mail/ (basic auth required)
-    networks:
-      - society_net
 
   # ─── User Service (port 3001) ─────────────────────────────────────────────
   user-service:
@@ -156,7 +142,10 @@ services:
       KEYCLOAK_ADMIN_USER:       ${KEYCLOAK_ADMIN_USER:-admin}
       KEYCLOAK_ADMIN_PASSWORD:   ${KEYCLOAK_ADMIN_PASSWORD}
       INTERNAL_API_KEY:          ${INTERNAL_API_KEY:-change-this-in-prod}
-      SOCIETY_ID:        11100000-0000-0000-0000-000000000001
+      SOCIETY_ID:                11100000-0000-0000-0000-000000000001
+      SOCIETY_NAME:              ${SOCIETY_NAME:-GM Global Techies Town}
+      SOCIETY_SHORT_NAME:        ${SOCIETY_SHORT_NAME:-GMGT}
+      SOCIETY_CITY:              ${SOCIETY_CITY:-Bengaluru}
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,8 +1,8 @@
 {
   "id": "society-events",
   "realm": "society-events",
-  "displayName": "Prestige Verdant Heights",
-  "displayNameHtml": "Prestige Verdant Heights",
+  "displayName": "GM Global Techies Town",
+  "displayNameHtml": "GM Global Techies Town",
   "loginTheme": "society-events",
   "enabled": true,
   "loginWithEmailAllowed": true,
@@ -276,13 +276,15 @@
   "registrationEmailAsUsername": false,
   "verifyEmail": false,
   "smtpServer": {
-    "host": "mailpit",
-    "port": "1025",
-    "from": "noreply@pvh-blr.in",
-    "fromDisplayName": "Prestige Verdant Heights",
+    "host": "smtp.gmail.com",
+    "port": "587",
+    "from": "balavigneskumar@gmail.com",
+    "fromDisplayName": "GM Global Techies Town",
     "ssl": "false",
-    "starttls": "false",
-    "auth": "false"
+    "starttls": "true",
+    "auth": "true",
+    "user": "balavigneskumar@gmail.com",
+    "password": "idfzctfglfjcdaup"
   },
   "attributes": {
     "userProfileEnabled": "true"

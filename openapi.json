@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Society Events API",
-    "description": "REST API for the Society Events platform — Prestige Verdant Heights, Bengaluru.\n\nAll endpoints require a Bearer JWT issued by Keycloak **except** `/payments/webhook`.\n\n**Roles:**\n- `resident` — browse, register, pay\n- `committee_member` — create/manage events, send announcements\n- `admin` — full access including user management and reports\n- `security_guard` — mark attendance via QR scan\n\n**Obtain a token:**\n```\nPOST http://localhost:8080/realms/society-events/protocol/openid-connect/token\nContent-Type: application/x-www-form-urlencoded\n\nclient_id=society-frontend&grant_type=password&username=rajesh.iyer@pvh-blr.in&password=Test@1234\n```",
+    "description": "REST API for the Society Events platform — GM Global Techies Town, Bengaluru.\n\nAll endpoints require a Bearer JWT issued by Keycloak **except** `/payments/webhook`.\n\n**Roles:**\n- `resident` — browse, register, pay\n- `committee_member` — create/manage events, send announcements\n- `admin` — full access including user management and reports\n- `security_guard` — mark attendance via QR scan\n\n**Obtain a token:**\n```\nPOST http://localhost:8080/realms/society-events/protocol/openid-connect/token\nContent-Type: application/x-www-form-urlencoded\n\nclient_id=society-frontend&grant_type=password&username=rajesh.iyer@pvh-blr.in&password=Test@1234\n```",
     "version": "1.0.0",
     "contact": {
       "name": "Society Admin",

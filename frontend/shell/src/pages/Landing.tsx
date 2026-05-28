@@ -12,6 +12,7 @@ import SecurityIcon from '@mui/icons-material/Security';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import QrCodeIcon from '@mui/icons-material/QrCode';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSociety } from '../contexts/SocietyContext';
 
@@ -160,6 +161,16 @@ export function Landing() {
 
           <Typography sx={{ fontSize: 13, color: 'rgba(165,180,252,0.8)' }}>
             New members: register with your email — the committee activates your account within 24 hours.
+          </Typography>
+
+          <Typography sx={{ fontSize: 13, color: 'rgba(165,180,252,0.6)', mt: 1.5 }}>
+            Already registered?{' '}
+            <Link
+              to="/forgot-password"
+              style={{ color: '#a5b4fc', textDecoration: 'underline', cursor: 'pointer' }}
+            >
+              Forgot your password?
+            </Link>
           </Typography>
         </Container>
       </Box>

@@ -12,7 +12,7 @@
     <section class="auth-hero" aria-label="${realm.displayName!'Society Events'}">
       <div class="brand-mark" aria-hidden="true">🏛</div>
       <p class="brand-place">Resident Events &amp; Community Portal</p>
-      <h1>${realm.displayNameHtml!'Prestige Verdant Heights'}</h1>
+      <h1>${realm.displayNameHtml!'GM Global Techies Town'}</h1>
       <p class="brand-copy">
         Browse society events, reserve seats, and manage community access with one secure account.
       </p>

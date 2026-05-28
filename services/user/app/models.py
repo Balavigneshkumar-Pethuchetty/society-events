@@ -58,3 +58,14 @@ class ApartmentResponse(BaseModel):
 class UserListResponse(BaseModel):
     total: int
     items: list[UserResponse]
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class SocietyConfig(BaseModel):
+    name: str
+    shortName: str
+    city: str
+    baseCurrency: str = "INR"

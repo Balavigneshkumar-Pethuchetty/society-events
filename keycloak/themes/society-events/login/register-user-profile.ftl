@@ -14,7 +14,7 @@
     <section class="auth-hero" aria-label="Registration information">
       <div class="brand-mark" aria-hidden="true">🏛</div>
       <p class="brand-place">Resident Events &amp; Community Portal</p>
-      <h1>${realm.displayNameHtml!'Prestige Verdant Heights'}</h1>
+      <h1>${realm.displayNameHtml!'GM Global Techies Town'}</h1>
       <p class="brand-copy">
         Create your member account to browse events, reserve seats, and
         stay connected with your community.

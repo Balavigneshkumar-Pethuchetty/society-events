@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useSocietyConfig } from '../hooks/useSocietyConfig';
 import {
   Alert, Box, Button, Card, CardContent, Chip,
   Dialog, DialogActions, DialogContent, DialogTitle,
@@ -27,20 +28,6 @@ interface DistributionEntry {
 
 const TOTAL_POOL = 6900;
 
-const INITIAL_ENTRIES: DistributionEntry[] = [
-  { id: 'e1', recipientType: 'sponsor',   recipientName: 'TechCorp Solutions',         sharePct: 30, amount: 2070, status: 'pending' },
-  { id: 'e2', recipientType: 'sponsor',   recipientName: 'Community Welfare Foundation', sharePct: 10, amount: 690,  status: 'pending' },
-  { id: 'e3', recipientType: 'organizer', recipientName: 'Meera Krishnan',              sharePct: 30, amount: 2070, status: 'pending' },
-  { id: 'e4', recipientType: 'society',   recipientName: 'Prestige Verdant Heights',    sharePct: 30, amount: 2070, status: 'pending' },
-];
-
-const RECIPIENT_OPTIONS: Record<RecipientType, string[]> = {
-  sponsor:   ['TechCorp Solutions', 'Community Welfare Foundation'],
-  organizer: ['Meera Krishnan', 'Rajesh Iyer'],
-  resident:  ['Arjun Sharma', 'Priya Nair', 'Sanjay Mehta'],
-  society:   ['Prestige Verdant Heights'],
-};
-
 const RECIPIENT_COLOR: Record<RecipientType, 'secondary' | 'primary' | 'success' | 'default'> = {
   sponsor:   'secondary',
   organizer: 'primary',
@@ -56,6 +43,22 @@ const DIST_STATUS: Record<DistributionStatus, { label: string; color: 'warning' 
 
 export function RevenueDistribution() {
   const { id: eventId } = useParams();
+  const { name: societyName } = useSocietyConfig();
+
+  const INITIAL_ENTRIES: DistributionEntry[] = [
+    { id: 'e1', recipientType: 'sponsor',   recipientName: 'TechCorp Solutions',           sharePct: 30, amount: 2070, status: 'pending' },
+    { id: 'e2', recipientType: 'sponsor',   recipientName: 'Community Welfare Foundation', sharePct: 10, amount: 690,  status: 'pending' },
+    { id: 'e3', recipientType: 'organizer', recipientName: 'Meera Krishnan',               sharePct: 30, amount: 2070, status: 'pending' },
+    { id: 'e4', recipientType: 'society',   recipientName: societyName,                    sharePct: 30, amount: 2070, status: 'pending' },
+  ];
+
+  const RECIPIENT_OPTIONS: Record<RecipientType, string[]> = {
+    sponsor:   ['TechCorp Solutions', 'Community Welfare Foundation'],
+    organizer: ['Meera Krishnan', 'Rajesh Iyer'],
+    resident:  ['Arjun Sharma', 'Priya Nair', 'Sanjay Mehta'],
+    society:   [societyName],
+  };
+
   const [entries, setEntries]     = useState<DistributionEntry[]>(INITIAL_ENTRIES);
   const [distStatus, setDistStatus] = useState<DistributionStatus>('draft');
   const [addOpen, setAddOpen]     = useState(false);

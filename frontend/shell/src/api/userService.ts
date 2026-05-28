@@ -47,6 +47,18 @@ export interface UserListResponse {
   items: DbUser[];
 }
 
+async function publicPost(path: string, body: unknown): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { detail?: string }).detail ?? `HTTP ${res.status}`);
+  }
+}
+
 export const userService = {
   /** Upsert local DB row from JWT on first login. */
   sync: (token: string) =>
@@ -88,4 +100,7 @@ export const userService = {
 
   rejectUser: (token: string, userId: string) =>
     apiFetch<void>(`/users/${userId}/reject`, token, { method: 'DELETE' }),
+
+  forgotPassword: (email: string) =>
+    publicPost('/users/forgot-password', { email }),
 };

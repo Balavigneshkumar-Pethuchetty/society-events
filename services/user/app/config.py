@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     internal_api_key: str = "change-this-in-prod"
     # Default society UUID matches seed data; override for multi-society later
     society_id: str = "11100000-0000-0000-0000-000000000001"
+    society_name: str = "GM Global Techies Town"
+    society_short_name: str = "GMGT"
+    society_city: str = "Bengaluru"
 
     @property
     def database_url(self) -> str:

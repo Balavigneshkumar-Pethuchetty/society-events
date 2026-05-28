@@ -14,9 +14,58 @@ from app.models import (
     RoleUpdateRequest,
     ApartmentResponse,
     UserListResponse,
+    ForgotPasswordRequest,
 )
 
 router = APIRouter()
+
+
+# ── public: forgot password ───────────────────────────────────────────────────
+
+@router.post("/forgot-password", status_code=204, summary="Send password reset email")
+async def forgot_password(body: ForgotPasswordRequest):
+    """
+    No JWT required. Looks up the email in Keycloak and sends a reset link.
+    Returns 404 with a clear message if the email is not registered.
+    """
+    async with httpx.AsyncClient(timeout=10) as client:
+        token_resp = await client.post(
+            f"{settings.keycloak_url}/realms/master/protocol/openid-connect/token",
+            data={
+                "client_id": "admin-cli",
+                "grant_type": "password",
+                "username": settings.keycloak_admin_user,
+                "password": settings.keycloak_admin_password,
+            },
+        )
+        if token_resp.status_code != 200:
+            raise HTTPException(status_code=502, detail="Auth service unavailable")
+        admin_token = token_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {admin_token}"}
+        realm = settings.keycloak_realm
+
+        search_resp = await client.get(
+            f"{settings.keycloak_url}/admin/realms/{realm}/users",
+            params={"email": str(body.email), "exact": "true"},
+            headers=headers,
+        )
+        kc_users = search_resp.json() if search_resp.status_code == 200 else []
+        if not kc_users:
+            raise HTTPException(
+                status_code=404,
+                detail="No account found with this email address. Please check and try again.",
+            )
+
+        user_id = kc_users[0]["id"]
+        reset_resp = await client.put(
+            f"{settings.keycloak_url}/admin/realms/{realm}/users/{user_id}/execute-actions-email",
+            params={"client_id": "society-frontend", "redirect_uri": f"{settings.keycloak_public_url}/"},
+            headers=headers,
+            json=["UPDATE_PASSWORD"],
+        )
+        if reset_resp.status_code not in (200, 204):
+            raise HTTPException(status_code=502, detail="Could not send reset email. Please try again later.")
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 

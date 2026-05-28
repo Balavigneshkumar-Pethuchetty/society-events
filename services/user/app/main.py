@@ -6,6 +6,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse
 
 from app.database import wait_for_db, close_pool, get_pool
+from app.models import SocietyConfig
 from app.routes import users, internal
 
 # All nginx-prefixed paths (browser-visible via http://host/api/users/...)
@@ -76,6 +77,16 @@ app.add_middleware(
 
 app.include_router(users.router,    prefix="/users",    tags=["users"])
 app.include_router(internal.router, prefix="/internal/users", tags=["internal"])
+
+
+@app.get("/society", response_model=SocietyConfig, tags=["ops"], summary="Society identity config (public)")
+async def get_society():
+    from app.config import settings
+    return SocietyConfig(
+        name=settings.society_name,
+        shortName=settings.society_short_name,
+        city=settings.society_city,
+    )
 
 
 @app.get("/health", tags=["ops"], summary="Liveness + DB ping")
