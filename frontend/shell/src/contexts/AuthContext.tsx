@@ -29,12 +29,13 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const KNOWN_ROLES = ['admin', 'committee_member', 'resident', 'security_guard'];
+const KNOWN_ROLES = ['admin', 'committee_member', 'resident', 'security_guard', 'sponsor'];
 const ROLE_RANK: Record<string, number> = {
   admin: 1,
   committee_member: 2,
   resident: 3,
   security_guard: 4,
+  sponsor: 5,
 };
 
 function parseUser(kc: typeof keycloak): AuthUser | null {
@@ -98,11 +99,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     keycloak
       .init({
-        // onLoad omitted intentionally: 'check-sso' triggers an iframe to the
-        // Keycloak origin (port 8080) which is blocked by its own X-Frame-Options
-        // header when the app runs on a different origin (port 3000). Without
-        // onLoad, keycloak-js still processes the auth-code callback in the URL
-        // and restores tokens from sessionStorage on subsequent page loads.
+        // 'check-sso' with silentCheckSsoRedirectUri avoids X-Frame-Options:
+        // the iframe first loads the local /silent-check-sso.html page (same
+        // origin), which then redirects to Keycloak. Keycloak never renders
+        // inside the frame — it just issues a 302 back — so the header is
+        // irrelevant. This means logged-in users with an active Keycloak
+        // session skip the landing page even after token expiry or a fresh tab.
+        onLoad: 'check-sso',
+        silentCheckSsoRedirectUri: window.location.origin + '/silent-check-sso.html',
         checkLoginIframe: false,
         pkceMethod: 'S256',
       })

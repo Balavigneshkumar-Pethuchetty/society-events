@@ -1,15 +1,127 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
-import { Box, Typography } from '@mui/material';
+import { Alert, Box, Button, Typography } from '@mui/material';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SocietyProvider } from './contexts/SocietyContext';
+import { UserServiceProvider } from './contexts/UserServiceContext';
 import { Nav } from './components/Nav';
 import { Home } from './pages/Home';
 import { Landing } from './pages/Landing';
 import { PendingApproval } from './pages/PendingApproval';
+import { Profile } from './pages/Profile';
 import { theme } from './theme';
 
+type RemoteModule = Record<string, unknown> & {
+  default?: unknown;
+};
+
+interface AdminRoutesProps {
+  token?: string | null;
+  page?: string;
+}
+
+interface ManageRoutesProps {
+  page?: string;
+  id?: string;
+}
+
+interface SponsorAppProps {
+  firstName?: string;
+}
+
+// ── MFE unavailable fallback ──────────────────────────────────────────────────
+// Shown when a remote's remoteEntry.js can't be fetched (container not running,
+// network error, 404, etc.). Prevents a white blank page.
+function MfeUnavailable({ name }: { name: string }) {
+  return (
+    <Box
+      component="main"
+      sx={{
+        minHeight: 'calc(100vh - 64px)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 2,
+        px: 3,
+      }}
+    >
+      <Typography fontSize={40} lineHeight={1}>⚠️</Typography>
+      <Typography variant="h6" fontWeight={700}>{name} is unavailable</Typography>
+      <Alert severity="error" sx={{ maxWidth: 480 }}>
+        The <strong>{name}</strong> service could not be loaded. Make sure the MFE container
+        is running and nginx is proxying correctly, then reload the page.
+      </Alert>
+      <Button variant="outlined" onClick={() => window.location.reload()}>
+        Retry
+      </Button>
+    </Box>
+  );
+}
+
+function getRemoteComponent<TProps>(
+  module: RemoteModule,
+  exportName: string,
+): React.ComponentType<TProps> {
+  const defaultModule = module.default as RemoteModule | undefined;
+  const component = module[exportName] ?? defaultModule?.[exportName] ?? module.default;
+
+  if (!component) {
+    throw new Error(`Remote export ${exportName} was not found.`);
+  }
+
+  return component as React.ComponentType<TProps>;
+}
+
+// ── Remote lazy imports with graceful error handling ──────────────────────────
+// .catch() on each import means a failed fetch (404, ERR_CONNECTION_REFUSED)
+// renders MfeUnavailable instead of throwing an uncaught error that blanks the page.
+
+const RemoteManageRoutes = React.lazy(() =>
+  import('mfe_admin/ManageRoutes')
+    .then((m) => ({ default: getRemoteComponent<ManageRoutesProps>(m, 'ManageRoutes') }))
+    .catch(() => ({ default: () => <MfeUnavailable name="Event Manager" /> }))
+);
+
+const RemoteAdminRoutes = React.lazy(() => {
+  console.log('[shell] fetching mfe_admin/AdminRoutes…');
+  return import('mfe_admin/AdminRoutes')
+    .then((m) => {
+      console.log('[shell] mfe_admin/AdminRoutes loaded, exports:', Object.keys(m));
+      return { default: getRemoteComponent<AdminRoutesProps>(m, 'AdminRoutes') };
+    })
+    .catch((err: unknown) => {
+      console.error('[shell] mfe_admin/AdminRoutes FAILED to load:', err);
+      return { default: () => <MfeUnavailable name="Admin Panel" /> };
+    });
+});
+
+const RemoteSponsorApp = React.lazy(() =>
+  import('mfe_admin/SponsorApp')
+    .then((m) => ({ default: getRemoteComponent<SponsorAppProps>(m, 'SponsorApp') }))
+    .catch(() => ({ default: () => <MfeUnavailable name="Sponsor Portal" /> }))
+);
+
+const RemoteEventsApp = React.lazy(() =>
+  import('mfe_events/EventsApp')
+    .then((m) => ({ default: getRemoteComponent<Record<string, never>>(m, 'EventsApp') }))
+    .catch(() => ({ default: () => <MfeUnavailable name="Events" /> }))
+);
+
+const RemoteBookingApp = React.lazy(() =>
+  import('mfe_booking/BookingApp')
+    .then((m) => ({ default: getRemoteComponent<Record<string, never>>(m, 'BookingApp') }))
+    .catch(() => ({ default: () => <MfeUnavailable name="Booking" /> }))
+);
+
+const RemotePaymentApp = React.lazy(() =>
+  import('mfe_payment/PaymentApp')
+    .then((m) => ({ default: getRemoteComponent<Record<string, never>>(m, 'PaymentApp') }))
+    .catch(() => ({ default: () => <MfeUnavailable name="Payments" /> }))
+);
+
+// ── Shared UI pieces ──────────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
     <Box
@@ -43,6 +155,36 @@ function LoadingScreen() {
   );
 }
 
+function MfeFallback({ label }: { label: string }) {
+  return (
+    <Box
+      component="main"
+      sx={{
+        minHeight: 'calc(100vh - 64px)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 1.5,
+        color: 'text.secondary',
+      }}
+    >
+      <Box
+        sx={{
+          width: 32, height: 32,
+          border: '3px solid',
+          borderColor: 'divider',
+          borderTopColor: 'primary.main',
+          borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+          '@keyframes spin': { to: { transform: 'rotate(360deg)' } },
+        }}
+      />
+      <Typography variant="body2">Loading {label}…</Typography>
+    </Box>
+  );
+}
+
 function Placeholder({ label }: { label: string }) {
   return (
     <Box
@@ -64,12 +206,49 @@ function Placeholder({ label }: { label: string }) {
   );
 }
 
+// ── Wrappers ──────────────────────────────────────────────────────────────────
+function SponsorWrapper() {
+  const { user } = useAuth();
+  return (
+    <React.Suspense fallback={<MfeFallback label="Sponsor Portal" />}>
+      <RemoteSponsorApp firstName={user?.name.split(' ')[0]} />
+    </React.Suspense>
+  );
+}
+
+function ManageWrapper() {
+  const { pathname } = useLocation();
+  const segments = pathname.split('/').filter(Boolean);
+  const manageIndex = segments.lastIndexOf('manage');
+  const page = manageIndex >= 0 ? segments[manageIndex + 1] : undefined;
+  const id   = manageIndex >= 0 ? segments[manageIndex + 2] : undefined;
+  return (
+    <React.Suspense fallback={<MfeFallback label="Event Manager" />}>
+      <RemoteManageRoutes page={page} id={id} />
+    </React.Suspense>
+  );
+}
+
+function AdminWrapper() {
+  const { token } = useAuth();
+  const { pathname } = useLocation();
+  const segments = pathname.split('/').filter(Boolean);
+  const adminIndex = segments.lastIndexOf('admin');
+  const page = adminIndex >= 0 ? segments[adminIndex + 1] : undefined;
+  console.log('[AdminWrapper] pathname:', pathname, '| segments:', segments, '| adminIndex:', adminIndex, '| page:', JSON.stringify(page));
+  return (
+    <React.Suspense fallback={<MfeFallback label="Admin Panel" />}>
+      <RemoteAdminRoutes token={token} page={page} />
+    </React.Suspense>
+  );
+}
+
+// ── App shell ─────────────────────────────────────────────────────────────────
 function AppShell() {
   const { isLoading, user, isPending } = useAuth();
 
   if (isLoading) return <LoadingScreen />;
 
-  // Not logged in → show public landing page
   if (!user) {
     return (
       <BrowserRouter>
@@ -79,7 +258,6 @@ function AppShell() {
     );
   }
 
-  // Logged in but no role assigned yet → awaiting admin approval
   if (isPending) {
     return (
       <BrowserRouter>
@@ -89,21 +267,44 @@ function AppShell() {
     );
   }
 
-  // Fully activated member → full app
   return (
     <BrowserRouter>
       <Nav />
       <Routes>
-        <Route path="/"             element={<Home />} />
-        <Route path="/events"       element={<Placeholder label="Events MFE" />} />
-        <Route path="/tickets"      element={<Placeholder label="Booking MFE" />} />
-        <Route path="/checkout/:id" element={<Placeholder label="Payment MFE" />} />
-        <Route path="/payments"     element={<Placeholder label="Payments MFE" />} />
-        <Route path="/manage/*"     element={<Placeholder label="Event Manager MFE — Committee &amp; Admin" />} />
-        <Route path="/scanner"      element={<Placeholder label="QR Scanner MFE — Security Guard" />} />
-        <Route path="/entry-log"    element={<Placeholder label="Entry Log MFE — Security Guard" />} />
-        <Route path="/admin/*"      element={<Placeholder label="Admin MFE" />} />
-        <Route path="*"             element={<Placeholder label="404 — Page not found" />} />
+        <Route path="/"        element={<Home />} />
+        <Route path="/profile" element={<Profile />} />
+
+        <Route path="/events/*" element={
+          <React.Suspense fallback={<MfeFallback label="Events" />}>
+            <RemoteEventsApp />
+          </React.Suspense>
+        } />
+
+        <Route path="/tickets/*" element={
+          <React.Suspense fallback={<MfeFallback label="My Tickets" />}>
+            <RemoteBookingApp />
+          </React.Suspense>
+        } />
+
+        <Route path="/checkout/*" element={
+          <React.Suspense fallback={<MfeFallback label="Checkout" />}>
+            <RemotePaymentApp />
+          </React.Suspense>
+        } />
+
+        <Route path="/payments/*" element={
+          <React.Suspense fallback={<MfeFallback label="Payments" />}>
+            <RemotePaymentApp />
+          </React.Suspense>
+        } />
+
+        <Route path="/manage/*" element={<ManageWrapper />} />
+        <Route path="/admin/*"  element={<AdminWrapper />} />
+
+        <Route path="/sponsor"    element={<SponsorWrapper />} />
+        <Route path="/scanner"    element={<Placeholder label="QR Scanner MFE — Security Guard" />} />
+        <Route path="/entry-log"  element={<Placeholder label="Entry Log MFE — Security Guard" />} />
+        <Route path="*"           element={<Placeholder label="404 — Page not found" />} />
       </Routes>
     </BrowserRouter>
   );
@@ -114,9 +315,11 @@ export default function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <SocietyProvider>
-          <AppShell />
-        </SocietyProvider>
+        <UserServiceProvider>
+          <SocietyProvider>
+            <AppShell />
+          </SocietyProvider>
+        </UserServiceProvider>
       </AuthProvider>
     </ThemeProvider>
   );

@@ -1,7 +1,9 @@
 # Society Events — Developer Makefile
 # Usage: make <target>
 
-.PHONY: help up down restart logs ps reset seed shell-db shell-redis sync-users frontend frontend-install
+.PHONY: help up down restart logs ps reset seed shell-db shell-redis sync-users frontend frontend-install \
+        restart-nginx restart-keycloak restart-postgres restart-redis restart-mailpit restart-pgadmin restart-user-service \
+        logs-nginx logs-user logs-mail
 
 ## ── Colours ────────────────────────────────────────────────────────────────
 CYAN  := \033[0;36m
@@ -21,7 +23,7 @@ up: .env ## Start all services (detached)
 	@echo ""
 	@echo "  $(CYAN)Services starting… (all routed through nginx on port $${NGINX_PORT:-8080})$(RESET)"
 	@echo "  Frontend  → http://localhost:$${NGINX_PORT:-8080}/          (requires --profile frontend)"
-	@echo "  Keycloak  → http://localhost:$${NGINX_PORT:-8080}/admin/"
+	@echo "  Keycloak  → http://localhost:8081/admin/                    (direct — bypasses nginx)"
 	@echo "  pgAdmin   → http://localhost:$${NGINX_PORT:-8080}/pgadmin/  (nginx basic auth)"
 	@echo "  Mailpit   → http://localhost:$${NGINX_PORT:-8080}/mail/     (nginx basic auth)"
 	@echo ""
@@ -35,7 +37,28 @@ down: ## Stop and remove containers (data volumes preserved)
 
 restart: ## Restart all services (rebuilds frontend to pick up code changes)
 	docker compose --profile frontend up -d --build frontend
-	docker compose restart nginx keycloak postgres redis mailpit pgadmin
+	docker compose restart nginx keycloak postgres redis mailpit pgadmin user-service
+
+restart-nginx: ## Restart nginx only
+	docker compose restart nginx
+
+restart-keycloak: ## Restart Keycloak only (picks up theme changes)
+	docker compose restart keycloak
+
+restart-postgres: ## Restart Postgres only
+	docker compose restart postgres
+
+restart-redis: ## Restart Redis only
+	docker compose restart redis
+
+restart-mailpit: ## Restart Mailpit only
+	docker compose restart mailpit
+
+restart-pgadmin: ## Restart pgAdmin only
+	docker compose restart pgadmin
+
+restart-user-service: ## Rebuild & restart user service (picks up code changes)
+	docker compose up -d --build user-service
 
 ps: ## Show service status and health
 	docker compose ps
@@ -48,6 +71,15 @@ logs-db: ## Follow postgres logs only
 
 logs-kc: ## Follow Keycloak logs only
 	docker compose logs -f keycloak
+
+logs-nginx: ## Follow nginx logs only
+	docker compose logs -f nginx
+
+logs-user: ## Follow user service logs only
+	docker compose logs -f user-service
+
+logs-mail: ## Follow Mailpit logs only
+	docker compose logs -f mailpit
 
 ## ── Database ────────────────────────────────────────────────────────────────
 shell-db: ## Open psql in the society_events database
@@ -93,7 +125,8 @@ frontend-install: ## Install frontend dependencies only
 	cd frontend/shell && npm install
 
 frontend-docker: ## Build and run the production frontend container (served by nginx at /)
-	docker compose --profile frontend up -d --build frontend
+	docker compose --profile frontend build --no-cache frontend mfe-admin mfe-events mfe-booking mfe-payment
+	docker compose --profile frontend up -d frontend mfe-admin mfe-events mfe-booking mfe-payment
 	@echo "  Shell App → http://localhost:$${NGINX_PORT:-8080}/"
 
 ## ── Helpers ─────────────────────────────────────────────────────────────────

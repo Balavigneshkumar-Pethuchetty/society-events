@@ -13,8 +13,10 @@ import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import { useAuth } from '../contexts/AuthContext';
 import { useSociety } from '../contexts/SocietyContext';
+import { useUserService } from '../contexts/UserServiceContext';
 
 type Slot = { icon: React.ReactNode; title: string; desc: string; path: string; cta: string; color: string };
 
@@ -33,13 +35,19 @@ const ADMIN_EXTRA: Slot[] = [
 ];
 
 const GUARD_SLOTS: Slot[] = [
-  { icon: <QrCodeScannerIcon sx={{ fontSize: 28 }} />,      title: 'QR Scanner',   desc: 'Scan resident tickets at the entry gate to mark attendance.',                path: '/scanner',  cta: 'Open Scanner',      color: '#10b981' },
-  { icon: <FactCheckIcon sx={{ fontSize: 28 }} />,          title: 'Entry Log',    desc: "Today's attendance log — who has checked in and when.",                      path: '/entry-log', cta: 'View Entry Log',   color: '#6366f1' },
-  { icon: <EventIcon sx={{ fontSize: 28 }} />,              title: 'Events',       desc: 'Browse upcoming events (view only).',                                        path: '/events',   cta: 'Browse Events',     color: '#94a3b8' },
+  { icon: <QrCodeScannerIcon sx={{ fontSize: 28 }} />,  title: 'QR Scanner',       desc: 'Scan resident tickets at the entry gate to mark attendance.',                                path: '/scanner',  cta: 'Open Scanner',         color: '#10b981' },
+  { icon: <FactCheckIcon sx={{ fontSize: 28 }} />,      title: 'Entry Log',        desc: "Today's attendance log — who has checked in and when.",                                      path: '/entry-log', cta: 'View Entry Log',      color: '#6366f1' },
+  { icon: <EventIcon sx={{ fontSize: 28 }} />,          title: 'Events',           desc: 'Browse upcoming events (view only).',                                                        path: '/events',   cta: 'Browse Events',         color: '#94a3b8' },
+];
+
+const SPONSOR_SLOTS: Slot[] = [
+  { icon: <MonetizationOnIcon sx={{ fontSize: 28 }} />, title: 'My Sponsorships', desc: 'View events you are sponsoring, track contribution status, and raise refund requests.', path: '/sponsor',  cta: 'View Sponsorships',     color: '#7c3aed' },
+  { icon: <EventIcon sx={{ fontSize: 28 }} />,          title: 'Browse Events',   desc: 'Explore upcoming community events to discover sponsorship opportunities.',                path: '/events',   cta: 'Browse Events',         color: '#6366f1' },
 ];
 
 function useMfeSlots(role: string): Slot[] {
   if (role === 'security_guard') return GUARD_SLOTS;
+  if (role === 'sponsor')        return SPONSOR_SLOTS;
   if (role === 'admin')          return [...RESIDENT_SLOTS, ...COMMITTEE_EXTRA, ...ADMIN_EXTRA];
   if (role === 'committee_member') return [...RESIDENT_SLOTS, ...COMMITTEE_EXTRA];
   return RESIDENT_SLOTS;
@@ -50,23 +58,35 @@ const ROLE_WELCOME: Record<string, string> = {
   committee_member: 'You can create and manage events — and register for them just like any resident.',
   resident:         'Register for events and track your tickets.',
   security_guard:   'Use the QR scanner below to verify resident tickets at the gate.',
+  sponsor:          'Track your sponsorships, monitor event funding, and manage refund requests.',
 };
 
-const DEBUG_ROWS = (user: ReturnType<typeof useAuth>['user']) => [
-  ['Name',            user?.name],
-  ['Email',           user?.email],
-  ['Sub (keycloak)',  user?.sub],
-  ['Roles',           user?.roles.join(', ')],
-  ['Primary role',    user?.primaryRole],
+const DEBUG_ROWS = (
+  user: ReturnType<typeof useAuth>['user'],
+  dbUser: ReturnType<typeof useUserService>['dbUser'],
+) => [
+  ['Name',              user?.name],
+  ['Email',             user?.email],
+  ['Sub (keycloak)',    user?.sub],
+  ['Roles',             user?.roles.join(', ')],
+  ['Primary role',      user?.primaryRole],
+  ['DB user ID',        dbUser?.id ?? '—'],
+  ['DB role',           dbUser?.role ?? '—'],
+  ['Phone',             dbUser?.phone ?? '—'],
+  ['Apartment',         dbUser?.apartment
+                          ? `Block ${dbUser.apartment.block} — ${dbUser.apartment.unit_number} (${dbUser.apartment.type})`
+                          : '—'],
 ] as const;
 
 export function Home() {
-  const { user }       = useAuth();
-  const { name, city } = useSociety();
-  const firstName      = user?.name.split(' ')[0] ?? 'there';
-  const role           = user?.primaryRole ?? 'resident';
-  const roleHint       = ROLE_WELCOME[role];
-  const slots          = useMfeSlots(role);
+  const { user }           = useAuth();
+  const { name, city }     = useSociety();
+  const { dbUser }         = useUserService();
+  const firstName          = user?.name.split(' ')[0] ?? 'there';
+  const role               = user?.primaryRole ?? 'resident';
+  const roleHint           = ROLE_WELCOME[role];
+  const slots              = useMfeSlots(role);
+  const apt                = dbUser?.apartment;
 
   return (
     <Box component="main">
@@ -80,7 +100,12 @@ export function Home() {
           <Typography variant="h4" fontWeight={800} sx={{ lineHeight: 1.15, mb: 1.25, fontSize: { xs: 26, md: 36 } }}>
             Welcome back, {firstName} 👋
           </Typography>
-          <Typography sx={{ fontSize: 16, color: '#c7d2fe', mb: 3.5 }}>{roleHint}</Typography>
+          <Typography sx={{ fontSize: 16, color: '#c7d2fe', mb: apt ? 2 : 3.5 }}>{roleHint}</Typography>
+          {apt && (
+            <Typography sx={{ fontSize: 13, color: '#a5b4fc', mb: 3, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              🏠 Block {apt.block} — Flat {apt.unit_number} ({apt.type})
+            </Typography>
+          )}
           <Button
             component={Link}
             to="/events"
@@ -139,7 +164,7 @@ export function Home() {
               </Typography>
             </AccordionSummary>
             <AccordionDetails sx={{ px: 0, pt: 0 }}>
-              {DEBUG_ROWS(user).map(([label, val]) => (
+              {DEBUG_ROWS(user, dbUser).map(([label, val]) => (
                 <Box key={label} sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5, mb: 0.75 }}>
                   <Typography fontSize={13} color="text.secondary" sx={{ minWidth: 160, flexShrink: 0 }}>{label}</Typography>
                   <Box component="code" sx={{ bgcolor: '#dcfce7', px: 0.75, py: 0.25, borderRadius: 0.5, fontSize: 12, fontFamily: "'Fira Code', monospace", color: '#166534', wordBreak: 'break-all' }}>

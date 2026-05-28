@@ -103,7 +103,14 @@ INSERT INTO users (id, apartment_id, name, email, phone, role, keycloak_sub, ide
      '21100000-0000-0000-0000-000000000006',
      'Vikram Patel', 'vikram.patel@gmail.com', '+1-415-999-6666',
      'resident',
-     'a1000000-0000-0000-0000-000000000006', 'keycloak')
+     'a1000000-0000-0000-0000-000000000006', 'keycloak'),
+
+    -- Sponsor user — TechCorp Solutions rep (no apartment; external org)
+    ('31100000-0000-0000-0000-000000000007',
+     NULL,
+     'Kavya Reddy', 'kavya.reddy@techcorp.com', '+91-98800-77777',
+     'sponsor',
+     'a1000000-0000-0000-0000-000000000007', 'keycloak')
 ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
@@ -398,6 +405,346 @@ INSERT INTO notification (id, user_id, event_id, type, title, message, is_read) 
      'Your registration for Diwali Mela 2025 (4 tickets) is confirmed. See you there!',
      FALSE)
 
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- SPONSOR  (two sponsors: one linked to platform user, one external org)
+-- ---------------------------------------------------------------------------
+INSERT INTO sponsor (id, user_id, organization_name, organization_type,
+                     contact_name, contact_email, contact_phone) VALUES
+    ('c1100000-0000-0000-0000-000000000001',
+     '31100000-0000-0000-0000-000000000007',
+     'TechCorp Solutions Pvt. Ltd.', 'private',
+     'Kavya Reddy', 'kavya.reddy@techcorp.com', '+91-98800-77777'),
+    ('c1100000-0000-0000-0000-000000000002',
+     NULL,
+     'Community Welfare Foundation', 'ngo',
+     'Anand Kumar', 'anand.kumar@cwf.org', '+91-99900-88888')
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- EVENT_SPONSORSHIP
+-- ---------------------------------------------------------------------------
+INSERT INTO event_sponsorship (id, event_id, sponsor_id, amount, currency_code,
+                                status, payment_reference, notes) VALUES
+    -- TechCorp sponsors Diwali Mela — ₹25,000 received
+    ('d1100000-0000-0000-0000-000000000001',
+     '51100000-0000-0000-0000-000000000001',
+     'c1100000-0000-0000-0000-000000000001',
+     25000.00, 'INR', 'received', 'TXN-DIWALI-TECHCORP-001',
+     'Sponsoring decorations and prizes for rangoli competition'),
+
+    -- Community Welfare Foundation sponsors Sports Day — ₹15,000 received
+    ('d1100000-0000-0000-0000-000000000002',
+     '51100000-0000-0000-0000-000000000002',
+     'c1100000-0000-0000-0000-000000000002',
+     15000.00, 'INR', 'received', 'TXN-SPORTS-CWF-001',
+     'Sponsoring sports kits and medals for all categories'),
+
+    -- TechCorp also sponsors Sports Day — ₹10,000 pledged (not yet received)
+    ('d1100000-0000-0000-0000-000000000003',
+     '51100000-0000-0000-0000-000000000002',
+     'c1100000-0000-0000-0000-000000000001',
+     10000.00, 'INR', 'pledged', NULL,
+     'Pledged to sponsor the refreshment counter')
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- SPONSORSHIP_REFUND  (TechCorp requests partial refund on Sports Day pledge)
+-- ---------------------------------------------------------------------------
+INSERT INTO sponsorship_refund (id, sponsorship_id, requested_by, amount,
+                                currency_code, reason, status) VALUES
+    ('e1100000-0000-0000-0000-000000000001',
+     'd1100000-0000-0000-0000-000000000003',
+     '31100000-0000-0000-0000-000000000007',
+     5000.00, 'INR',
+     'Event capacity was reduced; requesting partial refund for the unsupported portion.',
+     'pending')
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- EVENT_EXPENSE  (Diwali Mela & Sports Day expenses logged by Meera)
+-- ---------------------------------------------------------------------------
+INSERT INTO event_expense (id, event_id, description, amount, currency_code,
+                            category, created_by) VALUES
+    -- Diwali Mela
+    ('f1100000-0000-0000-0000-000000000001',
+     '51100000-0000-0000-0000-000000000001',
+     'Decoration materials — diyas, lanterns, flowers', 8500.00, 'INR',
+     'venue', '31100000-0000-0000-0000-000000000002'),
+
+    ('f1100000-0000-0000-0000-000000000002',
+     '51100000-0000-0000-0000-000000000001',
+     'Potluck setup and utensils', 3200.00, 'INR',
+     'catering', '31100000-0000-0000-0000-000000000002'),
+
+    ('f1100000-0000-0000-0000-000000000003',
+     '51100000-0000-0000-0000-000000000001',
+     'Sound system rental', 5000.00, 'INR',
+     'equipment', '31100000-0000-0000-0000-000000000002'),
+
+    -- Annual Sports Day
+    ('f1100000-0000-0000-0000-000000000004',
+     '51100000-0000-0000-0000-000000000002',
+     'Cricket set and badminton nets', 6000.00, 'INR',
+     'equipment', '31100000-0000-0000-0000-000000000002'),
+
+    ('f1100000-0000-0000-0000-000000000005',
+     '51100000-0000-0000-0000-000000000002',
+     'Medals and trophies for all categories', 4500.00, 'INR',
+     'other', '31100000-0000-0000-0000-000000000002'),
+
+    ('f1100000-0000-0000-0000-000000000006',
+     '51100000-0000-0000-0000-000000000002',
+     'Refreshments for participants', 3800.00, 'INR',
+     'catering', '31100000-0000-0000-0000-000000000002')
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- COMPLIMENTARY_TICKET  (free entries by type; walk-ins have no user linked)
+-- ---------------------------------------------------------------------------
+INSERT INTO complimentary_ticket (id, event_id, invited_by_user_id, inviter_type,
+                                  ticket_count, notes, created_by) VALUES
+    -- Diwali: committee member (Meera) brings 2 family guests
+    ('g1100000-0000-0000-0000-000000000001',
+     '51100000-0000-0000-0000-000000000001',
+     '31100000-0000-0000-0000-000000000002', 'committee_member',
+     2, 'Committee member''s family guests',
+     '31100000-0000-0000-0000-000000000002'),
+
+    -- Diwali: organizer (Rajesh) brings 3 neighbours
+    ('g1100000-0000-0000-0000-000000000002',
+     '51100000-0000-0000-0000-000000000001',
+     '31100000-0000-0000-0000-000000000001', 'organizer',
+     3, 'Organizer''s family and neighbours',
+     '31100000-0000-0000-0000-000000000001'),
+
+    -- Diwali: TechCorp sponsor (Kavya) brings 4 team members
+    ('g1100000-0000-0000-0000-000000000003',
+     '51100000-0000-0000-0000-000000000001',
+     '31100000-0000-0000-0000-000000000007', 'sponsor',
+     4, 'Sponsor TechCorp team members',
+     '31100000-0000-0000-0000-000000000002'),
+
+    -- Diwali: walk-in counter (15 anonymous attendees at the gate)
+    ('g1100000-0000-0000-0000-000000000004',
+     '51100000-0000-0000-0000-000000000001',
+     NULL, 'walk_in',
+     15, 'Walk-in attendees registered at the gate',
+     '31100000-0000-0000-0000-000000000001'),
+
+    -- Sports Day: walk-ins
+    ('g1100000-0000-0000-0000-000000000005',
+     '51100000-0000-0000-0000-000000000002',
+     NULL, 'walk_in',
+     8, 'Walk-ins at entry gate on event day',
+     '31100000-0000-0000-0000-000000000002')
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- NOTIFICATION — new sponsor-related notifications
+-- ---------------------------------------------------------------------------
+INSERT INTO notification (id, user_id, event_id, type, title, message, is_read) VALUES
+    -- Kavya: sponsorship received confirmation for Diwali Mela
+    ('b1100000-0000-0000-0000-000000000009',
+     '31100000-0000-0000-0000-000000000007',
+     '51100000-0000-0000-0000-000000000001',
+     'payment_success',
+     'Sponsorship confirmed — Diwali Mela 2025',
+     'Your sponsorship of ₹25,000 for Diwali Mela 2025 has been received. Thank you for your support!',
+     TRUE),
+
+    -- Kavya: refund request acknowledgement for Sports Day
+    ('b1100000-0000-0000-0000-000000000010',
+     '31100000-0000-0000-0000-000000000007',
+     '51100000-0000-0000-0000-000000000002',
+     'refund_processed',
+     'Refund request submitted — Annual Sports Day 2026',
+     'Your refund request of ₹5,000 for Annual Sports Day 2026 is under review. You will be notified once the organizer reviews it.',
+     FALSE)
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- VENDOR  (shop stalls that can be invited to events)
+-- ---------------------------------------------------------------------------
+INSERT INTO vendor (id, society_id, name, category,
+                    contact_name, contact_email, contact_phone) VALUES
+    ('h1100000-0000-0000-0000-000000000001',
+     '11100000-0000-0000-0000-000000000001',
+     'Raj Sweets & Snacks', 'food',
+     'Rajan Pillai', 'rajan@rajsweets.in', '+91-98001-11001'),
+    ('h1100000-0000-0000-0000-000000000002',
+     '11100000-0000-0000-0000-000000000001',
+     'Fun Games Zone', 'games',
+     'Deepak Rao', 'deepak@fungames.in', '+91-97001-22002'),
+    ('h1100000-0000-0000-0000-000000000003',
+     '11100000-0000-0000-0000-000000000001',
+     'Sparkle Merchandise', 'merchandise',
+     'Sunita Bose', 'sunita@sparklemerch.in', '+91-96001-33003')
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- EVENT_VENDOR  (vendors linked to Diwali Mela with different fee types)
+-- ---------------------------------------------------------------------------
+INSERT INTO event_vendor (id, event_id, vendor_id, stall_number, fee_type,
+                           fixed_fee, revenue_share_pct, actual_revenue, status, notes) VALUES
+    -- Raj Sweets: revenue share 15% of their sales; actual revenue ₹20,000 → pool contribution ₹3,000
+    ('i1100000-0000-0000-0000-000000000001',
+     '51100000-0000-0000-0000-000000000001',
+     'h1100000-0000-0000-0000-000000000001',
+     'A-01', 'revenue_share',
+     0.00, 15.00, 20000.00, 'confirmed',
+     'Sweets and snacks stall near main entrance'),
+
+    -- Fun Games: fixed stall fee ₹2,000 (no revenue share)
+    ('i1100000-0000-0000-0000-000000000002',
+     '51100000-0000-0000-0000-000000000001',
+     'h1100000-0000-0000-0000-000000000002',
+     'B-03', 'fixed',
+     2000.00, 0.00, NULL, 'confirmed',
+     'Games stall for kids and adults'),
+
+    -- Sparkle Merchandise: revenue share 20% of their sales; actual revenue ₹9,500 → pool ₹1,900
+    ('i1100000-0000-0000-0000-000000000003',
+     '51100000-0000-0000-0000-000000000001',
+     'h1100000-0000-0000-0000-000000000003',
+     'C-02', 'revenue_share',
+     0.00, 20.00, 9500.00, 'confirmed',
+     'Diwali-themed gifts and decorative items')
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- VENDOR_REVENUE_DISTRIBUTION  (Diwali Mela pool: ₹3000 + ₹2000 + ₹1900 = ₹6,900)
+-- ---------------------------------------------------------------------------
+INSERT INTO vendor_revenue_distribution (id, event_id, total_pool, currency_code,
+                                          status, notes) VALUES
+    ('j1100000-0000-0000-0000-000000000001',
+     '51100000-0000-0000-0000-000000000001',
+     6900.00, 'INR', 'draft',
+     'Combined revenue pool from vendor stall fees and revenue share')
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- DISTRIBUTION_ENTRY  (4 recipients; percentages sum to 100%)
+-- ---------------------------------------------------------------------------
+INSERT INTO distribution_entry (id, distribution_id, recipient_type,
+                                  recipient_user_id, recipient_sponsor_id,
+                                  share_percentage, amount, status) VALUES
+    -- TechCorp sponsor gets 30% = ₹2,070
+    ('k1100000-0000-0000-0000-000000000001',
+     'j1100000-0000-0000-0000-000000000001',
+     'sponsor', NULL, 'c1100000-0000-0000-0000-000000000001',
+     30.00, 2070.00, 'pending'),
+
+    -- CWF gets 10% = ₹690
+    ('k1100000-0000-0000-0000-000000000002',
+     'j1100000-0000-0000-0000-000000000001',
+     'sponsor', NULL, 'c1100000-0000-0000-0000-000000000002',
+     10.00, 690.00, 'pending'),
+
+    -- Meera (organizer) gets 30% = ₹2,070
+    ('k1100000-0000-0000-0000-000000000003',
+     'j1100000-0000-0000-0000-000000000001',
+     'organizer', '31100000-0000-0000-0000-000000000002', NULL,
+     30.00, 2070.00, 'pending'),
+
+    -- Society retains 30% = ₹2,070
+    ('k1100000-0000-0000-0000-000000000004',
+     'j1100000-0000-0000-0000-000000000001',
+     'society', NULL, NULL,
+     30.00, 2070.00, 'pending')
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- TICKET_TYPE  (multiple tiers for Diwali Mela and Sports Day)
+-- ---------------------------------------------------------------------------
+INSERT INTO ticket_type (id, event_id, name, description, price, is_free,
+                          capacity, sort_order) VALUES
+    -- Diwali Mela ticket types
+    ('l1100000-0000-0000-0000-000000000001',
+     '51100000-0000-0000-0000-000000000001',
+     'General Entry', 'Entry to all open stalls, performances and rangoli area',
+     0.00, TRUE, NULL, 1),
+    ('l1100000-0000-0000-0000-000000000002',
+     '51100000-0000-0000-0000-000000000001',
+     'Dinner Pass', 'Includes a plate at the grand potluck dinner buffet',
+     150.00, FALSE, 200, 2),
+    ('l1100000-0000-0000-0000-000000000003',
+     '51100000-0000-0000-0000-000000000001',
+     'Games Bundle', 'Unlimited access to all Fun Games Zone activities',
+     50.00, FALSE, 150, 3),
+
+    -- Annual Sports Day ticket types
+    ('l1100000-0000-0000-0000-000000000004',
+     '51100000-0000-0000-0000-000000000002',
+     'Participant', 'Register as a player in any category (includes kit + refreshments)',
+     150.00, FALSE, NULL, 1),
+    ('l1100000-0000-0000-0000-000000000005',
+     '51100000-0000-0000-0000-000000000002',
+     'Spectator', 'Entry to watch all events from spectator stands',
+     50.00, FALSE, NULL, 2),
+    ('l1100000-0000-0000-0000-000000000006',
+     '51100000-0000-0000-0000-000000000002',
+     'Kids Zone', 'Kids 5-12 years — mini-games and activity corner',
+     75.00, FALSE, 80, 3)
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- REGISTRATION_ITEM  (line items tying existing registrations to ticket types)
+-- ---------------------------------------------------------------------------
+INSERT INTO registration_item (id, registration_id, ticket_type_id, quantity, unit_price) VALUES
+    -- Arjun's Sports Day registration: 2 participant tickets @ ₹150 each
+    ('m1100000-0000-0000-0000-000000000001',
+     '61100000-0000-0000-0000-000000000004',
+     'l1100000-0000-0000-0000-000000000004',
+     2, 150.00),
+
+    -- Vikram's Sports Day registration: 1 spectator ticket @ ₹50 (displayed as USD)
+    ('m1100000-0000-0000-0000-000000000002',
+     '61100000-0000-0000-0000-000000000005',
+     'l1100000-0000-0000-0000-000000000005',
+     1, 50.00),
+
+    -- Priya's Children's Carnival: no ticket_type (single-tier event, no rows needed)
+    -- Arjun's Diwali: 3 general entry tickets (free)
+    ('m1100000-0000-0000-0000-000000000003',
+     '61100000-0000-0000-0000-000000000001',
+     'l1100000-0000-0000-0000-000000000001',
+     3, 0.00)
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- FREE_TOKEN  (organizer-issued codes for complimentary access)
+-- ---------------------------------------------------------------------------
+INSERT INTO free_token (id, event_id, ticket_type_id, token_code,
+                         issued_to_name, issued_to_email, issued_by,
+                         is_used, notes) VALUES
+    -- Diwali Dinner Pass for special guest (named)
+    ('n1100000-0000-0000-0000-000000000001',
+     '51100000-0000-0000-0000-000000000001',
+     'l1100000-0000-0000-0000-000000000002',
+     'DIWALI-DIN-001',
+     'Dr. Suresh Pillai', 'suresh.pillai@gmail.com',
+     '31100000-0000-0000-0000-000000000002',
+     FALSE, 'VIP guest — chief guest for cultural performance'),
+
+    -- Diwali Games Bundle — bulk tokens for sponsor team (no names; use token_code at stall)
+    ('n1100000-0000-0000-0000-000000000002',
+     '51100000-0000-0000-0000-000000000001',
+     'l1100000-0000-0000-0000-000000000003',
+     'DIWALI-GAME-TECHCORP',
+     NULL, NULL,
+     '31100000-0000-0000-0000-000000000002',
+     FALSE, 'TechCorp sponsor team — 4 games passes (anonymous)'),
+
+    -- Sports Day Spectator token for walk-in press representative
+    ('n1100000-0000-0000-0000-000000000003',
+     '51100000-0000-0000-0000-000000000002',
+     'l1100000-0000-0000-0000-000000000005',
+     'SPORTS-SPEC-PRESS-001',
+     'Kavitha Nambiar (The Hindu)', NULL,
+     '31100000-0000-0000-0000-000000000001',
+     TRUE, 'Press spectator — used at gate')
 ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------

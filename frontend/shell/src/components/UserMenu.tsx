@@ -1,24 +1,30 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Avatar, Box, Chip, Divider, IconButton,
+  Avatar, Box, Chip, Divider,
   ListItemIcon, Menu, MenuItem, Tooltip, Typography,
 } from '@mui/material';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import ApartmentIcon from '@mui/icons-material/Apartment';
 import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import LogoutIcon from '@mui/icons-material/Logout';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserService } from '../contexts/UserServiceContext';
 import { ROLE_COLORS, ROLE_LABELS } from '../theme';
 
 export function UserMenu() {
-  const { user, logout } = useAuth();
+  const { user, logout }   = useAuth();
+  const { dbUser }         = useUserService();
+  const navigate           = useNavigate();
   const [anchor, setAnchor] = useState<null | HTMLElement>(null);
 
   if (!user) return null;
 
   const open      = Boolean(anchor);
   const firstName = user.name.split(' ')[0];
+  const apt       = dbUser?.apartment;
 
   return (
     <>
@@ -63,6 +69,14 @@ export function UserMenu() {
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography fontWeight={600} fontSize={14} noWrap>{user.name}</Typography>
             <Typography fontSize={12} color="text.secondary" noWrap>{user.email}</Typography>
+            {apt && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                <ApartmentIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+                <Typography fontSize={11} color="text.secondary" noWrap>
+                  Block {apt.block} — {apt.unit_number}
+                </Typography>
+              </Box>
+            )}
             <Chip
               label={ROLE_LABELS[user.primaryRole] ?? user.primaryRole}
               size="small"
@@ -78,20 +92,20 @@ export function UserMenu() {
 
         <Divider />
 
-        <MenuItem dense sx={{ gap: 1.25, py: 1.25 }}>
+        <MenuItem dense onClick={() => navigate('/profile')} sx={{ gap: 1.25, py: 1.25 }}>
           <ListItemIcon sx={{ minWidth: 0 }}><AccountCircleIcon fontSize="small" /></ListItemIcon>
           My Profile
         </MenuItem>
 
-        <MenuItem dense sx={{ gap: 1.25, py: 1.25 }}>
+        <MenuItem dense onClick={() => navigate('/tickets')} sx={{ gap: 1.25, py: 1.25 }}>
           <ListItemIcon sx={{ minWidth: 0 }}><ConfirmationNumberIcon fontSize="small" /></ListItemIcon>
           My Tickets
         </MenuItem>
 
         {(user.primaryRole === 'admin' || user.primaryRole === 'committee_member') && (
-          <MenuItem dense sx={{ gap: 1.25, py: 1.25 }}>
+          <MenuItem dense onClick={() => navigate(user.primaryRole === 'admin' ? '/admin' : '/manage')} sx={{ gap: 1.25, py: 1.25 }}>
             <ListItemIcon sx={{ minWidth: 0 }}><DashboardIcon fontSize="small" /></ListItemIcon>
-            Admin Dashboard
+            {user.primaryRole === 'admin' ? 'Admin Dashboard' : 'Manage Events'}
           </MenuItem>
         )}
 

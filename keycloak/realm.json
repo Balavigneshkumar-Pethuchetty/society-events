@@ -12,8 +12,11 @@
   "sslRequired": "external",
   "defaultSignatureAlgorithm": "RS256",
   "accessTokenLifespan": 300,
+  "rememberMe": true,
   "ssoSessionIdleTimeout": 1800,
   "ssoSessionMaxLifespan": 36000,
+  "ssoSessionIdleTimeoutRememberMe": 604800,
+  "ssoSessionMaxLifespanRememberMe": 2592000,
   "refreshTokenMaxReuse": 0,
   "revokeRefreshToken": true,
   "bruteForceProtected": true,
@@ -34,6 +37,10 @@
       {
         "name": "security_guard",
         "description": "Can scan QR codes at entry"
+      },
+      {
+        "name": "sponsor",
+        "description": "External sponsor — can view sponsored events and manage refund requests"
       }
     ]
   },
@@ -46,22 +53,33 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,
       "protocol": "openid-connect",
       "redirectUris": [
+        "http://localhost/*",
         "http://localhost:3000/*",
+        "http://localhost:3001/*",
+        "http://localhost:4004/*",
+        "http://localhost:4005/*",
+        "http://localhost:3001/docs/oauth2-redirect",
         "http://localhost:4200/*",
         "http://localhost:5173/*",
         "http://localhost:8080/*",
+        "http://192.168.1.11/*",
         "http://192.168.1.11:8080/*",
         "http://192.168.1.11:3000/*"
       ],
       "webOrigins": [
+        "http://localhost",
         "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:4004",
+        "http://localhost:4005",
         "http://localhost:4200",
         "http://localhost:5173",
         "http://localhost:8080",
+        "http://192.168.1.11",
         "http://192.168.1.11:8080",
         "http://192.168.1.11:3000"
       ],
@@ -69,6 +87,7 @@
         "pkce.code.challenge.method": "S256"
       },
       "defaultClientScopes": [
+        "basic",
         "openid",
         "profile",
         "email",
@@ -212,8 +231,60 @@
       "realmRoles": [
         "resident"
       ]
+    },
+    {
+      "id": "a1000000-0000-0000-0000-000000000007",
+      "username": "kavya.reddy",
+      "email": "kavya.reddy@techcorp.com",
+      "firstName": "Kavya",
+      "lastName": "Reddy",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test@1234",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "sponsor"
+      ]
+    },
+    {
+      "id": "a1000000-0000-0000-0000-000000000008",
+      "username": "bala.pethuchetty",
+      "email": "balavigneskumar@gmail.com",
+      "firstName": "Bala",
+      "lastName": "Pethuchetty",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "Test@1234",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin",
+        "committee_member",
+        "resident"
+      ]
     }
   ],
   "registrationEmailAsUsername": false,
-  "verifyEmail": false
+  "verifyEmail": false,
+  "smtpServer": {
+    "host": "mailpit",
+    "port": "1025",
+    "from": "noreply@pvh-blr.in",
+    "fromDisplayName": "Prestige Verdant Heights",
+    "ssl": "false",
+    "starttls": "false",
+    "auth": "false"
+  },
+  "attributes": {
+    "userProfileEnabled": "true"
+  }
 }

@@ -30,7 +30,7 @@
 - Resolves `keycloak_sub` (JWT `sub` claim) → internal `users.id`
 - Profile CRUD, apartment assignment, role management
 - Every other service calls this to resolve user identity
-- **Technology:** Node.js / Go
+- **Technology:** Python / FastAPI
 
 ### 3. Event Service (port 3002)
 - Full event lifecycle: `draft → published → completed/cancelled`

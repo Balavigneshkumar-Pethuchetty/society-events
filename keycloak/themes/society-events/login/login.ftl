@@ -110,12 +110,12 @@
         </div>
 
         <div class="form-row">
-          <#if realm.rememberMe && !usernameEditDisabled??>
+          <#if realm.rememberMe && !(usernameEditDisabled??)>
             <label class="check-label">
               <input
                 type="checkbox"
                 name="rememberMe"
-                <#if login.rememberMe?? && login.rememberMe>checked</#if>
+                <#if login.rememberMe?? && login.rememberMe == "on">checked</#if>
               />
               <span>Remember me</span>
             </label>

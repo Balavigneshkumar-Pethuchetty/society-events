@@ -1,0 +1,11 @@
+{
+  "name": "pvh-events",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n shell,admin,events,booking,payment -c blue,magenta,cyan,green,yellow --kill-others-on-fail \"cd frontend/shell && npm run dev\" \"cd frontend/mfe-admin && npm run start:dev\" \"cd frontend/mfe-events && npm run start:dev\" \"cd frontend/mfe-booking && npm run start:dev\" \"cd frontend/mfe-payment && npm run start:dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

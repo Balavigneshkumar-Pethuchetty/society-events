@@ -129,7 +129,7 @@ export function Landing() {
               variant="contained"
               size="large"
               startIcon={<LoginIcon />}
-              onClick={login}
+              onClick={() => login()}
               sx={{
                 px: 5, py: 1.75, fontWeight: 700, fontSize: 16,
                 bgcolor: '#6366f1',
@@ -342,7 +342,7 @@ export function Landing() {
               variant="text"
               size="large"
               startIcon={<LoginIcon />}
-              onClick={login}
+              onClick={() => login()}
               sx={{ color: '#c7d2fe', fontWeight: 600, fontSize: 15, '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.08)' }, minWidth: 160 }}
             >
               Sign In

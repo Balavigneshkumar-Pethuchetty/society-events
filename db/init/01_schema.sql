@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS users (
     email               VARCHAR(255) NOT NULL UNIQUE,
     phone               VARCHAR(20),
     role                VARCHAR(50) NOT NULL DEFAULT 'resident',
-                        -- 'admin' | 'committee_member' | 'resident' | 'security_guard'
+                        -- 'admin' | 'committee_member' | 'resident' | 'security_guard' | 'sponsor'
     keycloak_sub        VARCHAR(255) UNIQUE,  -- Keycloak user UUID (sub claim)
     identity_provider   VARCHAR(50) NOT NULL DEFAULT 'keycloak',
                         -- 'keycloak' | 'google' | 'facebook' | 'apple'
@@ -257,3 +257,328 @@ CREATE INDEX IF NOT EXISTS idx_exrate_lookup        ON exchange_rate(from_curren
 -- oauth_session
 CREATE INDEX IF NOT EXISTS idx_session_user         ON oauth_session(user_id);
 CREATE INDEX IF NOT EXISTS idx_session_expires      ON oauth_session(expires_at);
+
+-- =============================================================================
+-- SPONSOR  (organizations or individuals who sponsor events)
+-- user_id links to a users row when the sponsor also has a platform account.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS sponsor (
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id             UUID        REFERENCES users(id) ON DELETE SET NULL,
+    organization_name   VARCHAR(255) NOT NULL,
+    organization_type   VARCHAR(50)  NOT NULL DEFAULT 'private',
+                        -- 'public' | 'private' | 'ngo' | 'individual'
+    contact_name        VARCHAR(255),
+    contact_email       VARCHAR(255),
+    contact_phone       VARCHAR(20),
+    logo_url            TEXT,
+    is_active           BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ---------------------------------------------------------------------------
+-- EVENT_SPONSORSHIP  (one sponsor ↔ one event per row; multiple sponsors OK)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS event_sponsorship (
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id            UUID        NOT NULL REFERENCES event(id) ON DELETE CASCADE,
+    sponsor_id          UUID        NOT NULL REFERENCES sponsor(id) ON DELETE CASCADE,
+    amount              NUMERIC(12,2) NOT NULL,
+    currency_code       CHAR(3)     NOT NULL DEFAULT 'INR' REFERENCES currency(code),
+    status              VARCHAR(50) NOT NULL DEFAULT 'pledged',
+                        -- 'pledged' | 'received' | 'refund_requested' | 'refunded'
+    payment_reference   VARCHAR(255),
+    notes               TEXT,
+    sponsored_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_sponsorship_amount CHECK (amount > 0),
+    UNIQUE (event_id, sponsor_id)
+);
+
+-- ---------------------------------------------------------------------------
+-- SPONSORSHIP_REFUND  (sponsor raises request; organizer/admin approves)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sponsorship_refund (
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    sponsorship_id      UUID        NOT NULL REFERENCES event_sponsorship(id) ON DELETE CASCADE,
+    requested_by        UUID        NOT NULL REFERENCES users(id),
+    amount              NUMERIC(12,2) NOT NULL,
+    currency_code       CHAR(3)     NOT NULL DEFAULT 'INR' REFERENCES currency(code),
+    reason              TEXT,
+    status              VARCHAR(50) NOT NULL DEFAULT 'pending',
+                        -- 'pending' | 'approved' | 'rejected' | 'processed'
+    reviewed_by         UUID        REFERENCES users(id),
+    reviewed_at         TIMESTAMPTZ,
+    processed_at        TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_refund_amount CHECK (amount > 0)
+);
+
+-- ---------------------------------------------------------------------------
+-- EVENT_EXPENSE  (cost items logged by organizer; drives the finance view)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS event_expense (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id        UUID        NOT NULL REFERENCES event(id) ON DELETE CASCADE,
+    description     VARCHAR(255) NOT NULL,
+    amount          NUMERIC(10,2) NOT NULL,
+    currency_code   CHAR(3)     NOT NULL DEFAULT 'INR' REFERENCES currency(code),
+    category        VARCHAR(50) NOT NULL DEFAULT 'other',
+                    -- 'venue' | 'catering' | 'equipment' | 'marketing' | 'staff' | 'other'
+    receipt_url     TEXT,
+    created_by      UUID        NOT NULL REFERENCES users(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_expense_amount CHECK (amount > 0)
+);
+
+-- ---------------------------------------------------------------------------
+-- COMPLIMENTARY_TICKET  (free-entry allocation managed by organizer)
+-- invited_by_user_id is NULL for walk_in entries — no account required.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS complimentary_ticket (
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id            UUID        NOT NULL REFERENCES event(id) ON DELETE CASCADE,
+    invited_by_user_id  UUID        REFERENCES users(id) ON DELETE SET NULL,
+    inviter_type        VARCHAR(50) NOT NULL,
+                        -- 'organizer' | 'committee_member' | 'sponsor' | 'walk_in'
+    ticket_count        INTEGER     NOT NULL DEFAULT 1,
+    notes               TEXT,
+    created_by          UUID        NOT NULL REFERENCES users(id),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_comp_ticket_count CHECK (ticket_count > 0)
+);
+
+-- =============================================================================
+-- INDEXES — new tables
+-- =============================================================================
+
+-- sponsor
+CREATE INDEX IF NOT EXISTS idx_sponsor_user         ON sponsor(user_id);
+CREATE INDEX IF NOT EXISTS idx_sponsor_active       ON sponsor(is_active);
+
+-- event_sponsorship
+CREATE INDEX IF NOT EXISTS idx_esponsor_event       ON event_sponsorship(event_id);
+CREATE INDEX IF NOT EXISTS idx_esponsor_sponsor     ON event_sponsorship(sponsor_id);
+CREATE INDEX IF NOT EXISTS idx_esponsor_status      ON event_sponsorship(status);
+
+-- sponsorship_refund
+CREATE INDEX IF NOT EXISTS idx_srefund_sponsorship  ON sponsorship_refund(sponsorship_id);
+CREATE INDEX IF NOT EXISTS idx_srefund_status       ON sponsorship_refund(status);
+
+-- event_expense
+CREATE INDEX IF NOT EXISTS idx_expense_event        ON event_expense(event_id);
+CREATE INDEX IF NOT EXISTS idx_expense_category     ON event_expense(category);
+
+-- complimentary_ticket
+CREATE INDEX IF NOT EXISTS idx_compticket_event     ON complimentary_ticket(event_id);
+CREATE INDEX IF NOT EXISTS idx_compticket_inviter   ON complimentary_ticket(invited_by_user_id);
+
+-- =============================================================================
+-- VENDOR  (shops / stalls invited to an event)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS vendor (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    society_id      UUID        NOT NULL REFERENCES society(id) ON DELETE CASCADE,
+    name            VARCHAR(255) NOT NULL,
+    category        VARCHAR(50) NOT NULL DEFAULT 'other',
+                    -- 'food' | 'beverages' | 'merchandise' | 'games' | 'services' | 'other'
+    contact_name    VARCHAR(255),
+    contact_email   VARCHAR(255),
+    contact_phone   VARCHAR(20),
+    is_active       BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ---------------------------------------------------------------------------
+-- EVENT_VENDOR  (link a vendor to a specific event; includes fee arrangement)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS event_vendor (
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id            UUID        NOT NULL REFERENCES event(id) ON DELETE CASCADE,
+    vendor_id           UUID        NOT NULL REFERENCES vendor(id) ON DELETE CASCADE,
+    stall_number        VARCHAR(20),
+    fee_type            VARCHAR(50) NOT NULL DEFAULT 'fixed',
+                        -- 'fixed' | 'revenue_share' | 'free'
+    fixed_fee           NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    revenue_share_pct   NUMERIC(5,2) NOT NULL DEFAULT 0.00,
+                        -- percentage of vendor's gross revenue paid to the society
+    actual_revenue      NUMERIC(12,2),   -- filled in after event completes
+    status              VARCHAR(50) NOT NULL DEFAULT 'invited',
+                        -- 'invited' | 'confirmed' | 'cancelled'
+    notes               TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_ev_fixed_fee      CHECK (fixed_fee >= 0),
+    CONSTRAINT chk_ev_share_pct      CHECK (revenue_share_pct >= 0 AND revenue_share_pct <= 100),
+    UNIQUE (event_id, vendor_id)
+);
+
+-- ---------------------------------------------------------------------------
+-- VENDOR_REVENUE_DISTRIBUTION  (pool collected from vendors for an event)
+-- Once organizer approves, individual distribution_entry rows are created.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS vendor_revenue_distribution (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id        UUID        NOT NULL REFERENCES event(id) ON DELETE CASCADE,
+    total_pool      NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    currency_code   CHAR(3)     NOT NULL DEFAULT 'INR' REFERENCES currency(code),
+    status          VARCHAR(50) NOT NULL DEFAULT 'draft',
+                    -- 'draft' | 'approved' | 'distributed'
+    approved_by     UUID        REFERENCES users(id),
+    approved_at     TIMESTAMPTZ,
+    distributed_at  TIMESTAMPTZ,
+    notes           TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_vrd_pool CHECK (total_pool >= 0),
+    UNIQUE (event_id)
+);
+
+-- ---------------------------------------------------------------------------
+-- DISTRIBUTION_ENTRY  (individual payout line inside a revenue distribution)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS distribution_entry (
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    distribution_id     UUID        NOT NULL REFERENCES vendor_revenue_distribution(id) ON DELETE CASCADE,
+    recipient_type      VARCHAR(50) NOT NULL,
+                        -- 'sponsor' | 'organizer' | 'resident' | 'society'
+    recipient_user_id   UUID        REFERENCES users(id) ON DELETE SET NULL,
+    recipient_sponsor_id UUID       REFERENCES sponsor(id) ON DELETE SET NULL,
+    share_percentage    NUMERIC(5,2) NOT NULL,
+    amount              NUMERIC(12,2) NOT NULL,
+    status              VARCHAR(50) NOT NULL DEFAULT 'pending',
+                        -- 'pending' | 'paid'
+    paid_at             TIMESTAMPTZ,
+    notes               TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_de_pct    CHECK (share_percentage > 0 AND share_percentage <= 100),
+    CONSTRAINT chk_de_amount CHECK (amount >= 0)
+);
+
+-- =============================================================================
+-- TICKET_TYPE  (named tiers per event: e.g. Breakfast, Lunch, Games Pass)
+-- An event with no ticket_type rows falls back to the single-price legacy flow.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS ticket_type (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id    UUID        NOT NULL REFERENCES event(id) ON DELETE CASCADE,
+    name        VARCHAR(100) NOT NULL,   -- 'General Entry', 'Dinner', 'Games Pass', …
+    description TEXT,
+    price       NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    is_free     BOOLEAN     NOT NULL DEFAULT FALSE,
+    capacity    INTEGER,                 -- NULL = unlimited
+    sort_order  INTEGER     NOT NULL DEFAULT 0,
+    is_active   BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_tt_price CHECK (price >= 0),
+    UNIQUE (event_id, name)
+);
+
+-- ---------------------------------------------------------------------------
+-- REGISTRATION_ITEM  (line item within a registration for multi-type tickets)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS registration_item (
+    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    registration_id UUID        NOT NULL REFERENCES registration(id) ON DELETE CASCADE,
+    ticket_type_id  UUID        NOT NULL REFERENCES ticket_type(id),
+    quantity        INTEGER     NOT NULL DEFAULT 1 CHECK (quantity > 0),
+    unit_price      NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+    total_price     NUMERIC(10,2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_ri_price CHECK (unit_price >= 0),
+    UNIQUE (registration_id, ticket_type_id)
+);
+
+-- ---------------------------------------------------------------------------
+-- FREE_TOKEN  (organizer issues free-entry tokens; usable by anyone)
+-- issued_to_name / issued_to_email are optional — walk-in tokens need neither.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS free_token (
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id            UUID        NOT NULL REFERENCES event(id) ON DELETE CASCADE,
+    ticket_type_id      UUID        REFERENCES ticket_type(id) ON DELETE SET NULL,
+    token_code          VARCHAR(50) NOT NULL UNIQUE,   -- short unique code shown to recipient
+    issued_to_name      VARCHAR(255),
+    issued_to_email     VARCHAR(255),
+    issued_by           UUID        NOT NULL REFERENCES users(id),
+    is_used             BOOLEAN     NOT NULL DEFAULT FALSE,
+    used_at             TIMESTAMPTZ,
+    notes               TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- =============================================================================
+-- INDEXES — vendor + ticket tables
+-- =============================================================================
+
+-- vendor
+CREATE INDEX IF NOT EXISTS idx_vendor_society       ON vendor(society_id);
+CREATE INDEX IF NOT EXISTS idx_vendor_category      ON vendor(category);
+
+-- event_vendor
+CREATE INDEX IF NOT EXISTS idx_evendor_event        ON event_vendor(event_id);
+CREATE INDEX IF NOT EXISTS idx_evendor_vendor       ON event_vendor(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_evendor_status       ON event_vendor(status);
+
+-- vendor_revenue_distribution
+CREATE INDEX IF NOT EXISTS idx_vrd_event            ON vendor_revenue_distribution(event_id);
+CREATE INDEX IF NOT EXISTS idx_vrd_status           ON vendor_revenue_distribution(status);
+
+-- distribution_entry
+CREATE INDEX IF NOT EXISTS idx_distentry_dist       ON distribution_entry(distribution_id);
+CREATE INDEX IF NOT EXISTS idx_distentry_user       ON distribution_entry(recipient_user_id);
+CREATE INDEX IF NOT EXISTS idx_distentry_sponsor    ON distribution_entry(recipient_sponsor_id);
+
+-- ticket_type
+CREATE INDEX IF NOT EXISTS idx_ticktype_event       ON ticket_type(event_id);
+CREATE INDEX IF NOT EXISTS idx_ticktype_sort        ON ticket_type(event_id, sort_order);
+
+-- registration_item
+CREATE INDEX IF NOT EXISTS idx_regitem_registration ON registration_item(registration_id);
+CREATE INDEX IF NOT EXISTS idx_regitem_ticktype     ON registration_item(ticket_type_id);
+
+-- free_token
+CREATE INDEX IF NOT EXISTS idx_freetoken_event      ON free_token(event_id);
+CREATE INDEX IF NOT EXISTS idx_freetoken_code       ON free_token(token_code);
+CREATE INDEX IF NOT EXISTS idx_freetoken_used       ON free_token(is_used);
+
+-- =============================================================================
+-- FINANCE SUMMARY VIEW  (per-event income, expenses, and complimentary count)
+-- Now includes vendor revenue in net_balance calculation.
+-- =============================================================================
+CREATE OR REPLACE VIEW v_event_finance AS
+SELECT
+    e.id                                                        AS event_id,
+    e.title,
+    e.status,
+    COALESCE(SUM(DISTINCT r.total_amount), 0)                  AS ticket_revenue,
+    COALESCE(
+        (SELECT SUM(es2.amount) FROM event_sponsorship es2
+         WHERE es2.event_id = e.id AND es2.status = 'received'), 0)
+                                                                AS sponsorship_income,
+    COALESCE(
+        (SELECT SUM(ex2.amount) FROM event_expense ex2
+         WHERE ex2.event_id = e.id), 0)                        AS total_expenses,
+    COALESCE(
+        (SELECT vrd.total_pool FROM vendor_revenue_distribution vrd
+         WHERE vrd.event_id = e.id), 0)                        AS vendor_pool,
+    COALESCE(
+        (SELECT SUM(es3.amount) FROM event_sponsorship es3
+         WHERE es3.event_id = e.id AND es3.status = 'received'), 0)
+    + COALESCE(SUM(DISTINCT r.total_amount), 0)
+    + COALESCE(
+        (SELECT vrd2.total_pool FROM vendor_revenue_distribution vrd2
+         WHERE vrd2.event_id = e.id), 0)
+    - COALESCE(
+        (SELECT SUM(ex3.amount) FROM event_expense ex3
+         WHERE ex3.event_id = e.id), 0)                        AS net_balance,
+    COALESCE(
+        (SELECT COUNT(*) FROM event_sponsorship es4
+         WHERE es4.event_id = e.id), 0)                        AS sponsor_count,
+    COALESCE(
+        (SELECT SUM(ct.ticket_count) FROM complimentary_ticket ct
+         WHERE ct.event_id = e.id), 0)                         AS complimentary_tickets,
+    COALESCE(
+        (SELECT COUNT(*) FROM free_token ft
+         WHERE ft.event_id = e.id), 0)                         AS free_tokens_issued
+FROM event e
+LEFT JOIN registration r ON r.event_id = e.id AND r.status = 'confirmed'
+GROUP BY e.id, e.title, e.status
+ORDER BY e.start_time;

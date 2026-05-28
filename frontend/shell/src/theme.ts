@@ -7,6 +7,7 @@ export const ROLE_COLORS: Record<string, string> = {
   committee_member: '#0ea5e9',
   resident:         '#10b981',
   security_guard:   '#f59e0b',
+  sponsor:          '#7c3aed',
 };
 
 export const ROLE_LABELS: Record<string, string> = {
@@ -14,6 +15,7 @@ export const ROLE_LABELS: Record<string, string> = {
   committee_member: 'Committee Member',
   resident:         'Resident',
   security_guard:   'Security Guard',
+  sponsor:          'Sponsor',
 };
 
 export const theme = createTheme({

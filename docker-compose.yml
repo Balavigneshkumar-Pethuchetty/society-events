@@ -27,7 +27,8 @@ services:
       POSTGRES_USER:     ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB:       society_events
-    # No host port — only other containers on society_net can reach postgres
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
@@ -59,6 +60,8 @@ services:
       KC_HTTP_ENABLED:         "true"
       KC_HEALTH_ENABLED:       "true"
       KC_LOG_LEVEL:            INFO
+    ports:
+      - "8081:8080"
     volumes:
       - ./keycloak:/opt/keycloak/data/import:ro
       - ./keycloak/themes:/opt/keycloak/themes:ro
@@ -134,9 +137,43 @@ services:
     networks:
       - society_net
 
+  # ─── User Service (port 3001) ─────────────────────────────────────────────
+  user-service:
+    build:
+      context: ./services/user
+      dockerfile: Dockerfile
+    container_name: society_user_service
+    restart: always
+    environment:
+      DB_HOST:           postgres
+      DB_PORT:           5432
+      DB_NAME:           society_events
+      DB_USER:           ${POSTGRES_USER}
+      DB_PASSWORD:       ${POSTGRES_PASSWORD}
+      KEYCLOAK_URL:              http://keycloak:8080
+      KEYCLOAK_REALM:            society-events
+      KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
+      KEYCLOAK_ADMIN_USER:       ${KEYCLOAK_ADMIN_USER:-admin}
+      KEYCLOAK_ADMIN_PASSWORD:   ${KEYCLOAK_ADMIN_PASSWORD}
+      INTERNAL_API_KEY:          ${INTERNAL_API_KEY:-change-this-in-prod}
+      SOCIETY_ID:        11100000-0000-0000-0000-000000000001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - society_net
+
   # ─── Shell App (production build) ─────────────────────────────────────────
   # Opt-in only: docker compose --profile frontend up -d --build
-  # For local dev use: make frontend  (Vite hot-reload, no Docker needed)
+  # For local dev use: npm run dev inside frontend/shell (Vite HMR, no Docker)
   frontend:
     profiles: [frontend]
     build:
@@ -145,6 +182,51 @@ services:
     container_name: society_frontend
     restart: always
     # No host port — served by nginx at /
+    networks:
+      - society_net
+
+  # ─── MFE: Admin (production build) ──────────────────────────────────────────
+  mfe-admin:
+    profiles: [frontend]
+    build:
+      context: ./frontend/mfe-admin
+      dockerfile: Dockerfile
+    container_name: society_mfe_admin
+    restart: always
+    # No host port — served by nginx at /mfe-admin/
+    networks:
+      - society_net
+
+  # ─── MFE: Events (production build) ─────────────────────────────────────────
+  mfe-events:
+    profiles: [frontend]
+    build:
+      context: ./frontend/mfe-events
+      dockerfile: Dockerfile
+    container_name: society_mfe_events
+    restart: always
+    networks:
+      - society_net
+
+  # ─── MFE: Booking (production build) ────────────────────────────────────────
+  mfe-booking:
+    profiles: [frontend]
+    build:
+      context: ./frontend/mfe-booking
+      dockerfile: Dockerfile
+    container_name: society_mfe_booking
+    restart: always
+    networks:
+      - society_net
+
+  # ─── MFE: Payment (production build) ────────────────────────────────────────
+  mfe-payment:
+    profiles: [frontend]
+    build:
+      context: ./frontend/mfe-payment
+      dockerfile: Dockerfile
+    container_name: society_mfe_payment
+    restart: always
     networks:
       - society_net
 

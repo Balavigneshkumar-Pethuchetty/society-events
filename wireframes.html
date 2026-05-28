@@ -4,104 +4,243 @@
   <meta charset="UTF-8" />
   <title>Society Events — Wireframes</title>
   <style>
+    /* ── MUI Design System: Palette ───────────────────────────────
+       Primary  : #6366f1  (indigo-500)
+       Success  : #10b981  (emerald-500)
+       Warning  : #f59e0b  (amber-500)
+       Error    : #ef4444  (red-500)
+       Nav bg   : #1e293b  (slate-800)
+       Bg page  : #f8fafc  (slate-50)
+       Border   : #e2e8f0  (slate-200)
+       Text pri : #0f172a  (slate-900)
+       Text sec : #64748b  (slate-500)
+    ─────────────────────────────────────────────────────────────── */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 13px; background: #e8e8e8; padding: 24px; color: #222; }
-    h1 { font-size: 20px; margin-bottom: 4px; }
-    .subtitle { color: #666; margin-bottom: 32px; font-size: 13px; }
-    .toc { background: #fff; border: 2px solid #333; padding: 16px; margin-bottom: 32px; max-width: 420px; }
-    .toc a { display: block; padding: 4px 0; color: #1d4ed8; text-decoration: none; font-size: 13px; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px; background: #f1f5f9; padding: 24px; color: #0f172a;
+    }
+    h1 { font-size: 22px; font-weight: 800; margin-bottom: 4px; color: #0f172a; }
+    .subtitle { color: #64748b; margin-bottom: 32px; font-size: 13px; }
+
+    /* TOC — MUI Paper */
+    .toc {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+      padding: 20px; margin-bottom: 32px; max-width: 460px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .toc a { display: block; padding: 4px 0; color: #6366f1; text-decoration: none; font-size: 13px; font-weight: 500; }
     .toc a:hover { text-decoration: underline; }
 
-    /* Screen wrapper */
-    .screen { background: #fff; border: 3px solid #222; max-width: 960px; margin: 0 auto 48px; box-shadow: 4px 4px 0 #999; }
-    .screen-label { background: #222; color: #fff; font-size: 13px; font-weight: bold; padding: 8px 14px; letter-spacing: 0.5px; }
+    /* Screen wrapper — MUI Paper elevation */
+    .screen {
+      background: #fff; border-radius: 12px; max-width: 960px;
+      margin: 0 auto 48px; overflow: hidden;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -1px rgba(0,0,0,0.04);
+    }
+    .screen-label {
+      background: #1e293b; color: rgba(203,213,225,0.9); font-size: 12px;
+      font-weight: 600; padding: 8px 16px; letter-spacing: 0.3px;
+    }
 
     /* Wireframe primitives */
-    .ph  { background: #ddd; border: 1px dashed #aaa; display: flex; align-items: center; justify-content: center; color: #888; font-size: 11px; }
-    .box { border: 2px solid #444; padding: 12px; }
-    .card { border: 1px solid #bbb; padding: 12px; }
-    .btn  { display: inline-block; border: 2px solid #222; padding: 6px 14px; background: #222; color: #fff; font-size: 12px; cursor: pointer; white-space: nowrap; }
-    .btn-sm { font-size: 11px; padding: 4px 10px; }
-    .btn-out { display: inline-block; border: 2px solid #222; padding: 6px 14px; background: #fff; color: #222; font-size: 12px; cursor: pointer; white-space: nowrap; }
-    .chip { display: inline-block; border: 1px solid #999; padding: 3px 10px; font-size: 11px; border-radius: 2px; cursor: pointer; }
-    .chip.active { background: #222; color: #fff; border-color: #222; }
-    .badge { display: inline-block; border: 1px solid; padding: 1px 7px; font-size: 10px; }
-    .badge-green { border-color: #16a34a; color: #16a34a; }
-    .badge-blue  { border-color: #2563eb; color: #2563eb; }
-    .badge-amber { border-color: #d97706; color: #d97706; }
-    .badge-red   { border-color: #dc2626; color: #dc2626; }
-    .badge-gray  { border-color: #6b7280; color: #6b7280; }
-    .tag { display: inline-block; background: #f3f3f3; border: 1px solid #ccc; padding: 2px 8px; font-size: 11px; }
-    .divider { border: none; border-top: 1px solid #ddd; margin: 10px 0; }
-    .lbl { font-size: 10px; color: #888; font-weight: bold; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
-    input, select { border: 1px solid #aaa; padding: 6px 10px; font-size: 13px; width: 100%; outline: none; }
-    textarea { border: 1px solid #aaa; padding: 6px 10px; font-size: 13px; width: 100%; outline: none; resize: vertical; }
+    .ph  { background: #f1f5f9; border: 1px dashed #cbd5e1; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 11px; }
+    .box { border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; background: #fff; }
+    .card {
+      border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; background: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      transition: box-shadow .2s, transform .2s;
+    }
+    .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.09); transform: translateY(-1px); }
+
+    /* Buttons — MUI Button */
+    .btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      border: none; border-radius: 6px; padding: 6px 16px;
+      background: #6366f1; color: #fff; font-size: 13px; font-weight: 500;
+      cursor: pointer; white-space: nowrap; letter-spacing: 0.01em;
+      box-shadow: 0 1px 2px rgba(99,102,241,0.25);
+      transition: background .15s, box-shadow .15s;
+    }
+    .btn:hover { background: #4f46e5; box-shadow: 0 2px 6px rgba(99,102,241,0.4); }
+    .btn-sm { font-size: 12px; padding: 4px 12px; }
+    .btn-out {
+      display: inline-flex; align-items: center; gap: 4px;
+      border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 16px;
+      background: #fff; color: #0f172a; font-size: 13px; font-weight: 500;
+      cursor: pointer; white-space: nowrap;
+      transition: border-color .15s, color .15s, background .15s;
+    }
+    .btn-out:hover { border-color: #6366f1; color: #6366f1; background: #f5f3ff; }
+
+    /* MUI Chip */
+    .chip {
+      display: inline-flex; align-items: center;
+      border: 1px solid #e2e8f0; border-radius: 16px; padding: 4px 12px;
+      font-size: 12px; font-weight: 600; cursor: pointer; background: #fff;
+      transition: all .15s;
+    }
+    .chip.active { background: #6366f1; color: #fff; border-color: #6366f1; }
+    .chip:hover:not(.active) { border-color: #6366f1; color: #6366f1; }
+
+    /* MUI Chip badges (filled, pill) */
+    .badge {
+      display: inline-flex; align-items: center;
+      border-radius: 12px; padding: 2px 10px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.2px;
+    }
+    .badge-green { background: #dcfce7; color: #15803d; }
+    .badge-blue  { background: #dbeafe; color: #1d4ed8; }
+    .badge-amber { background: #fef3c7; color: #b45309; }
+    .badge-red   { background: #fee2e2; color: #b91c1c; }
+    .badge-gray  { background: #f1f5f9; color: #475569; }
+    .badge-purple{ background: #ede9fe; color: #6d28d9; }
+
+    /* MUI Chip-style tags */
+    .tag {
+      display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+      border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600;
+      color: #475569;
+    }
+    .divider { border: none; border-top: 1px solid #e2e8f0; margin: 12px 0; }
+    .lbl {
+      font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.6px; margin-bottom: 4px;
+    }
+
+    /* MUI TextField */
+    input, select {
+      border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px;
+      font-size: 13px; width: 100%; outline: none; background: #fff;
+      font-family: inherit; transition: border-color .15s, box-shadow .15s;
+    }
+    input:focus, select:focus {
+      border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+    }
+    textarea {
+      border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px;
+      font-size: 13px; width: 100%; outline: none; resize: vertical;
+      font-family: inherit; transition: border-color .15s, box-shadow .15s;
+    }
+    textarea:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
 
     /* Layout helpers */
-    .p { padding: 16px; }
+    .p { padding: 20px; }
     .flex  { display: flex; }
     .fcol  { display: flex; flex-direction: column; }
     .gap4  { gap: 4px; }
+    .gap6  { gap: 6px; }
     .gap8  { gap: 8px; }
     .gap12 { gap: 12px; }
     .gap16 { gap: 16px; }
     .gap24 { gap: 24px; }
-    .fw  { font-weight: bold; }
-    .sm  { font-size: 11px; }
-    .med { font-size: 12px; }
-    .mute{ color: #666; }
-    .red { color: #dc2626; }
-    .green { color: #16a34a; }
-    .mt4 { margin-top: 4px; }
-    .mt8 { margin-top: 8px; }
-    .mt12{ margin-top: 12px; }
-    .mt16{ margin-top: 16px; }
-    .mb8 { margin-bottom: 8px; }
-    .mb12{ margin-bottom: 12px; }
-    .mb16{ margin-bottom: 16px; }
-    .grow{ flex: 1; }
+    .fw  { font-weight: 700; }
+    .sm  { font-size: 12px; }
+    .med { font-size: 13px; }
+    .mute { color: #64748b; }
+    .red   { color: #dc2626; }
+    .green { color: #15803d; }
+    .mt4  { margin-top: 4px; }
+    .mt8  { margin-top: 8px; }
+    .mt12 { margin-top: 12px; }
+    .mt16 { margin-top: 16px; }
+    .mt20 { margin-top: 20px; }
+    .mt24 { margin-top: 24px; }
+    .mb4  { margin-bottom: 4px; }
+    .mb8  { margin-bottom: 8px; }
+    .mb12 { margin-bottom: 12px; }
+    .mb16 { margin-bottom: 16px; }
+    .mb20 { margin-bottom: 20px; }
+    .mb24 { margin-bottom: 24px; }
+    .grow { flex: 1; }
     .center { text-align: center; }
     .right  { text-align: right; }
     .grid3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
     .grid2 { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; }
     .grid4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; }
 
-    /* Nav */
-    nav { border-bottom: 2px solid #333; padding: 10px 16px; display: flex; align-items: center; gap: 16px; background: #fff; }
-    .nav-logo { font-weight: bold; font-size: 15px; }
-    .nav-link { font-size: 13px; color: #444; }
-    .nav-link.active { font-weight: bold; border-bottom: 2px solid #222; }
-    .bell-wrap { position: relative; font-size: 18px; }
-    .bell-badge { position: absolute; top: -5px; right: -8px; background: #dc2626; color: #fff; font-size: 9px; width: 15px; height: 15px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-    .avatar { width: 30px; height: 30px; background: #333; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; }
+    /* Nav — dark, matching MUI AppBar + NAV_BG */
+    nav {
+      background: #1e293b; padding: 0 20px; height: 60px;
+      display: flex; align-items: center; gap: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .nav-logo { font-weight: 700; font-size: 15px; color: #fff; flex-shrink: 0; margin-right: 8px; }
+    .nav-link {
+      font-size: 13px; color: rgba(203,213,225,0.85); font-weight: 500;
+      padding: 6px 12px; border-radius: 6px; cursor: pointer;
+      transition: all .15s;
+    }
+    .nav-link.active {
+      color: #fff; background: rgba(99,102,241,0.28);
+    }
+    .nav-link:hover:not(.active) { background: rgba(255,255,255,0.07); color: #fff; }
+    .bell-wrap { position: relative; font-size: 18px; color: rgba(203,213,225,0.85); margin-left: 4px; }
+    .bell-badge {
+      position: absolute; top: -5px; right: -8px; background: #ef4444;
+      color: #fff; font-size: 9px; width: 16px; height: 16px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; font-weight: 700;
+    }
+    .avatar {
+      width: 32px; height: 32px; background: #6366f1; color: #fff; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; flex-shrink: 0;
+    }
 
-    /* Sidebar */
-    .sidebar { width: 180px; border-right: 2px solid #ddd; flex-shrink: 0; padding: 0; }
-    .sidebar-item { padding: 10px 16px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #eee; }
-    .sidebar-item.active { background: #f0f0f0; font-weight: bold; }
+    /* Sidebar — MUI Drawer style */
+    .sidebar {
+      width: 200px; border-right: 1px solid #e2e8f0; flex-shrink: 0;
+      background: #f8fafc; padding: 8px 0;
+    }
+    .sidebar-item {
+      padding: 10px 20px; font-size: 13px; cursor: pointer; color: #475569;
+      border-right: 3px solid transparent; transition: all .15s;
+    }
+    .sidebar-item:hover:not(.active) { background: #f1f5f9; color: #0f172a; }
+    .sidebar-item.active {
+      background: #ede9fe; color: #6366f1; font-weight: 700;
+      border-right-color: #6366f1;
+    }
 
-    /* Stat card */
-    .stat { border: 2px solid #ddd; padding: 14px; text-align: center; }
-    .stat-num { font-size: 26px; font-weight: bold; margin: 4px 0; }
-    .stat-lbl { font-size: 11px; color: #888; text-transform: uppercase; }
+    /* Stat card — MUI Card */
+    .stat {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+      padding: 16px; text-align: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .stat-num { font-size: 28px; font-weight: 800; margin: 6px 0; color: #0f172a; line-height: 1; }
+    .stat-lbl { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
 
-    /* Table */
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th { text-align: left; padding: 7px 8px; border-bottom: 2px solid #333; font-size: 11px; text-transform: uppercase; color: #555; }
-    td { padding: 7px 8px; border-bottom: 1px solid #eee; vertical-align: middle; }
+    /* Table — MUI Table */
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      text-align: left; padding: 10px 12px; background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0; font-size: 11px; text-transform: uppercase;
+      color: #64748b; font-weight: 700; letter-spacing: 0.4px;
+    }
+    td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #fafafa; }
+    tfoot td { background: #f8fafc; font-weight: 700; }
 
-    /* Step indicator */
+    /* Step indicator — MUI Stepper style */
     .steps { display: flex; align-items: center; gap: 0; margin-bottom: 20px; }
-    .step { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-    .step-num { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #333; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; }
-    .step.done .step-num { background: #333; color: #fff; }
-    .step-line { flex: 1; border-top: 1px dashed #aaa; margin: 0 8px; min-width: 32px; }
+    .step  { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+    .step-num {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: #e2e8f0; color: #64748b;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700;
+    }
+    .step.done .step-num { background: #6366f1; color: #fff; box-shadow: 0 2px 6px rgba(99,102,241,0.35); }
+    .step-line { flex: 1; border-top: 1px dashed #cbd5e1; margin: 0 8px; min-width: 32px; }
   </style>
 </head>
 <body>
 
 <h1>Society Events — UI Wireframes</h1>
-<p class="subtitle">10 key screens · Prestige Verdant Heights, Bengaluru</p>
+<p class="subtitle">26 screens · Prestige Verdant Heights, Bengaluru · MUI Design System</p>
 
 <div class="toc">
   <div class="fw mb8">Resident Screens</div>
@@ -120,10 +259,22 @@
   <a href="#s16">16. Admin — My Tickets (personal registrations)</a>
   <a href="#s5">5. Admin Dashboard (event management overview)</a>
   <a href="#s6">6. Admin — Users Management</a>
+  <a href="#s26">26. Admin — User Approval Queue</a>
   <a href="#s7">7. Admin — Society Settings</a>
   <a href="#s8">8. Admin — Event Categories</a>
   <a href="#s9">9. Admin — Create / Edit Event</a>
   <a href="#s10">10. Admin — Payments &amp; Refunds</a>
+  <div class="fw mb8 mt8">Sponsor Screens</div>
+  <a href="#s17">17. Sponsor Dashboard (my sponsorships + refund requests)</a>
+  <a href="#s18">18. Event Finance (organizer — income / expenses / balance)</a>
+  <a href="#s19">19. Complimentary Tickets (organizer — walk-ins &amp; free entries)</a>
+  <a href="#s20">20. Admin — Sponsor Management</a>
+  <a href="#s21">21. Admin / Organizer — Sponsorship Refund Requests</a>
+  <div class="fw mb8 mt8">Vendor &amp; Ticket Screens</div>
+  <a href="#s22">22. Vendor Management (organizer — invite stalls &amp; fee setup)</a>
+  <a href="#s23">23. Vendor Revenue Distribution (plan &amp; approve payout pool)</a>
+  <a href="#s24">24. Ticket Type Setup (multi-tier ticket configuration per event)</a>
+  <a href="#s25">25. Free Token Issuance (issue &amp; track complimentary codes)</a>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -2005,6 +2156,1436 @@
       <button class="btn-out btn-sm" style="flex-shrink:0">Admin → Registrations</button>
     </div>
 
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 17: Sponsor Dashboard                                   -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s17">
+  <div class="screen-label">Screen 17 — Sponsor Dashboard · Sponsor view</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Events</span>
+    <span class="grow"></span>
+    <span class="nav-link active">My Sponsorships</span>
+    <span class="nav-link">Browse Events</span>
+    <div class="bell-wrap">🔔<div class="bell-badge">1</div></div>
+    <div class="avatar">KR</div>
+  </nav>
+
+  <div class="p">
+    <div class="fw mb4" style="font-size:15px">My Sponsorships</div>
+    <div class="sm mute mb16">Kavya Reddy · TechCorp Solutions Pvt. Ltd.</div>
+
+    <!-- Summary stats -->
+    <div class="grid4 mb24">
+      <div class="stat">
+        <div class="stat-lbl">Total Sponsored</div>
+        <div class="stat-num">₹35,000</div>
+        <div class="sm mute">across 2 events</div>
+      </div>
+      <div class="stat">
+        <div class="stat-lbl">Received</div>
+        <div class="stat-num green">₹25,000</div>
+        <div class="sm mute">1 confirmed</div>
+      </div>
+      <div class="stat">
+        <div class="stat-lbl">Pledged</div>
+        <div class="stat-num" style="color:#d97706">₹10,000</div>
+        <div class="sm mute">1 pending receipt</div>
+      </div>
+      <div class="stat">
+        <div class="stat-lbl">Refund Requests</div>
+        <div class="stat-num" style="color:#dc2626">1</div>
+        <div class="sm mute">1 under review</div>
+      </div>
+    </div>
+
+    <!-- Sponsorship table -->
+    <div class="fw mb8">Sponsored Events</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Event</th>
+          <th>Date</th>
+          <th>Amount</th>
+          <th>Purpose</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div class="fw sm">Diwali Mela 2025</div>
+            <div class="sm mute">🎆 Festival</div>
+          </td>
+          <td class="sm">25 Oct 2025</td>
+          <td class="fw">₹25,000</td>
+          <td class="sm mute">Decorations &amp; prizes</td>
+          <td><span class="badge badge-green">RECEIVED</span></td>
+          <td>
+            <button class="btn-out btn-sm">View Event</button>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <div class="fw sm">Annual Sports Day 2026</div>
+            <div class="sm mute">🏆 Sports</div>
+          </td>
+          <td class="sm">2 Feb 2026</td>
+          <td class="fw">₹10,000</td>
+          <td class="sm mute">Refreshment counter</td>
+          <td><span class="badge badge-amber">PLEDGED</span></td>
+          <td class="flex gap8">
+            <button class="btn-out btn-sm">View Event</button>
+            <button class="btn btn-sm" style="background:#dc2626;border-color:#dc2626">Request Refund</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Refund Requests section -->
+    <div class="fw mb8 mt24">My Refund Requests</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Event</th>
+          <th>Requested Amount</th>
+          <th>Reason</th>
+          <th>Requested On</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="fw sm">Annual Sports Day 2026</td>
+          <td class="fw">₹5,000</td>
+          <td class="sm mute" style="max-width:240px">Event capacity was reduced; requesting partial refund for the unsupported portion.</td>
+          <td class="sm">12 May 2026</td>
+          <td><span class="badge badge-amber">PENDING REVIEW</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Refund Request Modal (shown inline as reference) -->
+    <div class="box mt24" style="max-width:460px;background:#fafafa">
+      <div class="fw mb12">Request Refund — Annual Sports Day 2026</div>
+      <div class="lbl">Sponsorship Amount</div>
+      <div class="sm mb12">₹10,000 (Pledged)</div>
+      <div class="lbl mb4">Refund Amount (₹)</div>
+      <input type="number" value="5000" style="margin-bottom:12px" />
+      <div class="lbl mb4">Reason for Refund</div>
+      <textarea rows="3" style="margin-bottom:12px">Event capacity was reduced; requesting partial refund for the unsupported portion.</textarea>
+      <div class="flex gap8">
+        <button class="btn">Submit Request</button>
+        <button class="btn-out">Cancel</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 18: Event Finance (Organizer view)                      -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s18">
+  <div class="screen-label">Screen 18 — Event Finance · Organizer / Committee / Admin view</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Events</span>
+    <span class="grow"></span>
+    <span class="nav-link">Events</span>
+    <span class="nav-link active">Manage</span>
+    <div class="bell-wrap">🔔</div>
+    <div class="avatar">MK</div>
+  </nav>
+
+  <div class="p">
+    <!-- Breadcrumb -->
+    <div class="sm mute mb8">Manage Events › <span class="fw" style="color:#222">Annual Sports Day 2026</span> › Finance</div>
+
+    <!-- Event header -->
+    <div class="flex gap16 mb20" style="align-items:flex-start">
+      <div class="grow">
+        <div class="fw mb4" style="font-size:15px">Annual Sports Day 2026</div>
+        <div class="sm mute">🏆 Sports · 📅 2 Feb 2026 · 📍 Society Sports Ground</div>
+      </div>
+      <span class="badge badge-green" style="font-size:12px">PUBLISHED</span>
+    </div>
+
+    <!-- Tab bar -->
+    <div class="flex gap0 mb20" style="border-bottom:2px solid #333">
+      <div class="nav-link" style="padding:8px 16px;cursor:pointer">Overview</div>
+      <div class="nav-link active" style="padding:8px 16px;cursor:pointer;border-bottom:3px solid #222;margin-bottom:-2px;font-weight:bold">Finance</div>
+      <div class="nav-link" style="padding:8px 16px;cursor:pointer">Registrations</div>
+      <div class="nav-link" style="padding:8px 16px;cursor:pointer">Announcements</div>
+    </div>
+
+    <!-- Finance summary bar -->
+    <div class="grid4 mb24">
+      <div class="stat" style="border-color:#16a34a">
+        <div class="stat-lbl">Ticket Revenue</div>
+        <div class="stat-num green">₹450</div>
+        <div class="sm mute">3 registrations · 3 tickets</div>
+      </div>
+      <div class="stat" style="border-color:#2563eb">
+        <div class="stat-lbl">Sponsorship Income</div>
+        <div class="stat-num" style="color:#2563eb">₹15,000</div>
+        <div class="sm mute">1 received · 1 pledged</div>
+      </div>
+      <div class="stat" style="border-color:#d97706">
+        <div class="stat-lbl">Total Expenses</div>
+        <div class="stat-num" style="color:#d97706">₹14,300</div>
+        <div class="sm mute">3 items logged</div>
+      </div>
+      <div class="stat" style="border-color:#16a34a;background:#f0fdf4">
+        <div class="stat-lbl">Net Balance</div>
+        <div class="stat-num green">₹1,150</div>
+        <div class="sm mute">income − expenses</div>
+      </div>
+    </div>
+
+    <div class="grid2 gap24">
+
+      <!-- LEFT: Expenses -->
+      <div>
+        <div class="flex gap8 mb12" style="align-items:center">
+          <div class="fw grow">Expenses</div>
+          <button class="btn btn-sm">+ Add Expense</button>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Description</th><th>Category</th><th>Amount</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="sm">Cricket set and badminton nets</td>
+              <td><span class="tag">Equipment</span></td>
+              <td class="fw sm">₹6,000</td>
+              <td><span class="sm red" style="cursor:pointer">✕</span></td>
+            </tr>
+            <tr>
+              <td class="sm">Medals and trophies</td>
+              <td><span class="tag">Other</span></td>
+              <td class="fw sm">₹4,500</td>
+              <td><span class="sm red" style="cursor:pointer">✕</span></td>
+            </tr>
+            <tr>
+              <td class="sm">Refreshments for participants</td>
+              <td><span class="tag">Catering</span></td>
+              <td class="fw sm">₹3,800</td>
+              <td><span class="sm red" style="cursor:pointer">✕</span></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Add expense inline form -->
+        <div class="box mt12" style="background:#fafafa">
+          <div class="fw sm mb8">Add Expense</div>
+          <div class="grid2 gap8 mb8">
+            <div>
+              <div class="lbl mb4">Description</div>
+              <input placeholder="e.g. Venue booking deposit" />
+            </div>
+            <div>
+              <div class="lbl mb4">Category</div>
+              <select>
+                <option>Venue</option>
+                <option>Catering</option>
+                <option selected>Equipment</option>
+                <option>Marketing</option>
+                <option>Staff</option>
+                <option>Other</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid2 gap8 mb8">
+            <div>
+              <div class="lbl mb4">Amount (₹)</div>
+              <input type="number" placeholder="0.00" />
+            </div>
+            <div>
+              <div class="lbl mb4">Receipt URL (optional)</div>
+              <input placeholder="https://..." />
+            </div>
+          </div>
+          <button class="btn btn-sm">Save Expense</button>
+        </div>
+      </div>
+
+      <!-- RIGHT: Sponsorships -->
+      <div>
+        <div class="flex gap8 mb12" style="align-items:center">
+          <div class="fw grow">Sponsorships</div>
+          <button class="btn btn-sm">+ Link Sponsor</button>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Sponsor</th><th>Amount</th><th>Status</th><th>Refund</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <div class="fw sm">Community Welfare Foundation</div>
+                <div class="sm mute">NGO</div>
+              </td>
+              <td class="fw sm">₹15,000</td>
+              <td><span class="badge badge-green">RECEIVED</span></td>
+              <td class="sm mute">—</td>
+            </tr>
+            <tr>
+              <td>
+                <div class="fw sm">TechCorp Solutions</div>
+                <div class="sm mute">Private</div>
+              </td>
+              <td class="fw sm">₹10,000</td>
+              <td><span class="badge badge-amber">PLEDGED</span></td>
+              <td><span class="badge badge-red">1 PENDING</span></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Complimentary tickets summary -->
+        <div class="fw mb8 mt20">Complimentary Tickets</div>
+        <table>
+          <thead>
+            <tr><th>Type</th><th>Tickets</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="sm">Walk-in</td><td class="fw sm">8</td></tr>
+          </tbody>
+          <tfoot>
+            <tr style="background:#f8f8f8">
+              <td class="fw sm">Total Free Entries</td>
+              <td class="fw sm">8</td>
+            </tr>
+          </tfoot>
+        </table>
+        <button class="btn-out btn-sm mt8">Manage Complimentary Tickets →</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 19: Complimentary Tickets Management                    -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s19">
+  <div class="screen-label">Screen 19 — Complimentary Tickets · Organizer / Committee / Admin view</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Events</span>
+    <span class="grow"></span>
+    <span class="nav-link active">Manage</span>
+    <div class="bell-wrap">🔔</div>
+    <div class="avatar">RJ</div>
+  </nav>
+
+  <div class="p">
+    <div class="sm mute mb8">Manage Events › <span class="fw" style="color:#222">Diwali Mela 2025</span> › Complimentary Tickets</div>
+    <div class="fw mb4" style="font-size:15px">Complimentary Tickets — Diwali Mela 2025</div>
+    <div class="sm mute mb20">Free-entry allocations for organizer guests, committee acquaintances, sponsor guests and walk-ins.</div>
+
+    <!-- Summary chips -->
+    <div class="flex gap8 mb20" style="flex-wrap:wrap">
+      <div class="box" style="padding:10px 16px;text-align:center;min-width:110px">
+        <div class="fw" style="font-size:18px">24</div>
+        <div class="sm mute">Total Free Entries</div>
+      </div>
+      <div class="box" style="padding:10px 16px;text-align:center;min-width:110px">
+        <div class="fw" style="font-size:18px">3</div>
+        <div class="sm mute">Organizer</div>
+      </div>
+      <div class="box" style="padding:10px 16px;text-align:center;min-width:110px">
+        <div class="fw" style="font-size:18px">2</div>
+        <div class="sm mute">Committee</div>
+      </div>
+      <div class="box" style="padding:10px 16px;text-align:center;min-width:110px">
+        <div class="fw" style="font-size:18px">4</div>
+        <div class="sm mute">Sponsor Guests</div>
+      </div>
+      <div class="box" style="padding:10px 16px;text-align:center;min-width:110px">
+        <div class="fw" style="font-size:18px">15</div>
+        <div class="sm mute">Walk-ins</div>
+      </div>
+    </div>
+
+    <div class="grid2 gap24">
+
+      <!-- LEFT: Existing entries -->
+      <div>
+        <div class="fw mb8">Current Allocations</div>
+        <table>
+          <thead>
+            <tr><th>Invited By</th><th>Type</th><th>Tickets</th><th>Notes</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="sm fw">Rajesh Iyer</td>
+              <td><span class="tag">Organizer</span></td>
+              <td class="fw sm">3</td>
+              <td class="sm mute">Family and neighbours</td>
+              <td><span class="sm red" style="cursor:pointer">✕</span></td>
+            </tr>
+            <tr>
+              <td class="sm fw">Meera Krishnan</td>
+              <td><span class="tag">Committee</span></td>
+              <td class="fw sm">2</td>
+              <td class="sm mute">Family guests</td>
+              <td><span class="sm red" style="cursor:pointer">✕</span></td>
+            </tr>
+            <tr>
+              <td class="sm fw">Kavya Reddy (TechCorp)</td>
+              <td><span class="tag">Sponsor</span></td>
+              <td class="fw sm">4</td>
+              <td class="sm mute">Sponsor team members</td>
+              <td><span class="sm red" style="cursor:pointer">✕</span></td>
+            </tr>
+            <tr>
+              <td class="sm mute">— Walk-in counter —</td>
+              <td><span class="tag">Walk-in</span></td>
+              <td class="fw sm">15</td>
+              <td class="sm mute">Gate registrations</td>
+              <td><span class="sm red" style="cursor:pointer">✕</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- RIGHT: Add entry form -->
+      <div>
+        <div class="fw mb8">Add New Entry</div>
+        <div class="box" style="background:#fafafa">
+
+          <div class="lbl mb4">Entry Type</div>
+          <select style="margin-bottom:12px">
+            <option>Organizer's Guest</option>
+            <option>Committee Member's Acquaintance</option>
+            <option>Sponsor's Acquaintance</option>
+            <option selected>Walk-in (no name needed)</option>
+          </select>
+
+          <!-- Shown when type is NOT walk-in -->
+          <div class="lbl mb4">Invited By <span class="mute">(user who is hosting the guest)</span></div>
+          <select style="margin-bottom:12px;opacity:0.4" disabled>
+            <option>— select for non walk-in entries —</option>
+            <option>Rajesh Iyer (Admin)</option>
+            <option>Meera Krishnan (Committee)</option>
+            <option>Kavya Reddy (Sponsor · TechCorp)</option>
+          </select>
+
+          <div class="lbl mb4">Number of Tickets</div>
+          <input type="number" value="5" min="1" style="margin-bottom:12px" />
+
+          <div class="lbl mb4">Notes (optional)</div>
+          <textarea rows="2" placeholder="e.g. Gate registration batch 1" style="margin-bottom:12px"></textarea>
+
+          <button class="btn">Add Entry</button>
+        </div>
+
+        <!-- Walk-in note -->
+        <div class="card mt12" style="background:#fffbeb;border-color:#fde68a">
+          <div class="fw sm mb4">Walk-in entries</div>
+          <div class="sm mute">Walk-in guests do not need to provide their name or any personal details. Only the ticket count and (optionally) a note is recorded. This is typically updated by the security guard at the entry gate.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 20: Admin — Sponsor Management                          -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s20">
+  <div class="screen-label">Screen 20 — Admin: Sponsor Management · Admin view</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Events</span>
+    <span class="grow"></span>
+    <span class="nav-link">Events</span>
+    <span class="nav-link active">Admin</span>
+    <div class="bell-wrap">🔔</div>
+    <div class="avatar">RI</div>
+  </nav>
+
+  <div class="flex" style="min-height:560px">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-item">Dashboard</div>
+      <div class="sidebar-item">Users</div>
+      <div class="sidebar-item">Events</div>
+      <div class="sidebar-item active">Sponsors</div>
+      <div class="sidebar-item">Categories</div>
+      <div class="sidebar-item">Payments &amp; Refunds</div>
+      <div class="sidebar-item">Reports</div>
+      <div class="sidebar-item">Settings</div>
+    </div>
+
+    <div class="grow p">
+      <div class="flex gap8 mb16" style="align-items:center">
+        <div class="fw grow" style="font-size:15px">Sponsors</div>
+        <button class="btn">+ Add Sponsor</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="grid4 mb20">
+        <div class="stat">
+          <div class="stat-lbl">Total Sponsors</div>
+          <div class="stat-num">2</div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Total Pledged</div>
+          <div class="stat-num">₹35,000</div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Total Received</div>
+          <div class="stat-num green">₹40,000</div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Pending Refunds</div>
+          <div class="stat-num" style="color:#dc2626">1</div>
+        </div>
+      </div>
+
+      <!-- Sponsors table -->
+      <table>
+        <thead>
+          <tr>
+            <th>Organization</th>
+            <th>Type</th>
+            <th>Contact</th>
+            <th>Platform User</th>
+            <th>Events</th>
+            <th>Total Pledged</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="fw sm">TechCorp Solutions Pvt. Ltd.</div>
+            </td>
+            <td><span class="tag">Private</span></td>
+            <td>
+              <div class="sm">Kavya Reddy</div>
+              <div class="sm mute">kavya.reddy@techcorp.com</div>
+            </td>
+            <td class="sm">Kavya Reddy</td>
+            <td class="fw sm">2</td>
+            <td class="fw sm">₹35,000</td>
+            <td><span class="badge badge-green">ACTIVE</span></td>
+            <td class="flex gap6">
+              <button class="btn-out btn-sm">Edit</button>
+              <button class="btn-out btn-sm">Link to Event</button>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <div class="fw sm">Community Welfare Foundation</div>
+            </td>
+            <td><span class="tag">NGO</span></td>
+            <td>
+              <div class="sm">Anand Kumar</div>
+              <div class="sm mute">anand.kumar@cwf.org</div>
+            </td>
+            <td class="sm mute">— external —</td>
+            <td class="fw sm">1</td>
+            <td class="fw sm">₹15,000</td>
+            <td><span class="badge badge-green">ACTIVE</span></td>
+            <td class="flex gap6">
+              <button class="btn-out btn-sm">Edit</button>
+              <button class="btn-out btn-sm">Link to Event</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Add / Edit Sponsor Form (shown inline as reference) -->
+      <div class="box mt24" style="max-width:560px;background:#fafafa">
+        <div class="fw mb12">Add New Sponsor</div>
+        <div class="grid2 gap12 mb12">
+          <div>
+            <div class="lbl mb4">Organization Name *</div>
+            <input placeholder="e.g. TechCorp Solutions" />
+          </div>
+          <div>
+            <div class="lbl mb4">Organization Type *</div>
+            <select>
+              <option>Private</option>
+              <option>Public</option>
+              <option>NGO</option>
+              <option>Individual</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid2 gap12 mb12">
+          <div>
+            <div class="lbl mb4">Contact Name</div>
+            <input placeholder="Primary contact person" />
+          </div>
+          <div>
+            <div class="lbl mb4">Contact Email</div>
+            <input type="email" placeholder="contact@org.com" />
+          </div>
+        </div>
+        <div class="grid2 gap12 mb12">
+          <div>
+            <div class="lbl mb4">Contact Phone</div>
+            <input placeholder="+91-98800-00000" />
+          </div>
+          <div>
+            <div class="lbl mb4">Platform User (optional)</div>
+            <select>
+              <option>— link to existing user —</option>
+              <option>Kavya Reddy (kavya.reddy@techcorp.com)</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex gap8">
+          <button class="btn">Save Sponsor</button>
+          <button class="btn-out">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Link to Event panel -->
+      <div class="box mt16" style="max-width:560px;background:#fafafa">
+        <div class="fw mb12">Link Sponsor to Event</div>
+        <div class="lbl mb4">Sponsor</div>
+        <select style="margin-bottom:12px">
+          <option>TechCorp Solutions Pvt. Ltd.</option>
+          <option>Community Welfare Foundation</option>
+        </select>
+        <div class="lbl mb4">Event</div>
+        <select style="margin-bottom:12px">
+          <option>Diwali Mela 2025</option>
+          <option>Annual Sports Day 2026</option>
+          <option>Children's Day Carnival</option>
+        </select>
+        <div class="grid2 gap12 mb12">
+          <div>
+            <div class="lbl mb4">Sponsorship Amount *</div>
+            <input type="number" placeholder="0.00" />
+          </div>
+          <div>
+            <div class="lbl mb4">Status</div>
+            <select>
+              <option>Pledged</option>
+              <option>Received</option>
+            </select>
+          </div>
+        </div>
+        <div class="lbl mb4">Notes</div>
+        <textarea rows="2" placeholder="What is this sponsorship covering?" style="margin-bottom:12px"></textarea>
+        <div class="flex gap8">
+          <button class="btn">Link Sponsor</button>
+          <button class="btn-out">Cancel</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 21: Sponsorship Refund Requests                         -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s21">
+  <div class="screen-label">Screen 21 — Sponsorship Refund Requests · Admin / Organizer view</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Events</span>
+    <span class="grow"></span>
+    <span class="nav-link">Events</span>
+    <span class="nav-link active">Admin</span>
+    <div class="bell-wrap">🔔<div class="bell-badge">1</div></div>
+    <div class="avatar">RI</div>
+  </nav>
+
+  <div class="flex" style="min-height:480px">
+    <div class="sidebar">
+      <div class="sidebar-item">Dashboard</div>
+      <div class="sidebar-item">Users</div>
+      <div class="sidebar-item">Events</div>
+      <div class="sidebar-item">Sponsors</div>
+      <div class="sidebar-item">Categories</div>
+      <div class="sidebar-item active">Payments &amp; Refunds</div>
+      <div class="sidebar-item">Reports</div>
+      <div class="sidebar-item">Settings</div>
+    </div>
+
+    <div class="grow p">
+      <!-- Tab bar: resident refunds vs sponsorship refunds -->
+      <div class="flex gap0 mb20" style="border-bottom:2px solid #333">
+        <div class="nav-link" style="padding:8px 16px;cursor:pointer">Resident Payment Refunds</div>
+        <div class="nav-link active" style="padding:8px 16px;cursor:pointer;border-bottom:3px solid #222;margin-bottom:-2px;font-weight:bold">Sponsorship Refunds</div>
+      </div>
+
+      <!-- Stats -->
+      <div class="grid4 mb20">
+        <div class="stat">
+          <div class="stat-lbl">Total Requests</div>
+          <div class="stat-num">1</div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Pending Review</div>
+          <div class="stat-num" style="color:#d97706">1</div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Approved</div>
+          <div class="stat-num green">0</div>
+        </div>
+        <div class="stat">
+          <div class="stat-lbl">Total Refund Amount</div>
+          <div class="stat-num">₹5,000</div>
+        </div>
+      </div>
+
+      <!-- Refund requests table -->
+      <table>
+        <thead>
+          <tr>
+            <th>Sponsor</th>
+            <th>Event</th>
+            <th>Sponsorship Amt</th>
+            <th>Refund Requested</th>
+            <th>Requested On</th>
+            <th>Reason</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="fw sm">TechCorp Solutions</div>
+              <div class="sm mute">Kavya Reddy</div>
+            </td>
+            <td class="sm fw">Annual Sports Day 2026</td>
+            <td class="sm">₹10,000 (Pledged)</td>
+            <td class="fw sm">₹5,000</td>
+            <td class="sm">12 May 2026</td>
+            <td class="sm mute" style="max-width:180px">Event capacity was reduced; requesting partial refund for the unsupported portion.</td>
+            <td><span class="badge badge-amber">PENDING</span></td>
+            <td class="flex gap6">
+              <button class="btn btn-sm" style="background:#16a34a;border-color:#16a34a">Approve</button>
+              <button class="btn btn-sm" style="background:#dc2626;border-color:#dc2626">Reject</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Approve modal (shown inline) -->
+      <div class="box mt24" style="max-width:480px;background:#fafafa">
+        <div class="fw mb4">Approve Sponsorship Refund</div>
+        <div class="sm mute mb12">TechCorp Solutions · Annual Sports Day 2026</div>
+
+        <div class="flex gap16 mb12">
+          <div class="grow">
+            <div class="lbl">Sponsorship Amount</div>
+            <div class="fw sm">₹10,000</div>
+          </div>
+          <div class="grow">
+            <div class="lbl">Requested Refund</div>
+            <div class="fw sm red">₹5,000</div>
+          </div>
+        </div>
+
+        <div class="lbl mb4">Approved Refund Amount (₹)</div>
+        <input type="number" value="5000" style="margin-bottom:12px" />
+
+        <div class="lbl mb4">Organizer Note (optional)</div>
+        <textarea rows="2" placeholder="Add a note for the sponsor…" style="margin-bottom:12px"></textarea>
+
+        <div class="flex gap8">
+          <button class="btn" style="background:#16a34a;border-color:#16a34a">Confirm Approval</button>
+          <button class="btn-out">Cancel</button>
+        </div>
+        <div class="sm mute mt8">Approving will update sponsorship status to <strong>Refund Requested</strong> and notify the sponsor.</div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 22: Vendor Management                                   -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s22">
+  <div class="screen-label">Screen 22 — Vendor Management · Organizer / Committee view · Event: Diwali Mela 2025</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Events</span>
+    <span class="nav-link">Home</span>
+    <span class="nav-link">Events</span>
+    <span class="nav-link">My Tickets</span>
+    <span class="nav-link active">Manage</span>
+    <span class="grow"></span>
+    <div class="bell-wrap">🔔<div class="bell-badge">2</div></div>
+    <div class="avatar">MK</div>
+  </nav>
+
+  <div class="flex" style="min-height:520px">
+
+    <!-- Sidebar tabs (event detail sub-nav) -->
+    <div class="sidebar">
+      <div class="sidebar-item">Overview</div>
+      <div class="sidebar-item">Finance</div>
+      <div class="sidebar-item">Registrations</div>
+      <div class="sidebar-item active">Vendors</div>
+      <div class="sidebar-item">Tickets</div>
+      <div class="sidebar-item">Announcements</div>
+    </div>
+
+    <div class="p" style="flex:1">
+      <!-- Breadcrumb -->
+      <div class="sm mute mb12">Manage → Diwali Mela 2025 → Vendors</div>
+
+      <!-- Header row -->
+      <div class="flex mb16" style="align-items:center;gap:12px">
+        <div class="grow">
+          <div class="fw" style="font-size:16px">Vendor Stalls</div>
+          <div class="sm mute">Invite shops and assign fee arrangements for this event.</div>
+        </div>
+        <button class="btn btn-sm">+ Invite Vendor</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="grid4 mb20">
+        <div class="stat"><div class="stat-num">3</div><div class="stat-lbl">Invited</div></div>
+        <div class="stat"><div class="stat-num" style="color:#10b981">3</div><div class="stat-lbl">Confirmed</div></div>
+        <div class="stat"><div class="stat-num" style="color:#6366f1">₹6,900</div><div class="stat-lbl">Revenue Pool</div></div>
+        <div class="stat"><div class="stat-num" style="color:#f59e0b">₹29,500</div><div class="stat-lbl">Vendor Sales</div></div>
+      </div>
+
+      <!-- Table -->
+      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+        <table>
+          <thead>
+            <tr>
+              <th>Vendor</th><th>Category</th><th>Stall</th><th>Fee Type</th>
+              <th>Fixed Fee / Share %</th><th>Actual Revenue</th><th>Pool Contribution</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="fw">Raj Sweets &amp; Snacks</div><div class="sm mute">rajan@rajsweets.in</div></td>
+              <td><span class="badge badge-amber">Food</span></td>
+              <td>A-01</td>
+              <td><span class="tag">Revenue Share</span></td>
+              <td>15%</td>
+              <td>₹20,000</td>
+              <td class="fw green">₹3,000</td>
+              <td><span class="badge badge-green">Confirmed</span></td>
+              <td><div class="flex gap6"><button class="btn-out btn-sm">Edit</button><button class="btn-out btn-sm red">Remove</button></div></td>
+            </tr>
+            <tr>
+              <td><div class="fw">Fun Games Zone</div><div class="sm mute">deepak@fungames.in</div></td>
+              <td><span class="badge badge-purple">Games</span></td>
+              <td>B-03</td>
+              <td><span class="tag">Fixed</span></td>
+              <td>₹2,000</td>
+              <td>—</td>
+              <td class="fw green">₹2,000</td>
+              <td><span class="badge badge-green">Confirmed</span></td>
+              <td><div class="flex gap6"><button class="btn-out btn-sm">Edit</button><button class="btn-out btn-sm red">Remove</button></div></td>
+            </tr>
+            <tr>
+              <td><div class="fw">Sparkle Merchandise</div><div class="sm mute">sunita@sparklemerch.in</div></td>
+              <td><span class="badge badge-blue">Merchandise</span></td>
+              <td>C-02</td>
+              <td><span class="tag">Revenue Share</span></td>
+              <td>20%</td>
+              <td>₹9,500</td>
+              <td class="fw green">₹1,900</td>
+              <td><span class="badge badge-green">Confirmed</span></td>
+              <td><div class="flex gap6"><button class="btn-out btn-sm">Edit</button><button class="btn-out btn-sm red">Remove</button></div></td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="6" class="right mute sm">Total pool collected</td>
+              <td class="fw" style="color:#6366f1">₹6,900</td>
+              <td colspan="2"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Invite Vendor Form (inline panel) -->
+      <div class="box mt20">
+        <div class="fw mb12">Invite a Vendor</div>
+        <div class="grid2 mb12">
+          <div><div class="lbl mb4">Vendor Name *</div><input type="text" placeholder="Search or add new vendor…" /></div>
+          <div><div class="lbl mb4">Category</div>
+            <select><option>Food</option><option>Beverages</option><option>Merchandise</option><option>Games</option><option>Services</option><option>Other</option></select>
+          </div>
+        </div>
+        <div class="grid2 mb12">
+          <div><div class="lbl mb4">Stall Number</div><input type="text" placeholder="e.g. D-04" /></div>
+          <div><div class="lbl mb4">Fee Type</div>
+            <select><option>Fixed Fee</option><option>Revenue Share %</option><option>Free (No Fee)</option></select>
+          </div>
+        </div>
+        <div class="grid2 mb12">
+          <div><div class="lbl mb4">Fixed Fee (₹)</div><input type="number" placeholder="0" /></div>
+          <div><div class="lbl mb4">Revenue Share %</div><input type="number" placeholder="0" /></div>
+        </div>
+        <div class="mb12"><div class="lbl mb4">Notes</div><textarea rows="2" placeholder="Special arrangement or notes…"></textarea></div>
+        <div class="flex gap8"><button class="btn btn-sm">Send Invite</button><button class="btn-out btn-sm">Cancel</button></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 23: Vendor Revenue Distribution                         -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s23">
+  <div class="screen-label">Screen 23 — Vendor Revenue Distribution · Organizer view · Event: Diwali Mela 2025</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Events</span>
+    <span class="nav-link">Home</span>
+    <span class="nav-link active">Manage</span>
+    <span class="grow"></span>
+    <div class="bell-wrap">🔔</div>
+    <div class="avatar">MK</div>
+  </nav>
+
+  <div class="flex" style="min-height:520px">
+    <div class="sidebar">
+      <div class="sidebar-item">Overview</div>
+      <div class="sidebar-item">Finance</div>
+      <div class="sidebar-item">Registrations</div>
+      <div class="sidebar-item">Vendors</div>
+      <div class="sidebar-item active">Revenue Pool</div>
+      <div class="sidebar-item">Tickets</div>
+      <div class="sidebar-item">Announcements</div>
+    </div>
+
+    <div class="p" style="flex:1">
+      <div class="sm mute mb12">Manage → Diwali Mela 2025 → Revenue Pool</div>
+
+      <!-- Header + status -->
+      <div class="flex mb16" style="align-items:center;gap:12px">
+        <div class="grow">
+          <div class="fw" style="font-size:16px">Vendor Revenue Distribution</div>
+          <div class="sm mute">Plan how vendor pool earnings are shared among sponsors, organizers, and society.</div>
+        </div>
+        <span class="badge badge-amber">Draft</span>
+        <button class="btn btn-sm" style="background:#16a34a">Approve &amp; Distribute</button>
+      </div>
+
+      <!-- Pool summary -->
+      <div class="grid4 mb20">
+        <div class="stat"><div class="stat-num" style="color:#6366f1">₹6,900</div><div class="stat-lbl">Total Pool</div></div>
+        <div class="stat"><div class="stat-num">4</div><div class="stat-lbl">Recipients</div></div>
+        <div class="stat"><div class="stat-num" style="color:#f59e0b">100%</div><div class="stat-lbl">Allocated</div></div>
+        <div class="stat"><div class="stat-num" style="color:#94a3b8">Draft</div><div class="stat-lbl">Status</div></div>
+      </div>
+
+      <!-- Distribution table -->
+      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:20px">
+        <table>
+          <thead>
+            <tr>
+              <th>Recipient</th><th>Type</th><th>Share %</th><th>Amount (₹)</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="fw">TechCorp Solutions</div><div class="sm mute">Kavya Reddy</div></td>
+              <td><span class="badge badge-purple">Sponsor</span></td>
+              <td><input type="number" value="30" style="width:70px" /></td>
+              <td class="fw">₹2,070</td>
+              <td><span class="badge badge-gray">Pending</span></td>
+              <td><button class="btn-out btn-sm red">Remove</button></td>
+            </tr>
+            <tr>
+              <td><div class="fw">Community Welfare Foundation</div><div class="sm mute">Anand Kumar</div></td>
+              <td><span class="badge badge-purple">Sponsor</span></td>
+              <td><input type="number" value="10" style="width:70px" /></td>
+              <td class="fw">₹690</td>
+              <td><span class="badge badge-gray">Pending</span></td>
+              <td><button class="btn-out btn-sm red">Remove</button></td>
+            </tr>
+            <tr>
+              <td><div class="fw">Meera Krishnan</div><div class="sm mute">Organizer</div></td>
+              <td><span class="badge badge-blue">Organizer</span></td>
+              <td><input type="number" value="30" style="width:70px" /></td>
+              <td class="fw">₹2,070</td>
+              <td><span class="badge badge-gray">Pending</span></td>
+              <td><button class="btn-out btn-sm red">Remove</button></td>
+            </tr>
+            <tr>
+              <td><div class="fw">Prestige Verdant Heights</div><div class="sm mute">Society fund</div></td>
+              <td><span class="badge badge-green">Society</span></td>
+              <td><input type="number" value="30" style="width:70px" /></td>
+              <td class="fw">₹2,070</td>
+              <td><span class="badge badge-gray">Pending</span></td>
+              <td><button class="btn-out btn-sm red">Remove</button></td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2" class="right mute sm">Total allocated</td>
+              <td class="fw green">100%</td>
+              <td class="fw green">₹6,900</td>
+              <td colspan="2"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Add recipient form -->
+      <div class="box">
+        <div class="fw mb12">Add Recipient</div>
+        <div class="grid2 mb12">
+          <div><div class="lbl mb4">Recipient Type</div>
+            <select><option>Sponsor</option><option>Organizer</option><option>Resident</option><option>Society</option></select>
+          </div>
+          <div><div class="lbl mb4">Recipient</div>
+            <select><option>— select —</option><option>TechCorp Solutions</option><option>Community Welfare Foundation</option><option>Meera Krishnan</option></select>
+          </div>
+        </div>
+        <div class="grid2 mb12">
+          <div><div class="lbl mb4">Share %</div><input type="number" placeholder="e.g. 25" /></div>
+          <div><div class="lbl mb4">Notes</div><input type="text" placeholder="Optional note…" /></div>
+        </div>
+        <div class="flex gap8"><button class="btn btn-sm">Add Recipient</button><button class="btn-out btn-sm">Cancel</button></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 24: Ticket Type Setup                                   -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s24">
+  <div class="screen-label">Screen 24 — Ticket Type Setup · Organizer view · Event: Annual Sports Day 2026</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Events</span>
+    <span class="nav-link">Home</span>
+    <span class="nav-link active">Manage</span>
+    <span class="grow"></span>
+    <div class="bell-wrap">🔔</div>
+    <div class="avatar">MK</div>
+  </nav>
+
+  <div class="flex" style="min-height:520px">
+    <div class="sidebar">
+      <div class="sidebar-item">Overview</div>
+      <div class="sidebar-item">Finance</div>
+      <div class="sidebar-item">Registrations</div>
+      <div class="sidebar-item">Vendors</div>
+      <div class="sidebar-item active">Tickets</div>
+      <div class="sidebar-item">Tokens</div>
+      <div class="sidebar-item">Announcements</div>
+    </div>
+
+    <div class="p" style="flex:1">
+      <div class="sm mute mb12">Manage → Annual Sports Day 2026 → Ticket Types</div>
+
+      <div class="flex mb16" style="align-items:center;gap:12px">
+        <div class="grow">
+          <div class="fw" style="font-size:16px">Ticket Types</div>
+          <div class="sm mute">Define ticket tiers for this event. Residents select from these when registering.</div>
+        </div>
+        <button class="btn btn-sm">+ Add Type</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="grid4 mb20">
+        <div class="stat"><div class="stat-num">3</div><div class="stat-lbl">Ticket Types</div></div>
+        <div class="stat"><div class="stat-num" style="color:#10b981">2</div><div class="stat-lbl">Paid Types</div></div>
+        <div class="stat"><div class="stat-num" style="color:#6366f1">80</div><div class="stat-lbl">Kids Zone Cap</div></div>
+        <div class="stat"><div class="stat-num" style="color:#f59e0b">∞</div><div class="stat-lbl">Participant / Spectator</div></div>
+      </div>
+
+      <!-- Ticket types table -->
+      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:20px">
+        <table>
+          <thead>
+            <tr>
+              <th>Order</th><th>Name</th><th>Description</th><th>Price</th><th>Free?</th><th>Capacity</th><th>Active</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td class="fw">Participant</td>
+              <td class="mute sm">Register as a player in any category (includes kit + refreshments)</td>
+              <td class="fw">₹150</td>
+              <td><span class="badge badge-gray">No</span></td>
+              <td>Unlimited</td>
+              <td><span class="badge badge-green">Active</span></td>
+              <td><div class="flex gap6"><button class="btn-out btn-sm">Edit</button><button class="btn-out btn-sm red">Delete</button></div></td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td class="fw">Spectator</td>
+              <td class="mute sm">Entry to watch all events from spectator stands</td>
+              <td class="fw">₹50</td>
+              <td><span class="badge badge-gray">No</span></td>
+              <td>Unlimited</td>
+              <td><span class="badge badge-green">Active</span></td>
+              <td><div class="flex gap6"><button class="btn-out btn-sm">Edit</button><button class="btn-out btn-sm red">Delete</button></div></td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td class="fw">Kids Zone</td>
+              <td class="mute sm">Kids 5-12 years — mini-games and activity corner</td>
+              <td class="fw">₹75</td>
+              <td><span class="badge badge-gray">No</span></td>
+              <td>80</td>
+              <td><span class="badge badge-green">Active</span></td>
+              <td><div class="flex gap6"><button class="btn-out btn-sm">Edit</button><button class="btn-out btn-sm red">Delete</button></div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Add / Edit form -->
+      <div class="box">
+        <div class="fw mb12">Add Ticket Type</div>
+        <div class="grid2 mb12">
+          <div><div class="lbl mb4">Name *</div><input type="text" placeholder="e.g. VIP Dinner, Breakfast Pass…" /></div>
+          <div><div class="lbl mb4">Price (₹)</div><input type="number" placeholder="0 for free" /></div>
+        </div>
+        <div class="mb12"><div class="lbl mb4">Description</div><textarea rows="2" placeholder="What does this ticket include?"></textarea></div>
+        <div class="grid4 mb12" style="gap:12px">
+          <div><div class="lbl mb4">Capacity (blank = unlimited)</div><input type="number" placeholder="—" /></div>
+          <div><div class="lbl mb4">Sort Order</div><input type="number" placeholder="1" /></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:20px">
+            <input type="checkbox" id="is_free" style="width:auto" />
+            <label for="is_free" style="font-size:13px;font-weight:600">Mark as Free</label>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:20px">
+            <input type="checkbox" id="is_active" checked style="width:auto" />
+            <label for="is_active" style="font-size:13px;font-weight:600">Active</label>
+          </div>
+        </div>
+        <div class="flex gap8"><button class="btn btn-sm">Save Ticket Type</button><button class="btn-out btn-sm">Cancel</button></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 25: Free Token Issuance                                 -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s25">
+  <div class="screen-label">Screen 25 — Free Token Issuance · Organizer view · Event: Diwali Mela 2025</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Events</span>
+    <span class="nav-link">Home</span>
+    <span class="nav-link active">Manage</span>
+    <span class="grow"></span>
+    <div class="bell-wrap">🔔</div>
+    <div class="avatar">MK</div>
+  </nav>
+
+  <div class="flex" style="min-height:520px">
+    <div class="sidebar">
+      <div class="sidebar-item">Overview</div>
+      <div class="sidebar-item">Finance</div>
+      <div class="sidebar-item">Registrations</div>
+      <div class="sidebar-item">Vendors</div>
+      <div class="sidebar-item">Tickets</div>
+      <div class="sidebar-item active">Tokens</div>
+      <div class="sidebar-item">Announcements</div>
+    </div>
+
+    <div class="p" style="flex:1">
+      <div class="sm mute mb12">Manage → Diwali Mela 2025 → Free Tokens</div>
+
+      <div class="flex mb16" style="align-items:center;gap:12px">
+        <div class="grow">
+          <div class="fw" style="font-size:16px">Free Token Issuance</div>
+          <div class="sm mute">Issue complimentary access codes. Recipient name and email are optional — tokens can be anonymous walk-in codes.</div>
+        </div>
+        <button class="btn btn-sm">+ Issue Token</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="grid4 mb20">
+        <div class="stat"><div class="stat-num">3</div><div class="stat-lbl">Tokens Issued</div></div>
+        <div class="stat"><div class="stat-num" style="color:#10b981">1</div><div class="stat-lbl">Used</div></div>
+        <div class="stat"><div class="stat-num" style="color:#6366f1">2</div><div class="stat-lbl">Unused</div></div>
+        <div class="stat"><div class="stat-num" style="color:#f59e0b">2</div><div class="stat-lbl">Ticket Types Covered</div></div>
+      </div>
+
+      <!-- Tokens table -->
+      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:20px">
+        <table>
+          <thead>
+            <tr>
+              <th>Token Code</th><th>Ticket Type</th><th>Issued To</th><th>Email</th><th>Issued By</th><th>Used?</th><th>Notes</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code style="background:#f1f5f9;padding:2px 8px;border-radius:4px;font-size:12px">DIWALI-DIN-001</code></td>
+              <td><span class="badge badge-blue">Dinner Pass</span></td>
+              <td class="fw">Dr. Suresh Pillai</td>
+              <td class="mute sm">suresh.pillai@gmail.com</td>
+              <td class="sm">Meera Krishnan</td>
+              <td><span class="badge badge-gray">Unused</span></td>
+              <td class="sm mute">VIP guest — chief guest</td>
+              <td><button class="btn-out btn-sm red">Revoke</button></td>
+            </tr>
+            <tr>
+              <td><code style="background:#f1f5f9;padding:2px 8px;border-radius:4px;font-size:12px">DIWALI-GAME-TECHCORP</code></td>
+              <td><span class="badge badge-purple">Games Bundle</span></td>
+              <td class="mute" style="font-style:italic">— anonymous —</td>
+              <td class="mute">—</td>
+              <td class="sm">Meera Krishnan</td>
+              <td><span class="badge badge-gray">Unused</span></td>
+              <td class="sm mute">TechCorp sponsor team passes</td>
+              <td><button class="btn-out btn-sm red">Revoke</button></td>
+            </tr>
+            <tr>
+              <td><code style="background:#f1f5f9;padding:2px 8px;border-radius:4px;font-size:12px">SPORTS-SPEC-PRESS-001</code></td>
+              <td><span class="badge badge-green">Spectator</span></td>
+              <td class="fw">Kavitha Nambiar (The Hindu)</td>
+              <td class="mute">—</td>
+              <td class="sm">Rajesh Iyer</td>
+              <td><span class="badge badge-green">Used</span></td>
+              <td class="sm mute">Press spectator</td>
+              <td><span class="mute sm">—</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Issue token form -->
+      <div class="box">
+        <div class="fw mb12">Issue a Free Token</div>
+        <div class="grid2 mb12">
+          <div><div class="lbl mb4">Ticket Type *</div>
+            <select><option>— select ticket type —</option><option>General Entry (Free)</option><option>Dinner Pass (₹150)</option><option>Games Bundle (₹50)</option></select>
+          </div>
+          <div><div class="lbl mb4">Token Code (auto-generated)</div><input type="text" placeholder="e.g. DIWALI-GUEST-005" /></div>
+        </div>
+        <div class="grid2 mb12">
+          <div><div class="lbl mb4">Issued To (optional)</div><input type="text" placeholder="Recipient name…" /></div>
+          <div><div class="lbl mb4">Email (optional)</div><input type="email" placeholder="recipient@example.com" /></div>
+        </div>
+        <div class="mb12"><div class="lbl mb4">Notes</div><textarea rows="2" placeholder="Reason for issuing (e.g. sponsor guest, press, VIP)…"></textarea></div>
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px 14px;font-size:12px;color:#1d4ed8;margin-bottom:12px">
+          Leaving name and email blank issues an anonymous walk-in token — anyone presenting this code at the gate will be admitted.
+        </div>
+        <div class="flex gap8"><button class="btn btn-sm">Issue Token</button><button class="btn-out btn-sm">Cancel</button></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCREEN 26: Admin — User Approval Queue                          -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="screen" id="s26">
+  <div class="screen-label">Screen 26 — Admin · User Approval Queue · Rajesh Iyer (admin)</div>
+
+  <nav>
+    <span class="nav-logo">🏛 PVH Admin</span>
+    <span class="grow"></span>
+    <div class="bell-wrap">🔔<div class="bell-badge">3</div></div>
+    <div class="avatar" style="background:#7c3aed">RI</div>
+  </nav>
+
+  <div class="flex" style="align-items:flex-start;min-height:560px">
+    <div class="sidebar">
+      <div class="sidebar-item">📅 Events</div>
+      <div class="sidebar-item active">👥 Users</div>
+      <div class="sidebar-item">💰 Payments</div>
+      <div class="sidebar-item">📂 Categories</div>
+      <div class="sidebar-item">📢 Announcements</div>
+      <div class="sidebar-item">🏛 Society</div>
+    </div>
+
+    <div class="p grow">
+
+      <!-- Page header -->
+      <div class="flex mb16" style="align-items:center;gap:12px">
+        <div class="grow">
+          <div class="fw" style="font-size:17px">User Approval Queue</div>
+          <div class="sm mute">Review and activate new member registrations. Assign a role before approving.</div>
+        </div>
+        <span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600">3 pending</span>
+      </div>
+
+      <!-- Stats bar -->
+      <div class="grid4 mb20" style="grid-template-columns:repeat(4,1fr)">
+        <div class="stat" style="border-left:3px solid #f59e0b"><div class="stat-lbl">Awaiting Review</div><div class="stat-num" style="color:#f59e0b">3</div></div>
+        <div class="stat" style="border-left:3px solid #10b981"><div class="stat-lbl">Approved Today</div><div class="stat-num" style="color:#10b981">2</div></div>
+        <div class="stat" style="border-left:3px solid #ef4444"><div class="stat-lbl">Rejected Today</div><div class="stat-num" style="color:#ef4444">1</div></div>
+        <div class="stat" style="border-left:3px solid #6366f1"><div class="stat-lbl">Total Users</div><div class="stat-num">51</div></div>
+      </div>
+
+      <!-- Pending Users Table -->
+      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:24px">
+        <div style="background:#fffbeb;padding:10px 16px;font-size:12px;font-weight:600;color:#92400e;border-bottom:1px solid #fde68a;display:flex;align-items:center;gap:8px">
+          ⏳ Pending Registrations
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Registered</th>
+              <th>Assign Role</th>
+              <th style="width:200px">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Row 1 -->
+            <tr style="background:#fffbeb">
+              <td>
+                <div class="flex gap8" style="align-items:center">
+                  <div class="avatar" style="width:28px;height:28px;font-size:10px;background:#94a3b8">NR</div>
+                  <div>
+                    <div class="fw sm">Nisha Reddy</div>
+                    <div style="font-size:11px;color:#94a3b8">nisha.reddy@gmail.com</div>
+                  </div>
+                </div>
+              </td>
+              <td class="mute sm">nisha.reddy@gmail.com</td>
+              <td class="mute sm">Just now</td>
+              <td>
+                <select style="width:auto;font-size:12px;padding:4px 8px;border:1px solid #d1d5db;border-radius:6px">
+                  <option value="">— select role —</option>
+                  <option value="resident">resident</option>
+                  <option value="committee_member">committee_member</option>
+                  <option value="security_guard">security_guard</option>
+                </select>
+              </td>
+              <td>
+                <div class="flex gap6" style="align-items:center">
+                  <button class="btn btn-sm" style="background:#16a34a;font-size:11px;padding:4px 12px">✓ Approve</button>
+                  <button class="btn-out btn-sm red" style="font-size:11px;padding:4px 10px">✕ Reject</button>
+                </div>
+              </td>
+            </tr>
+            <!-- Row 2 -->
+            <tr style="background:#fffbeb">
+              <td>
+                <div class="flex gap8" style="align-items:center">
+                  <div class="avatar" style="width:28px;height:28px;font-size:10px;background:#94a3b8">AV</div>
+                  <div>
+                    <div class="fw sm">Arun Varma</div>
+                    <div style="font-size:11px;color:#94a3b8">arun.varma@gmail.com</div>
+                  </div>
+                </div>
+              </td>
+              <td class="mute sm">arun.varma@gmail.com</td>
+              <td class="mute sm">2 hrs ago</td>
+              <td>
+                <select style="width:auto;font-size:12px;padding:4px 8px;border:1px solid #d1d5db;border-radius:6px">
+                  <option value="">— select role —</option>
+                  <option value="resident" selected>resident</option>
+                  <option value="committee_member">committee_member</option>
+                  <option value="security_guard">security_guard</option>
+                </select>
+              </td>
+              <td>
+                <div class="flex gap6" style="align-items:center">
+                  <button class="btn btn-sm" style="background:#16a34a;font-size:11px;padding:4px 12px">✓ Approve</button>
+                  <button class="btn-out btn-sm red" style="font-size:11px;padding:4px 10px">✕ Reject</button>
+                </div>
+              </td>
+            </tr>
+            <!-- Row 3 -->
+            <tr style="background:#fffbeb">
+              <td>
+                <div class="flex gap8" style="align-items:center">
+                  <div class="avatar" style="width:28px;height:28px;font-size:10px;background:#94a3b8">SB</div>
+                  <div>
+                    <div class="fw sm">Sunita Bhat</div>
+                    <div style="font-size:11px;color:#94a3b8">sunita.bhat@yahoo.com</div>
+                  </div>
+                </div>
+              </td>
+              <td class="mute sm">sunita.bhat@yahoo.com</td>
+              <td class="mute sm">Yesterday</td>
+              <td>
+                <select style="width:auto;font-size:12px;padding:4px 8px;border:1px solid #d1d5db;border-radius:6px">
+                  <option value="">— select role —</option>
+                  <option value="resident">resident</option>
+                  <option value="committee_member">committee_member</option>
+                  <option value="security_guard">security_guard</option>
+                </select>
+              </td>
+              <td>
+                <div class="flex gap6" style="align-items:center">
+                  <button class="btn btn-sm" style="background:#16a34a;font-size:11px;padding:4px 12px">✓ Approve</button>
+                  <button class="btn-out btn-sm red" style="font-size:11px;padding:4px 10px">✕ Reject</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Reject Confirmation Modal (state: open after clicking Reject on row 1) -->
+      <div class="box mb20" style="border:1px solid #fecaca;background:#fff5f5;max-width:480px">
+        <div class="fw mb4" style="color:#991b1b">⚠ Reject Registration — Nisha Reddy</div>
+        <div class="sm mute mb12">This will remove <strong>Nisha Reddy</strong> (nisha.reddy@gmail.com) from the pending queue. They will need to re-register and contact the society office.</div>
+        <div class="flex gap8">
+          <button class="btn btn-sm" style="background:#dc2626">Confirm Reject</button>
+          <button class="btn-out btn-sm">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Recently processed section -->
+      <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+        <div style="background:#f8fafc;padding:10px 16px;font-size:12px;font-weight:600;color:#475569;border-bottom:1px solid #e2e8f0">
+          Recent Activity (Today)
+        </div>
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Email</th><th>Action</th><th>Role Assigned</th><th>Time</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="fw sm">Kiran Mehta</td>
+              <td class="mute sm">kiran.mehta@gmail.com</td>
+              <td><span class="badge badge-green">Approved</span></td>
+              <td><span class="badge badge-green">resident</span></td>
+              <td class="mute sm">10:32 am</td>
+            </tr>
+            <tr>
+              <td class="fw sm">Prakash N.</td>
+              <td class="mute sm">prakash.n@gmail.com</td>
+              <td><span class="badge badge-green">Approved</span></td>
+              <td><span class="badge badge-blue">committee_member</span></td>
+              <td class="mute sm">9:15 am</td>
+            </tr>
+            <tr>
+              <td class="fw sm">Unknown User</td>
+              <td class="mute sm">spam@example.com</td>
+              <td><span class="badge" style="background:#fee2e2;color:#991b1b">Rejected</span></td>
+              <td class="mute sm">—</td>
+              <td class="mute sm">8:44 am</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
   </div>
 </div>
 

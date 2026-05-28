@@ -48,8 +48,15 @@ export function Nav() {
   const isGuard = role === 'security_guard';
   const isGuest = !user;
 
+  const isSponsor = role === 'sponsor';
+
   const primaryLinks = isGuard
     ? [{ label: 'QR Scanner', to: '/scanner', end: false }]
+    : isSponsor
+    ? [
+        { label: 'Events',           to: '/events',  end: false },
+        { label: 'My Sponsorships',  to: '/sponsor', end: false },
+      ]
     : [
         ...BASE_LINKS,
         ...(role === 'committee_member' || role === 'admin'
@@ -88,8 +95,8 @@ export function Nav() {
             </Box>
           )}
 
-          {/* Authenticated non-guard: category chips */}
-          {!isGuest && !isGuard && (
+          {/* Authenticated non-guard, non-sponsor: category chips */}
+          {!isGuest && !isGuard && !isSponsor && (
             <Box sx={{ display: { xs: 'none', lg: 'flex' }, gap: 0.5, flex: 1, overflow: 'hidden' }}>
               {CATEGORIES.map((c) => (
                 <Chip
