@@ -219,6 +219,20 @@ services:
     networks:
       - society_net
 
+  # ─── Cloudflare Tunnel ───────────────────────────────────────────────────────
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: society_cloudflared
+    restart: always
+    command: tunnel --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
+      - ./cloudflared/4f6ad36b-5a4a-4f31-9612-b11129f33205.json:/etc/cloudflared/4f6ad36b-5a4a-4f31-9612-b11129f33205.json:ro
+    depends_on:
+      - nginx
+    networks:
+      - society_net
+
 # ─── Volumes ─────────────────────────────────────────────────────────────────
 volumes:
   postgres_data:

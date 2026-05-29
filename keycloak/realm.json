@@ -68,7 +68,9 @@
         "http://localhost:8080/*",
         "http://192.168.1.11/*",
         "http://192.168.1.11:8080/*",
-        "http://192.168.1.11:3000/*"
+        "http://192.168.1.11:3000/*",
+        "https://gm-global-techies-town.club/*",
+        "https://www.gm-global-techies-town.club/*"
       ],
       "webOrigins": [
         "http://localhost",
@@ -81,6 +83,8 @@
         "http://localhost:8080",
         "http://192.168.1.11",
         "http://192.168.1.11:8080",
+        "https://gm-global-techies-town.club",
+        "https://www.gm-global-techies-town.club",
         "http://192.168.1.11:3000"
       ],
       "attributes": {
@@ -278,13 +282,13 @@
   "smtpServer": {
     "host": "smtp.gmail.com",
     "port": "587",
-    "from": "balavigneskumar@gmail.com",
+    "from": "gm.gtt.club@gmail.com",
     "fromDisplayName": "GM Global Techies Town",
     "ssl": "false",
     "starttls": "true",
     "auth": "true",
-    "user": "balavigneskumar@gmail.com",
-    "password": "idfzctfglfjcdaup"
+    "user": "gm.gtt.club@gmail.com",
+    "password": "gcvj clcn pchr lfnx"
   },
   "attributes": {
     "userProfileEnabled": "true"
