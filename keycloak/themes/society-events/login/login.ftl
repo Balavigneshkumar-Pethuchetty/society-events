@@ -124,7 +124,7 @@
           </#if>
 
           <#if realm.resetPasswordAllowed>
-            <a class="text-link" href="${url.loginResetCredentialsUrl}">Forgot password?</a>
+            <a class="text-link" href="${properties.appForgotPasswordUrl}">Forgot password?</a>
           </#if>
         </div>
 

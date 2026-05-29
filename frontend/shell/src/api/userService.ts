@@ -59,6 +59,22 @@ async function publicPost(path: string, body: unknown): Promise<void> {
   }
 }
 
+export interface NotificationItem {
+  id: string;
+  event_id: string | null;
+  type: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  unread_count: number;
+  total: number;
+  items: NotificationItem[];
+}
+
 export const userService = {
   /** Upsert local DB row from JWT on first login. */
   sync: (token: string) =>
@@ -103,4 +119,19 @@ export const userService = {
 
   forgotPassword: (email: string) =>
     publicPost('/users/forgot-password', { email }),
+
+  notifications: {
+    list: (token: string, params?: { unread?: boolean; limit?: number; offset?: number }) => {
+      const qs = new URLSearchParams();
+      if (params?.unread !== undefined) qs.set('unread', String(params.unread));
+      if (params?.limit)  qs.set('limit',  String(params.limit));
+      if (params?.offset) qs.set('offset', String(params.offset));
+      const query = qs.toString() ? `?${qs.toString()}` : '';
+      return apiFetch<NotificationListResponse>(`/notifications${query}`, token);
+    },
+    markRead: (token: string, id: string) =>
+      apiFetch<void>(`/notifications/${id}/read`, token, { method: 'PATCH' }),
+    markAllRead: (token: string) =>
+      apiFetch<void>('/notifications/read-all', token, { method: 'PATCH' }),
+  },
 };

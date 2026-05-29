@@ -15,6 +15,9 @@ from app.models import (
     ApartmentResponse,
     UserListResponse,
     ForgotPasswordRequest,
+    AdminStatsResponse,
+    AdminBreakdown,
+    AdminActionResponse,
 )
 
 router = APIRouter()
@@ -23,11 +26,34 @@ router = APIRouter()
 # ── public: forgot password ───────────────────────────────────────────────────
 
 @router.post("/forgot-password", status_code=204, summary="Send password reset email")
-async def forgot_password(body: ForgotPasswordRequest):
-    """
-    No JWT required. Looks up the email in Keycloak and sends a reset link.
-    Returns 404 with a clear message if the email is not registered.
-    """
+async def forgot_password(body: ForgotPasswordRequest, pool: Pool = Depends(get_pool)):
+    # Check local DB first — single source of truth
+    async with pool.acquire() as conn:
+        db_user = await conn.fetchrow(
+            "SELECT id, is_active, identity_provider FROM users WHERE email = $1",
+            body.email.strip().lower(),
+        )
+
+    if not db_user:
+        raise HTTPException(
+            status_code=404,
+            detail="No account found with this email address. Please check and try again.",
+        )
+
+    if not db_user["is_active"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Your account is pending approval or has been deactivated. "
+                   "Please contact the administrator.",
+        )
+
+    if db_user["identity_provider"] != "keycloak":
+        raise HTTPException(
+            status_code=400,
+            detail="This account uses a social login (Google/GitHub). "
+                   "Password reset is not available — sign in via your provider.",
+        )
+
     async with httpx.AsyncClient(timeout=10) as client:
         token_resp = await client.post(
             f"{settings.keycloak_url}/realms/master/protocol/openid-connect/token",
@@ -46,7 +72,7 @@ async def forgot_password(body: ForgotPasswordRequest):
 
         search_resp = await client.get(
             f"{settings.keycloak_url}/admin/realms/{realm}/users",
-            params={"email": str(body.email), "exact": "true"},
+            params={"email": body.email.strip().lower(), "exact": "true"},
             headers=headers,
         )
         kc_users = search_resp.json() if search_resp.status_code == 200 else []
@@ -125,19 +151,38 @@ async def sync_user(
         raise HTTPException(status_code=400, detail="Token missing 'sub' claim")
 
     async with pool.acquire() as conn:
-        user_id = await conn.fetchval(
+        upsert = await conn.fetchrow(
             """
             INSERT INTO users (name, email, keycloak_sub, role, is_active, identity_provider)
             VALUES ($1, $2, $3, 'resident', FALSE, 'keycloak')
             ON CONFLICT (keycloak_sub) DO UPDATE
                 SET name  = EXCLUDED.name,
                     email = EXCLUDED.email
-            RETURNING id
+            RETURNING id, (xmax = 0) AS is_new
             """,
             name, email, sub,
         )
-        if user_id is None:
+        if upsert is None:
             raise HTTPException(status_code=500, detail="Sync upsert returned no row")
+
+        user_id = upsert["id"]
+
+        # Notify all active admins only on brand-new registration
+        if upsert["is_new"]:
+            admin_ids = await conn.fetch(
+                "SELECT id FROM users WHERE role = 'admin' AND is_active = TRUE"
+            )
+            for admin in admin_ids:
+                await conn.execute(
+                    """
+                    INSERT INTO notification (user_id, type, title, message)
+                    VALUES ($1, 'new_registration', $2, $3)
+                    """,
+                    admin["id"],
+                    "New User Registration",
+                    f"{name} ({email}) has registered and is awaiting approval.",
+                )
+
         row = await conn.fetchrow(
             f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1",
             user_id,
@@ -267,6 +312,57 @@ async def list_users(
     return UserListResponse(total=total, items=[_row_to_user(r) for r in rows])
 
 
+# ── admin stats (must be before /{user_id} to avoid UUID match on "admin-stats") ──
+
+@router.get(
+    "/admin-stats",
+    response_model=AdminStatsResponse,
+    summary="Per-admin action statistics (admin / committee_member)",
+    dependencies=[Depends(require_role("admin", "committee_member"))],
+)
+async def get_admin_stats(pool: Pool = Depends(get_pool)):
+    async with pool.acquire() as conn:
+        total_pending = await conn.fetchval("SELECT COUNT(*) FROM users WHERE is_active = FALSE")
+        counts = {r["action"]: r["cnt"] for r in await conn.fetch(
+            "SELECT action, COUNT(*) AS cnt FROM admin_actions GROUP BY action"
+        )}
+        breakdown = await conn.fetch(
+            """
+            SELECT admin_id, admin_name,
+                   COUNT(*) FILTER (WHERE action = 'approved') AS approved,
+                   COUNT(*) FILTER (WHERE action = 'rejected') AS rejected,
+                   COUNT(*) FILTER (WHERE action = 'removed')  AS removed,
+                   COUNT(*) FILTER (WHERE action = 'revoked')  AS revoked
+            FROM admin_actions
+            GROUP BY admin_id, admin_name
+            ORDER BY COUNT(*) DESC
+            """
+        )
+        recent = await conn.fetch(
+            """
+            SELECT id, admin_name, target_user_name, target_user_email, action, role, performed_at
+            FROM admin_actions ORDER BY performed_at DESC LIMIT 20
+            """
+        )
+    return AdminStatsResponse(
+        total_pending=total_pending,
+        total_approved=counts.get("approved", 0),
+        total_rejected=counts.get("rejected", 0),
+        total_removed=counts.get("removed", 0),
+        total_revoked=counts.get("revoked", 0),
+        by_admin=[AdminBreakdown(
+            admin_id=r["admin_id"], admin_name=r["admin_name"],
+            approved=r["approved"], rejected=r["rejected"],
+            removed=r["removed"],  revoked=r["revoked"],
+        ) for r in breakdown],
+        recent_actions=[AdminActionResponse(
+            id=r["id"], admin_name=r["admin_name"],
+            target_user_name=r["target_user_name"], target_user_email=r["target_user_email"],
+            action=r["action"], role=r["role"], performed_at=r["performed_at"],
+        ) for r in recent],
+    )
+
+
 @router.get(
     "/{user_id}",
     response_model=UserResponse,
@@ -304,15 +400,26 @@ async def get_user(
 async def update_role(
     user_id: UUID,
     body: RoleUpdateRequest,
+    claims: dict = Depends(get_current_claims),
     pool: Pool = Depends(get_pool),
 ):
     async with pool.acquire() as conn:
+        user_info = await conn.fetchrow(
+            "SELECT name, email FROM users WHERE id = $1", user_id
+        )
+        if not user_info:
+            raise HTTPException(status_code=404, detail="User not found")
         row = await conn.fetchrow(
             "UPDATE users SET role = $1 WHERE id = $2 RETURNING id",
             body.role, user_id,
         )
         if not row:
             raise HTTPException(status_code=404, detail="User not found")
+        await _record_action(
+            conn, claims, user_id,
+            user_info["name"], user_info["email"],
+            "role_changed", body.role,
+        )
         row = await conn.fetchrow(
             f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1",
             row["id"],
@@ -385,6 +492,77 @@ async def _keycloak_assign_role(keycloak_sub: str, role_name: str) -> None:
             raise HTTPException(status_code=502, detail=f"Keycloak role assign failed: {assign_resp.text}")
 
 
+# ── additional Keycloak helpers ──────────────────────────────────────────────
+
+async def _keycloak_delete_user(keycloak_sub: str) -> None:
+    """Delete a user from Keycloak entirely."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            f"{settings.keycloak_url}/realms/master/protocol/openid-connect/token",
+            data={"client_id": "admin-cli", "grant_type": "password",
+                  "username": settings.keycloak_admin_user, "password": settings.keycloak_admin_password},
+        )
+        if resp.status_code != 200:
+            return
+        headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+        await client.delete(
+            f"{settings.keycloak_url}/admin/realms/{settings.keycloak_realm}/users/{keycloak_sub}",
+            headers=headers,
+        )
+
+
+async def _keycloak_remove_all_realm_roles(keycloak_sub: str) -> None:
+    """Strip all managed realm roles from a Keycloak user (revoke)."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            f"{settings.keycloak_url}/realms/master/protocol/openid-connect/token",
+            data={"client_id": "admin-cli", "grant_type": "password",
+                  "username": settings.keycloak_admin_user, "password": settings.keycloak_admin_password},
+        )
+        if resp.status_code != 200:
+            return
+        headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+        realm = settings.keycloak_realm
+        roles_resp = await client.get(
+            f"{settings.keycloak_url}/admin/realms/{realm}/users/{keycloak_sub}/role-mappings/realm",
+            headers=headers,
+        )
+        if roles_resp.status_code != 200:
+            return
+        managed = [r for r in roles_resp.json()
+                   if not r["name"].startswith("default-")
+                   and r["name"] not in ("offline_access", "uma_authorization")]
+        if managed:
+            await client.delete(
+                f"{settings.keycloak_url}/admin/realms/{realm}/users/{keycloak_sub}/role-mappings/realm",
+                headers=headers, json=managed,
+            )
+
+
+async def _record_action(
+    conn,
+    claims: dict,
+    target_user_id,
+    target_name: str,
+    target_email: str,
+    action: str,
+    role: Optional[str] = None,
+) -> None:
+    """Insert a row into admin_actions for persistent audit tracking."""
+    sub = claims.get("sub")
+    admin = await conn.fetchrow("SELECT id, name FROM users WHERE keycloak_sub = $1", sub)
+    admin_id   = admin["id"]   if admin else None
+    admin_name = admin["name"] if admin else claims.get("preferred_username", "Unknown Admin")
+    await conn.execute(
+        """
+        INSERT INTO admin_actions
+            (admin_id, admin_name, target_user_id, target_user_name, target_user_email, action, role)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        """,
+        admin_id, admin_name, target_user_id, target_name, target_email, action, role,
+    )
+
+
 # ── approval endpoints ────────────────────────────────────────────────────────
 
 @router.post(
@@ -396,11 +574,12 @@ async def _keycloak_assign_role(keycloak_sub: str, role_name: str) -> None:
 async def approve_user(
     user_id: UUID,
     body: RoleUpdateRequest,
+    claims: dict = Depends(get_current_claims),
     pool: Pool = Depends(get_pool),
 ):
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT id, keycloak_sub FROM users WHERE id = $1",
+            "SELECT id, name, email, keycloak_sub FROM users WHERE id = $1",
             user_id,
         )
         if not row:
@@ -408,16 +587,17 @@ async def approve_user(
         if not row["keycloak_sub"]:
             raise HTTPException(status_code=400, detail="User has no Keycloak sub — cannot assign role")
 
-        # Assign role in Keycloak so next token contains the role
         await _keycloak_assign_role(row["keycloak_sub"], body.role)
 
-        # Activate user in DB and set chosen role
         updated = await conn.fetchrow(
             "UPDATE users SET role = $1, is_active = TRUE WHERE id = $2 RETURNING id",
             body.role, user_id,
         )
         if not updated:
             raise HTTPException(status_code=500, detail="Update failed")
+
+        await _record_action(conn, claims, user_id, row["name"], row["email"], "approved", body.role)
+
         full = await conn.fetchrow(
             f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1",
             updated["id"],
@@ -433,15 +613,79 @@ async def approve_user(
 )
 async def reject_user(
     user_id: UUID,
+    claims: dict = Depends(get_current_claims),
+    pool: Pool = Depends(get_pool),
+):
+    async with pool.acquire() as conn:
+        user_row = await conn.fetchrow(
+            "SELECT id, name, email FROM users WHERE id = $1 AND is_active = FALSE",
+            user_id,
+        )
+        if not user_row:
+            raise HTTPException(status_code=404, detail="Pending user not found")
+        await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+        await _record_action(conn, claims, None, user_row["name"], user_row["email"], "rejected")
+
+
+@router.delete(
+    "/{user_id}",
+    status_code=204,
+    summary="Permanently remove an active user (admin only)",
+    dependencies=[Depends(require_role("admin"))],
+)
+async def remove_user(
+    user_id: UUID,
+    claims: dict = Depends(get_current_claims),
     pool: Pool = Depends(get_pool),
 ):
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "DELETE FROM users WHERE id = $1 AND is_active = FALSE RETURNING id",
+            "SELECT id, name, email, keycloak_sub FROM users WHERE id = $1",
             user_id,
         )
         if not row:
-            raise HTTPException(status_code=404, detail="Pending user not found")
+            raise HTTPException(status_code=404, detail="User not found")
+        await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+        await _record_action(conn, claims, None, row["name"], row["email"], "removed")
+
+    if row["keycloak_sub"]:
+        try:
+            await _keycloak_delete_user(row["keycloak_sub"])
+        except Exception:
+            pass
+
+
+@router.patch(
+    "/{user_id}/revoke",
+    response_model=UserResponse,
+    summary="Revoke access for an active user (admin only)",
+    dependencies=[Depends(require_role("admin"))],
+)
+async def revoke_user(
+    user_id: UUID,
+    claims: dict = Depends(get_current_claims),
+    pool: Pool = Depends(get_pool),
+):
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1",
+            user_id,
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="User not found")
+        await conn.execute("UPDATE users SET is_active = FALSE WHERE id = $1", user_id)
+        await _record_action(conn, claims, user_id, row["name"], row["email"], "revoked")
+        full = await conn.fetchrow(
+            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1", user_id,
+        )
+
+    if row["keycloak_sub"]:
+        try:
+            await _keycloak_remove_all_realm_roles(row["keycloak_sub"])
+        except Exception:
+            pass
+
+    return _row_to_user(full)
 
 
 # ── apartments ────────────────────────────────────────────────────────────────

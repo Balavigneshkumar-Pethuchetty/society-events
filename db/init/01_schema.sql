@@ -57,6 +57,25 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- ---------------------------------------------------------------------------
+-- ADMIN_ACTIONS  (persistent audit log of every admin user-management action)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS admin_actions (
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    admin_id            UUID        REFERENCES users(id) ON DELETE SET NULL,
+    admin_name          VARCHAR(255) NOT NULL,
+    target_user_id      UUID        REFERENCES users(id) ON DELETE SET NULL,
+    target_user_name    VARCHAR(255) NOT NULL,
+    target_user_email   VARCHAR(255) NOT NULL,
+    action              VARCHAR(20) NOT NULL
+                        CHECK (action IN ('approved','rejected','removed','revoked','role_changed')),
+    role                VARCHAR(50),
+    performed_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_actions_admin_id     ON admin_actions(admin_id);
+CREATE INDEX IF NOT EXISTS idx_admin_actions_performed_at ON admin_actions(performed_at DESC);
+
+-- ---------------------------------------------------------------------------
 -- OAUTH_SESSION  (optional — tracks active refresh tokens per device)
 -- Enables "log out all devices" and refresh-token reuse detection.
 -- You can skip this and rely solely on Keycloak's session management.
