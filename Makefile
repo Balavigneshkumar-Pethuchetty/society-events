@@ -49,8 +49,8 @@ restart: ## Restart all core services (rebuilds frontend to pick up code changes
 	docker compose restart nginx keycloak postgres redis pgadmin user-service event-service cloudflared
 
 ## ── Individual service restarts ─────────────────────────────────────────────
-restart-nginx: ## Restart nginx only
-	docker compose restart nginx
+restart-nginx: ## Rebuild & restart nginx (nginx.conf is baked into the image)
+	docker compose up -d --build nginx
 
 restart-keycloak: ## Restart Keycloak only (picks up theme/realm changes)
 	docker compose restart keycloak
