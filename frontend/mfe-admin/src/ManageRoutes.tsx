@@ -1,10 +1,11 @@
 import { Box, Typography } from '@mui/material';
-import { EventFinance } from './pages/EventFinance';
+import { ManageEvents }         from './pages/ManageEvents';
+import { EventFinance }         from './pages/EventFinance';
 import { ComplimentaryTickets } from './pages/ComplimentaryTickets';
-import { VendorManagement } from './pages/VendorManagement';
-import { RevenueDistribution } from './pages/RevenueDistribution';
-import { TicketTypeSetup } from './pages/TicketTypeSetup';
-import { FreeTokens } from './pages/FreeTokens';
+import { VendorManagement }     from './pages/VendorManagement';
+import { RevenueDistribution }  from './pages/RevenueDistribution';
+import { TicketTypeSetup }      from './pages/TicketTypeSetup';
+import { FreeTokens }           from './pages/FreeTokens';
 
 function ComingSoon() {
   return (
@@ -17,18 +18,21 @@ function ComingSoon() {
 }
 
 interface ManageRoutesProps {
-  // Routing decision is made by the shell's wrapper and passed as props,
-  // avoiding any dependency on React Router context across the federation boundary.
+  token?: string | null;
   page?: string;
   id?: string;
 }
 
-export function ManageRoutes({ page, id: _id }: ManageRoutesProps) {
+export function ManageRoutes({ token = null, page, id }: ManageRoutesProps) {
+  // Default landing (/manage) and events list/create (/manage/events, /manage/events/new)
+  if (!page || page === 'events') return <ManageEvents token={token} id={id} />;
+
   if (page === 'finance')       return <EventFinance />;
   if (page === 'complimentary') return <ComplimentaryTickets />;
   if (page === 'vendors')       return <VendorManagement />;
   if (page === 'revenue')       return <RevenueDistribution />;
   if (page === 'tickets')       return <TicketTypeSetup />;
   if (page === 'tokens')        return <FreeTokens />;
+
   return <ComingSoon />;
 }

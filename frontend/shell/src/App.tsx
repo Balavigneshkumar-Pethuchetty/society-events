@@ -23,6 +23,7 @@ interface AdminRoutesProps {
 }
 
 interface ManageRoutesProps {
+  token?: string | null;
   page?: string;
   id?: string;
 }
@@ -224,6 +225,7 @@ function SponsorWrapper() {
 }
 
 function ManageWrapper() {
+  const { token } = useAuth();
   const { pathname } = useLocation();
   const segments = pathname.split('/').filter(Boolean);
   const manageIndex = segments.lastIndexOf('manage');
@@ -231,7 +233,7 @@ function ManageWrapper() {
   const id   = manageIndex >= 0 ? segments[manageIndex + 2] : undefined;
   return (
     <React.Suspense fallback={<MfeFallback label="Event Manager" />}>
-      <RemoteManageRoutes page={page} id={id} />
+      <RemoteManageRoutes token={token} page={page} id={id} />
     </React.Suspense>
   );
 }

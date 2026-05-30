@@ -28,30 +28,20 @@ export default defineConfig(({ mode }) => ({
     port: 4004,
     cors: true,
     proxy: {
-      '/realms': {
-        target: 'http://localhost:8080',
-      },
-      '/resources': {
-        target: 'http://localhost:8080',
-      },
-      '/api/users': {
-        target: 'http://localhost:8080',
-      },
+      '/realms':     { target: 'http://localhost:8080' },
+      '/resources':  { target: 'http://localhost:8080' },
+      '/api/users':  { target: 'http://localhost:8080' },
+      '/api/events': { target: 'http://localhost:8080' },
     },
   },
   preview: {
     port: 4004,
     cors: true,
     proxy: {
-      '/realms': {
-        target: 'http://localhost:8080',
-      },
-      '/resources': {
-        target: 'http://localhost:8080',
-      },
-      '/api/users': {
-        target: 'http://localhost:8080',
-      },
+      '/realms':     { target: 'http://localhost:8080' },
+      '/resources':  { target: 'http://localhost:8080' },
+      '/api/users':  { target: 'http://localhost:8080' },
+      '/api/events': { target: 'http://localhost:8080' },
     },
   },
   build: {
