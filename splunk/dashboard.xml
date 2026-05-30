@@ -1,0 +1,425 @@
+<form version="1.1">
+  <label>Society Events — Operations Dashboard</label>
+  <description>Web errors, traffic, security events, and system performance</description>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <!-- ═══════════════════════════════════════════════════════
+       SECTION 1 — WEB SERVICE ERRORS / APPLICATION LOGS
+       ═══════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <div style="background:#dc4e41;color:#fff;padding:10px 16px;border-radius:6px;font-size:15px;font-weight:bold">
+          &#9888;&#65039; Web Service Errors &amp; Application Logs  — 
+          <span style="font-weight:normal;font-size:13px">30-day retention &#8226; index=society_app_errors</span>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Total Errors</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_app_errors | stats count as total]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,20]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Server Errors (5xx)</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_app_errors level=ERROR status_code>=500 | stats count]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Client Errors (4xx)</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_app_errors level=WARN | stats count]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <title>Frontend JS Errors</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_app_errors source=frontend | stats count]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <title>Affected Users</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_app_errors email=* | stats dc(email) as users]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Error Trend by Severity</title>
+      <chart>
+        <search>
+          <query><![CDATA[index=society_app_errors | timechart count by level]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.seriesColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Recent Errors</title>
+      <table>
+        <search>
+          <query><![CDATA[index=society_app_errors | eval ts=strftime(_time,"%d/%m %H:%M:%S") | table ts, level, name, email, method, path, status_code, duration_ms, error | sort -_time | head 25]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════
+       SECTION 2 — WEB ACCESS LOGS (TRAFFIC)
+       ═══════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <div style="background:#3c444d;color:#fff;padding:10px 16px;border-radius:6px;font-size:15px;font-weight:bold;margin-top:8px">
+          &#128200; Web Access Logs (Traffic / CDN)  — 
+          <span style="font-weight:normal;font-size:13px">90-day retention &#8226; index=society_web_access</span>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Total Requests</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_web_access | stats count]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <title>Avg Response Time</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_web_access | stats avg(duration_ms) as avg | eval avg=round(avg,1)]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="unit">ms</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,300]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Unique Users</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_web_access email=* | stats dc(email) as users]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <title>Requests / Min</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_web_access | bucket _time span=1m | stats count by _time | stats avg(count) as rpm | eval rpm=round(rpm,1)]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <title>Success Rate</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_web_access | stats count as total, count(eval(status_code<400)) as ok | eval pct=round(ok/total*100,1)."%"]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Request Rate &amp; Status Distribution</title>
+      <chart>
+        <search>
+          <query><![CDATA[index=society_web_access | eval status_group=case(status_code<300,"2xx Success",status_code<400,"3xx Redirect",status_code<500,"4xx Client Error",true(),"5xx Server Error") | timechart count by status_group]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.seriesColors">["0x53a051","0x5379af","0xf8be34","0xdc4e41"]</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top API Endpoints</title>
+      <table>
+        <search>
+          <query><![CDATA[index=society_web_access | stats count as hits, avg(duration_ms) as avg_ms, dc(email) as users by method, path | eval avg_ms=round(avg_ms,0) | sort -hits | head 15]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Activity by User</title>
+      <table>
+        <search>
+          <query><![CDATA[index=society_web_access email=* | stats count as requests, avg(duration_ms) as avg_ms, max(duration_ms) as max_ms by name, email, role | eval avg_ms=round(avg_ms,0) | sort -requests | head 20]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════
+       SECTION 3 — SECURITY LOGS (AUTH / AUDIT)
+       ═══════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <div style="background:#f8be34;color:#1a1a1a;padding:10px 16px;border-radius:6px;font-size:15px;font-weight:bold;margin-top:8px">
+          &#128274; Security Logs — Firewall, Auth &amp; Audit  — 
+          <span style="font-weight:normal;font-size:13px">365-day retention &#8226; index=society_security</span>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Security Events</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_security | stats count]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <title>Unauthorized (401)</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_security status_code=401 | stats count]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,5]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Forbidden (403)</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_security status_code=403 | stats count]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Auth Endpoints Hit</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_security | stats dc(path) as endpoints]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <title>Unique Source IPs</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_security client_ip=* | stats dc(client_ip) as ips]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Auth Event Trend</title>
+      <chart>
+        <search>
+          <query><![CDATA[index=society_security | eval outcome=if(status_code<400,"Success","Failure") | timechart count by outcome]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.seriesColors">["0x53a051","0xdc4e41"]</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Security Events by User</title>
+      <table>
+        <search>
+          <query><![CDATA[index=society_security | eval ts=strftime(_time,"%d/%m %H:%M:%S") | table ts, name, email, role, method, path, status_code, client_ip | sort -_time | head 25]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════
+       SECTION 4 — SYSTEM PERFORMANCE
+       ═══════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <div style="background:#5379af;color:#fff;padding:10px 16px;border-radius:6px;font-size:15px;font-weight:bold;margin-top:8px">
+          &#9881;&#65039; System Performance  — 
+          <span style="font-weight:normal;font-size:13px">Response times, throughput, CPU &amp; memory</span>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Avg Response Time</title>
+      <single>
+        <search>
+          <query><![CDATA[(index=society_web_access OR index=society_app_errors) | stats avg(duration_ms) as avg | eval avg=round(avg,0)]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="unit">ms</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,300]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>p95 Response Time</title>
+      <single>
+        <search>
+          <query><![CDATA[(index=society_web_access OR index=society_app_errors) | stats perc95(duration_ms) as p95 | eval p95=round(p95,0)]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="unit">ms</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Avg CPU %</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_metrics metric_type=system | stats avg(cpu_percent) as avg | eval avg=round(avg,1)]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="unit">%</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,70]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Avg Memory %</title>
+      <single>
+        <search>
+          <query><![CDATA[index=society_metrics metric_type=system | stats avg(memory_percent) as avg | eval avg=round(avg,1)]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="unit">%</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,80]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Error Rate</title>
+      <single>
+        <search>
+          <query><![CDATA[(index=society_web_access OR index=society_app_errors) | stats count as total, count(eval(status_code>=400)) as errors | eval pct=round(errors/total*100,2)."%"]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,5]</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Response Time Trend (Avg &amp; p95)</title>
+      <chart>
+        <search>
+          <query><![CDATA[(index=society_web_access OR index=society_app_errors) | timechart avg(duration_ms) as "Avg ms", perc95(duration_ms) as "p95 ms"]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>CPU &amp; Memory Usage</title>
+      <chart>
+        <search>
+          <query><![CDATA[index=society_metrics metric_type=system | timechart avg(cpu_percent) as "CPU %", avg(memory_percent) as "Memory %"]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.seriesColors">["0x5379af","0xf1813f"]</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Slowest Endpoints</title>
+      <table>
+        <search>
+          <query><![CDATA[index=society_web_access | stats avg(duration_ms) as avg_ms, max(duration_ms) as max_ms, count as calls by method, path | eval avg_ms=round(avg_ms,0) | eval max_ms=round(max_ms,0) | sort -avg_ms | head 15]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+      </table>
+    </panel>
+    <panel>
+      <title>Requests vs Errors Over Time</title>
+      <chart>
+        <search>
+          <query><![CDATA[index=society_web_access OR index=society_app_errors | eval category=if(index="society_app_errors","Errors","Requests") | timechart count by category]]></query>
+          <earliest>$time.earliest$</earliest><latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.seriesColors">["0x53a051","0xdc4e41"]</option>
+      </chart>
+    </panel>
+  </row>
+
+</form>

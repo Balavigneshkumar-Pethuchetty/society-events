@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,7 +8,9 @@ from fastapi.responses import HTMLResponse
 
 from app.database import wait_for_db, close_pool, get_pool
 from app.models import SocietyConfig
-from app.routes import users, internal, notifications
+from app.routes import users, internal, notifications, logs
+from app.middleware.splunk import SplunkLoggingMiddleware
+from app.metrics_collector import collect_metrics
 
 # All nginx-prefixed paths (browser-visible via http://host/api/users/...)
 _OPENAPI_URL   = "openapi.json"
@@ -17,7 +20,9 @@ _OAUTH2_REDIRECT = "/docs/oauth2-redirect"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await wait_for_db()
+    metrics_task = asyncio.create_task(collect_metrics())
     yield
+    metrics_task.cancel()
     await close_pool()
 
 
@@ -74,10 +79,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SplunkLoggingMiddleware)
 
 app.include_router(users.router,         prefix="/users",          tags=["users"])
 app.include_router(notifications.router, prefix="/notifications",   tags=["notifications"])
 app.include_router(internal.router,      prefix="/internal/users",  tags=["internal"])
+app.include_router(logs.router,          tags=["ops"])
 
 
 @app.get("/society", response_model=SocietyConfig, tags=["ops"], summary="Society identity config (public)")

@@ -12,6 +12,8 @@ services:
       NGINX_ADMIN_PASSWORD: ${NGINX_ADMIN_PASSWORD}
     ports:
       - "0.0.0.0:${NGINX_PORT:-80}:80"
+    volumes:
+      - nginx_logs:/var/log/nginx
     depends_on:
       keycloak:
         condition: service_started
@@ -146,6 +148,8 @@ services:
       SOCIETY_NAME:              ${SOCIETY_NAME:-GM Global Techies Town}
       SOCIETY_SHORT_NAME:        ${SOCIETY_SHORT_NAME:-GMGT}
       SOCIETY_CITY:              ${SOCIETY_CITY:-Bengaluru}
+      SPLUNK_HEC_URL:            http://splunk:8088/services/collector/event
+      SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -219,6 +223,52 @@ services:
     networks:
       - society_net
 
+  # ─── Splunk (monitoring profile) ────────────────────────────────────────────
+  # Start with: docker compose --profile monitoring up -d splunk fluent-bit
+  # Web UI:  http://localhost:8000  (admin / $SPLUNK_PASSWORD)
+  # HEC:     http://splunk:8088     (internal only, token = $SPLUNK_HEC_TOKEN)
+  splunk:
+    profiles: [monitoring]
+    build:
+      context: ./splunk
+      dockerfile: Dockerfile
+    container_name: society_splunk
+    restart: always
+    environment:
+      SPLUNK_START_ARGS: --accept-license
+      SPLUNK_PASSWORD:   ${SPLUNK_PASSWORD:-Splunk2026!}
+      SPLUNK_HEC_TOKEN:  ${SPLUNK_HEC_TOKEN:-}
+    ports:
+      - "127.0.0.1:8000:8000"   # localhost only — remote access via nginx /splunk/
+    volumes:
+      - splunk_data:/opt/splunk/var
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/splunk/en-US/account/login || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 120s
+    networks:
+      - society_net
+
+  # ─── Fluent Bit — nginx log shipper (monitoring profile) ─────────────────────
+  fluent-bit:
+    profiles: [monitoring]
+    image: fluent/fluent-bit:3.1
+    container_name: society_fluent_bit
+    restart: always
+    environment:
+      SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:-}
+    volumes:
+      - nginx_logs:/var/log/nginx:ro
+      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
+    depends_on:
+      splunk:
+        condition: service_healthy
+    networks:
+      - society_net
+
   # ─── Cloudflare Tunnel ───────────────────────────────────────────────────────
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -241,6 +291,10 @@ volumes:
     name: society_pgadmin_data
   redis_data:
     name: society_redis_data
+  nginx_logs:
+    name: society_nginx_logs
+  splunk_data:
+    name: society_splunk_data
 
 # ─── Network ─────────────────────────────────────────────────────────────────
 networks:

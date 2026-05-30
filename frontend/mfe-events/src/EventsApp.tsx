@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box, Card, CardContent, Chip, Container, Grid,
-  InputAdornment, MenuItem, Select, Stack, TextField, Typography,
+  InputAdornment, MenuItem, Pagination, Select,
+  Stack, TextField, Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import PeopleIcon from '@mui/icons-material/People';
+import SortIcon from '@mui/icons-material/Sort';
 
 interface Event {
   id: string;
@@ -22,6 +24,7 @@ interface Event {
   emoji: string;
   color: string;
   featured?: boolean;
+  dateMs?: number;
 }
 
 const EVENTS: Event[] = [
@@ -29,35 +32,52 @@ const EVENTS: Event[] = [
     id: '1', title: 'Annual Sports Day 2026', date: 'Sat, 14 Feb 2026', time: '7:00 AM',
     venue: 'PVH Ground (Block A)', category: 'Sports', price: 150, spotsLeft: 23,
     totalSpots: 200, organizer: 'Meera Krishnan', emoji: '🏅', color: '#6366f1', featured: true,
+    dateMs: new Date('2026-02-14').getTime(),
   },
   {
     id: '2', title: 'Diwali Mela 2025', date: 'Sat, 20 Oct 2025', time: '5:00 PM',
     venue: 'Society Amphitheatre', category: 'Festival', price: null, spotsLeft: 0,
     totalSpots: 300, organizer: 'Meera Krishnan', emoji: '🪔', color: '#f59e0b',
+    dateMs: new Date('2025-10-20').getTime(),
   },
   {
     id: '3', title: "Children's Day Carnival", date: 'Tue, 14 Nov 2025', time: '10:00 AM',
     venue: 'Clubhouse & Pool Area', category: 'Kids', price: 50, spotsLeft: 48,
     totalSpots: 100, organizer: 'Priya Desai', emoji: '🎡', color: '#10b981',
+    dateMs: new Date('2025-11-14').getTime(),
   },
   {
     id: '4', title: 'Sunday Morning Yoga', date: 'Every Sunday', time: '6:30 AM',
     venue: 'Rooftop Garden, Block C', category: 'Wellness', price: null, spotsLeft: 12,
     totalSpots: 30, organizer: 'Anjali Nair', emoji: '🧘', color: '#06b6d4',
+    dateMs: Date.now(),
   },
   {
     id: '5', title: 'Holi Colour Festival', date: 'Mon, 14 Mar 2026', time: '9:00 AM',
     venue: 'Central Garden', category: 'Festival', price: 100, spotsLeft: 67,
     totalSpots: 250, organizer: 'Rajesh Iyer', emoji: '🎨', color: '#ec4899',
+    dateMs: new Date('2026-03-14').getTime(),
   },
   {
     id: '6', title: 'Movie Night: Under the Stars', date: 'Fri, 7 Feb 2026', time: '7:30 PM',
     venue: 'Terrace, Tower B', category: 'Entertainment', price: null, spotsLeft: 5,
     totalSpots: 60, organizer: 'Arjun Sharma', emoji: '🎬', color: '#8b5cf6',
+    dateMs: new Date('2026-02-07').getTime(),
   },
 ];
 
 const CATEGORIES = ['All', 'Sports', 'Festival', 'Kids', 'Wellness', 'Entertainment'];
+
+const SORT_OPTIONS = [
+  { value: 'date_asc',    label: 'Date: Earliest first' },
+  { value: 'date_desc',   label: 'Date: Latest first' },
+  { value: 'price_asc',   label: 'Price: Low to high' },
+  { value: 'price_desc',  label: 'Price: High to low' },
+  { value: 'spots_desc',  label: 'Most spots available' },
+  { value: 'title_asc',   label: 'Name: A → Z' },
+];
+
+const PAGE_SIZES = [3, 6, 12];
 
 // ── Event Detail ──────────────────────────────────────────────────────────────
 
@@ -66,7 +86,7 @@ function EventDetail({ event, onBack, societyName = 'GM Global Techies Town' }: 
   const total = event.price !== null ? event.price * qty : 0;
 
   return (
-    <Box component="main" sx={{ bgcolor: '#f8fafc', minHeight: 'calc(100vh - 64px)', py: 4 }}>
+    <Box component="main" sx={{ bgcolor: '#f8fafc', minHeight: 'calc(100vh - 64px)', py: { xs: 2, md: 4 } }}>
       <Container maxWidth="md">
         <Box
           component="button" onClick={onBack}
@@ -76,15 +96,15 @@ function EventDetail({ event, onBack, societyName = 'GM Global Techies Town' }: 
         </Box>
 
         {/* Hero */}
-        <Box sx={{ bgcolor: event.color, borderRadius: '12px 12px 0 0', p: 4, color: '#fff' }}>
-          <Typography fontSize={52} lineHeight={1} mb={1}>{event.emoji}</Typography>
+        <Box sx={{ bgcolor: event.color, borderRadius: { xs: '8px 8px 0 0', md: '12px 12px 0 0' }, p: { xs: 2.5, md: 4 }, color: '#fff' }}>
+          <Typography fontSize={{ xs: 40, md: 52 }} lineHeight={1} mb={1}>{event.emoji}</Typography>
           <Chip label={event.category} size="small"
             sx={{ bgcolor: 'rgba(255,255,255,0.25)', color: '#fff', mb: 1.5, fontWeight: 600 }} />
-          <Typography variant="h4" fontWeight={800}>{event.title}</Typography>
-          <Typography sx={{ mt: 1, opacity: 0.85 }}>{event.date} · {event.time} · {event.venue}</Typography>
+          <Typography variant="h4" fontWeight={800} sx={{ fontSize: { xs: 22, md: 32 } }}>{event.title}</Typography>
+          <Typography sx={{ mt: 1, opacity: 0.85, fontSize: { xs: 13, md: 15 } }}>{event.date} · {event.time} · {event.venue}</Typography>
         </Box>
 
-        <Box sx={{ border: '1px solid #e2e8f0', borderTop: 'none', borderRadius: '0 0 12px 12px', bgcolor: '#fff', p: 3 }}>
+        <Box sx={{ border: '1px solid #e2e8f0', borderTop: 'none', borderRadius: { xs: '0 0 8px 8px', md: '0 0 12px 12px' }, bgcolor: '#fff', p: { xs: 2, md: 3 } }}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={7}>
               <Typography fontWeight={700} mb={1}>About this event</Typography>
@@ -105,8 +125,8 @@ function EventDetail({ event, onBack, societyName = 'GM Global Techies Town' }: 
                   ['Capacity', `${event.totalSpots} spots`],
                   ['Availability', event.spotsLeft > 0 ? `${event.spotsLeft} spots left` : 'Sold out'],
                 ].map(([label, val]) => (
-                  <Box key={label} sx={{ display: 'flex', gap: 2, mb: 0.75 }}>
-                    <Typography fontSize={13} color="text.secondary" sx={{ minWidth: 90 }}>{label}</Typography>
+                  <Box key={label} sx={{ display: 'flex', gap: 2, mb: 0.75, flexWrap: 'wrap' }}>
+                    <Typography fontSize={13} color="text.secondary" sx={{ minWidth: 90, flexShrink: 0 }}>{label}</Typography>
                     <Typography fontSize={13} fontWeight={500}>{val}</Typography>
                   </Box>
                 ))}
@@ -173,47 +193,107 @@ export function EventsApp({
 }) {
   const [search,   setSearch]   = useState('');
   const [category, setCategory] = useState('All');
+  const [sortBy,   setSortBy]   = useState('date_asc');
+  const [pageSize, setPageSize] = useState(6);
+  const [page,     setPage]     = useState(1);
   const [selected, setSelected] = useState<Event | null>(null);
 
-  const filtered = EVENTS.filter(e => {
+  const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return (e.title.toLowerCase().includes(q) || e.category.toLowerCase().includes(q))
-      && (category === 'All' || e.category === category);
-  });
+    const list = EVENTS.filter(e =>
+      (e.title.toLowerCase().includes(q) || e.category.toLowerCase().includes(q)) &&
+      (category === 'All' || e.category === category)
+    );
+    return list.sort((a, b) => {
+      switch (sortBy) {
+        case 'date_asc':   return (a.dateMs ?? 0) - (b.dateMs ?? 0);
+        case 'date_desc':  return (b.dateMs ?? 0) - (a.dateMs ?? 0);
+        case 'price_asc':  return (a.price ?? 0) - (b.price ?? 0);
+        case 'price_desc': return (b.price ?? 0) - (a.price ?? 0);
+        case 'spots_desc': return b.spotsLeft - a.spotsLeft;
+        case 'title_asc':  return a.title.localeCompare(b.title);
+        default:           return 0;
+      }
+    });
+  }, [search, category, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  function handleSearchChange(val: string) {
+    setSearch(val);
+    setPage(1);
+  }
+  function handleCategoryChange(val: string) {
+    setCategory(val);
+    setPage(1);
+  }
 
   if (selected) return <EventDetail event={selected} onBack={() => setSelected(null)} societyName={societyName} />;
 
   return (
-    <Box component="main" sx={{ bgcolor: '#f8fafc', minHeight: 'calc(100vh - 64px)', py: 4 }}>
+    <Box component="main" sx={{ bgcolor: '#f8fafc', minHeight: 'calc(100vh - 64px)', py: { xs: 2, md: 4 } }}>
       <Container maxWidth="lg">
 
         <Box sx={{ mb: 3 }}>
-          <Typography variant="h4" fontWeight={800} color="#0f172a">Upcoming Events</Typography>
-          <Typography color="text.secondary" mt={0.5}>
+          <Typography variant="h4" fontWeight={800} color="#0f172a" sx={{ fontSize: { xs: 24, md: 32 } }}>
+            Upcoming Events
+          </Typography>
+          <Typography color="text.secondary" mt={0.5} fontSize={14}>
             {societyName} · {EVENTS.length} events this season
           </Typography>
         </Box>
 
-        <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
+        {/* Filters row — stacks on mobile */}
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1.5}
+          sx={{ mb: 3, flexWrap: 'wrap' }}
+          useFlexGap
+        >
           <TextField
             placeholder="Search events…" size="small" value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => handleSearchChange(e.target.value)}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 18, color: 'text.secondary' }} /></InputAdornment> }}
-            sx={{ flex: 1, maxWidth: 320, bgcolor: '#fff' }}
+            sx={{ flex: 1, minWidth: { xs: '100%', sm: 180 }, maxWidth: { sm: 300 }, bgcolor: '#fff' }}
           />
-          <Select size="small" value={category} onChange={e => setCategory(e.target.value)}
-            sx={{ minWidth: 150, bgcolor: '#fff', fontSize: 14 }}>
+          <Select
+            size="small" value={category} onChange={e => handleCategoryChange(e.target.value)}
+            sx={{ minWidth: { xs: '100%', sm: 150 }, bgcolor: '#fff', fontSize: 14 }}
+          >
             {CATEGORIES.map(c => <MenuItem key={c} value={c} sx={{ fontSize: 14 }}>{c}</MenuItem>)}
+          </Select>
+          <Select
+            size="small" value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }}
+            startAdornment={<SortIcon sx={{ fontSize: 16, ml: 1, color: 'text.secondary' }} />}
+            sx={{ minWidth: { xs: '100%', sm: 200 }, bgcolor: '#fff', fontSize: 14 }}
+          >
+            {SORT_OPTIONS.map(o => <MenuItem key={o.value} value={o.value} sx={{ fontSize: 14 }}>{o.label}</MenuItem>)}
+          </Select>
+          <Select
+            size="small" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
+            sx={{ minWidth: { xs: '100%', sm: 110 }, bgcolor: '#fff', fontSize: 14 }}
+          >
+            {PAGE_SIZES.map(n => <MenuItem key={n} value={n} sx={{ fontSize: 14 }}>{n} per page</MenuItem>)}
           </Select>
         </Stack>
 
+        {/* Result count */}
+        {(search || category !== 'All') && (
+          <Typography fontSize={13} color="text.secondary" mb={2}>
+            {filtered.length} event{filtered.length !== 1 ? 's' : ''} found
+          </Typography>
+        )}
+
         <Grid container spacing={2.5}>
-          {filtered.map(event => (
+          {paginated.map(event => (
             <Grid item xs={12} sm={6} md={4} key={event.id}>
               <Card
                 variant="outlined" onClick={() => setSelected(event)}
                 sx={{
                   cursor: 'pointer', borderRadius: 2, overflow: 'hidden',
+                  height: '100%',
                   transition: 'box-shadow .2s, transform .2s',
                   '&:hover': { boxShadow: 4, transform: 'translateY(-2px)' },
                   ...(event.featured && { outline: `2px solid ${event.color}` }),
@@ -280,6 +360,20 @@ export function EventsApp({
             </Grid>
           )}
         </Grid>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+            <Pagination
+              count={totalPages}
+              page={currentPage}
+              onChange={(_, p) => setPage(p)}
+              color="primary"
+              shape="rounded"
+              size="medium"
+            />
+          </Box>
+        )}
       </Container>
     </Box>
   );
