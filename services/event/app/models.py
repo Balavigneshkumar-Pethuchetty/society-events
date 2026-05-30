@@ -21,6 +21,12 @@ class CategoryCreate(BaseModel):
 
 # ── Event ─────────────────────────────────────────────────────────────────────
 
+class TicketTypeSummary(BaseModel):
+    name: str
+    price: Decimal
+    is_free: bool
+
+
 class EventListItem(BaseModel):
     id: str
     title: str
@@ -28,6 +34,10 @@ class EventListItem(BaseModel):
     start_time: datetime
     end_time: datetime
     venue: str
+    venue_lat: Optional[float] = None
+    venue_lng: Optional[float] = None
+    venue_place_id: Optional[str] = None
+    venue_address: Optional[str] = None
     capacity: Optional[int] = None
     status: str
     ticket_price: Decimal
@@ -43,6 +53,7 @@ class EventListItem(BaseModel):
     spots_remaining: Optional[int] = None
     is_sold_out: bool
     created_at: datetime
+    ticket_types: list[TicketTypeSummary] = []
 
 
 class EventDetail(EventListItem):
@@ -54,6 +65,10 @@ class EventCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     venue: str = Field(..., min_length=1, max_length=255)
+    venue_lat: Optional[float] = None
+    venue_lng: Optional[float] = None
+    venue_place_id: Optional[str] = None
+    venue_address: Optional[str] = None
     start_time: datetime
     end_time: datetime
     capacity: Optional[int] = Field(None, gt=0)
@@ -67,6 +82,10 @@ class EventUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     venue: Optional[str] = Field(None, min_length=1, max_length=255)
+    venue_lat: Optional[float] = None
+    venue_lng: Optional[float] = None
+    venue_place_id: Optional[str] = None
+    venue_address: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     capacity: Optional[int] = Field(None, gt=0)
@@ -112,6 +131,26 @@ class TicketTypeOut(BaseModel):
     capacity: Optional[int] = None
     sort_order: int
     is_active: bool
+
+
+class TicketTypeCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    price: Decimal = Field(Decimal("0.00"), ge=0)
+    is_free: bool = False
+    capacity: Optional[int] = Field(None, gt=0)
+    sort_order: int = Field(0, ge=0)
+    is_active: bool = True
+
+
+class TicketTypeUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    price: Optional[Decimal] = Field(None, ge=0)
+    is_free: Optional[bool] = None
+    capacity: Optional[int] = Field(None, gt=0)
+    sort_order: Optional[int] = Field(None, ge=0)
+    is_active: Optional[bool] = None
 
 
 EventDetail.model_rebuild()

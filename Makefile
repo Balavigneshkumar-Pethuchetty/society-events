@@ -174,6 +174,13 @@ seed: ## Re-run only the seed script (idempotent — uses ON CONFLICT DO NOTHING
 	  -f /docker-entrypoint-initdb.d/02_seed.sql
 	@echo "Seed complete."
 
+migrate: ## Run pending SQL migrations in db/migrations/ (idempotent)
+	@for f in db/migrations/*.sql; do \
+	  echo "Running $$f…"; \
+	  docker compose exec -T postgres psql -U $${POSTGRES_USER:-society_user} -d society_events -f /dev/stdin < $$f; \
+	done
+	@echo "Migrations complete."
+
 setup-google-idp: ## Apply Google IDP + first-broker-login flow to the RUNNING Keycloak (idempotent)
 	python3 scripts/setup_google_idp.py
 

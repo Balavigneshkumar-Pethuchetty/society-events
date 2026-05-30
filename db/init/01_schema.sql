@@ -148,6 +148,10 @@ CREATE TABLE IF NOT EXISTS event (
     ticket_price    NUMERIC(10,2) NOT NULL DEFAULT 0.00,
     price_currency  CHAR(3)     NOT NULL DEFAULT 'INR' REFERENCES currency(code),
     is_free         BOOLEAN     NOT NULL DEFAULT TRUE,
+    venue_lat       DOUBLE PRECISION,
+    venue_lng       DOUBLE PRECISION,
+    venue_place_id  TEXT,
+    venue_address   TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_end_after_start CHECK (end_time > start_time),
     CONSTRAINT chk_price_positive  CHECK (ticket_price >= 0)

@@ -1,3 +1,4 @@
+import json
 import math
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -7,7 +8,7 @@ from app.database import get_pool
 from app.models import (
     AnnouncementCreate, AnnouncementOut,
     EventCreate, EventDetail, EventListItem, EventListResponse, EventUpdate,
-    TicketTypeOut,
+    TicketTypeOut, TicketTypeCreate, TicketTypeUpdate,
 )
 
 router = APIRouter()
@@ -23,6 +24,10 @@ _EVENT_COLS = """
     e.start_time,
     e.end_time,
     e.venue,
+    e.venue_lat,
+    e.venue_lng,
+    e.venue_place_id,
+    e.venue_address,
     e.capacity,
     e.status,
     e.ticket_price,
@@ -39,7 +44,15 @@ _EVENT_COLS = """
     CASE
         WHEN e.capacity IS NULL THEN NULL
         ELSE GREATEST(0, e.capacity - COALESCE(rc.confirmed_tickets, 0))
-    END                  AS spots_remaining
+    END                  AS spots_remaining,
+    (
+        SELECT json_agg(
+            json_build_object('name', tt.name, 'price', tt.price, 'is_free', tt.is_free)
+            ORDER BY tt.sort_order
+        )::text
+        FROM ticket_type tt
+        WHERE tt.event_id = e.id AND tt.is_active = TRUE
+    )                    AS ticket_types_json
 """
 
 _REG_CTE = """
@@ -56,9 +69,11 @@ WITH reg_counts AS (
 def _to_event_item(row) -> dict:
     d = dict(row)
     capacity  = d.get("capacity")
-    confirmed = d.get("confirmed_tickets", 0)
     remaining = d.get("spots_remaining")
     d["is_sold_out"] = bool(capacity is not None and remaining is not None and remaining <= 0)
+    # Parse ticket types JSON (returned as text from the subquery)
+    raw = d.pop("ticket_types_json", None)
+    d["ticket_types"] = json.loads(raw) if raw else []
     return d
 
 
@@ -211,8 +226,9 @@ async def create_event(
 
         row = await conn.fetchrow(
             "INSERT INTO event (society_id, category_id, organizer_id, title, description, "
-            "start_time, end_time, venue, capacity, ticket_price, price_currency, is_free, status) "
-            "VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'draft') "
+            "start_time, end_time, venue, venue_lat, venue_lng, venue_place_id, venue_address, "
+            "capacity, ticket_price, price_currency, is_free, status) "
+            "VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'draft') "
             "RETURNING id::text",
             _SOCIETY,
             body.category_id,
@@ -222,6 +238,10 @@ async def create_event(
             body.start_time,
             body.end_time,
             body.venue,
+            body.venue_lat,
+            body.venue_lng,
+            body.venue_place_id,
+            body.venue_address,
             body.capacity,
             body.ticket_price,
             body.price_currency,
@@ -254,7 +274,9 @@ async def update_event(
         idx = 1
 
         for field, col in [
-            ("title", "title"), ("description", "description"), ("venue", "venue"),
+            ("title", "title"), ("description", "description"),
+            ("venue", "venue"), ("venue_lat", "venue_lat"), ("venue_lng", "venue_lng"),
+            ("venue_place_id", "venue_place_id"), ("venue_address", "venue_address"),
             ("start_time", "start_time"), ("end_time", "end_time"),
             ("capacity", "capacity"), ("ticket_price", "ticket_price"),
             ("price_currency", "price_currency"), ("is_free", "is_free"),
@@ -420,3 +442,135 @@ async def create_announcement(
     result = dict(row)
     result["author_name"] = author["name"]
     return result
+
+
+# ── Ticket Type CRUD ──────────────────────────────────────────────────────────
+
+_TT_SELECT = (
+    "SELECT id::text, name, description, price, is_free, capacity, sort_order, is_active "
+    "FROM ticket_type WHERE event_id = $1::uuid ORDER BY sort_order, name"
+)
+
+
+@router.get("/{event_id}/ticket-types",
+            response_model=list[TicketTypeOut],
+            summary="List ticket types for an event")
+async def list_ticket_types(
+    event_id: str,
+    _claims: Optional[dict] = Depends(get_optional_claims),
+):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        exists = await conn.fetchval(
+            "SELECT 1 FROM event WHERE id=$1::uuid AND society_id=$2::uuid",
+            event_id, _SOCIETY,
+        )
+        if not exists:
+            raise HTTPException(status_code=404, detail="Event not found")
+        rows = await conn.fetch(_TT_SELECT, event_id)
+    return [dict(r) for r in rows]
+
+
+@router.post("/{event_id}/ticket-types",
+             response_model=TicketTypeOut,
+             status_code=201,
+             summary="Add a ticket type (admin/committee)")
+async def create_ticket_type(
+    event_id: str,
+    body: TicketTypeCreate,
+    claims: dict = Depends(require_role("admin", "committee_member")),
+):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        exists = await conn.fetchval(
+            "SELECT 1 FROM event WHERE id=$1::uuid AND society_id=$2::uuid",
+            event_id, _SOCIETY,
+        )
+        if not exists:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        # Auto-assign sort_order if not provided (append at end)
+        if body.sort_order == 0:
+            max_order = await conn.fetchval(
+                "SELECT COALESCE(MAX(sort_order), 0) FROM ticket_type WHERE event_id=$1::uuid",
+                event_id,
+            )
+            sort_order = (max_order or 0) + 1
+        else:
+            sort_order = body.sort_order
+
+        row = await conn.fetchrow(
+            "INSERT INTO ticket_type (event_id, name, description, price, is_free, "
+            "capacity, sort_order, is_active) "
+            "VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8) "
+            "RETURNING id::text, name, description, price, is_free, capacity, sort_order, is_active",
+            event_id, body.name, body.description,
+            body.price if not body.is_free else 0,
+            body.is_free, body.capacity, sort_order, body.is_active,
+        )
+    return dict(row)
+
+
+@router.put("/{event_id}/ticket-types/{type_id}",
+            response_model=TicketTypeOut,
+            summary="Update a ticket type (admin/committee)")
+async def update_ticket_type(
+    event_id: str,
+    type_id: str,
+    body: TicketTypeUpdate,
+    claims: dict = Depends(require_role("admin", "committee_member")),
+):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        existing = await conn.fetchrow(
+            "SELECT id FROM ticket_type WHERE id=$1::uuid AND event_id=$2::uuid",
+            type_id, event_id,
+        )
+        if not existing:
+            raise HTTPException(status_code=404, detail="Ticket type not found")
+
+        updates: list[str] = []
+        params: list = []
+        idx = 1
+        for field in ("name", "description", "price", "is_free", "capacity", "sort_order", "is_active"):
+            val = getattr(body, field)
+            if val is not None:
+                updates.append(f"{field} = ${idx}")
+                params.append(val)
+                idx += 1
+
+        # If is_free toggled to True, zero out price
+        if body.is_free is True:
+            if "price" not in [u.split(" = ")[0] for u in updates]:
+                updates.append(f"price = ${idx}")
+                params.append(0)
+                idx += 1
+
+        if not updates:
+            raise HTTPException(status_code=422, detail="No fields to update")
+
+        params += [type_id]
+        row = await conn.fetchrow(
+            f"UPDATE ticket_type SET {', '.join(updates)} WHERE id=${idx}::uuid "
+            "RETURNING id::text, name, description, price, is_free, capacity, sort_order, is_active",
+            *params,
+        )
+    return dict(row)
+
+
+@router.delete("/{event_id}/ticket-types/{type_id}",
+               status_code=204,
+               summary="Delete a ticket type (admin/committee)")
+async def delete_ticket_type(
+    event_id: str,
+    type_id: str,
+    claims: dict = Depends(require_role("admin", "committee_member")),
+):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM ticket_type WHERE id=$1::uuid AND event_id=$2::uuid",
+            type_id, event_id,
+        )
+    if result == "DELETE 0":
+        raise HTTPException(status_code=404, detail="Ticket type not found")

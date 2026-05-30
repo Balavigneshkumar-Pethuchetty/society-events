@@ -31,7 +31,7 @@ export function ManageRoutes({ token = null, page, id }: ManageRoutesProps) {
   if (page === 'complimentary') return <ComplimentaryTickets />;
   if (page === 'vendors')       return <VendorManagement />;
   if (page === 'revenue')       return <RevenueDistribution />;
-  if (page === 'tickets')       return <TicketTypeSetup />;
+  if (page === 'tickets')       return <TicketTypeSetup token={token} id={id} />;
   if (page === 'tokens')        return <FreeTokens />;
 
   return <ComingSoon />;
