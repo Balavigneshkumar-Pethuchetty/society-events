@@ -40,11 +40,21 @@ async function eventsApiFetch<T>(
       ...(init?.headers ?? {}),
     },
   });
+  const ct = res.headers.get('content-type') ?? '';
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as { detail?: string }).detail ?? `HTTP ${res.status}`);
+    if (ct.includes('application/json')) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error((body as { detail?: string }).detail ?? `HTTP ${res.status}`);
+    }
+    throw new Error(`HTTP ${res.status} — event service may not be running`);
   }
   if (res.status === 204) return undefined as T;
+  if (!ct.includes('application/json')) {
+    throw new Error(
+      'Event service is not reachable — nginx is returning HTML instead of JSON. ' +
+      'Run: docker compose up -d event-service && docker compose restart nginx',
+    );
+  }
   return res.json() as Promise<T>;
 }
 
@@ -317,11 +327,22 @@ export function ManageEvents({ token, id }: Props) {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
-      if (!evRes.ok) throw new Error(`Events HTTP ${evRes.status}`);
+      const evCT = evRes.headers.get('content-type') ?? '';
+      if (!evCT.includes('application/json')) {
+        throw new Error(
+          'Event service is not reachable — nginx is returning HTML instead of JSON.\n' +
+          'Run: docker compose up -d event-service && docker compose restart nginx',
+        );
+      }
+      if (!evRes.ok) {
+        const body = await evRes.json().catch(() => ({}));
+        throw new Error((body as { detail?: string }).detail ?? `HTTP ${evRes.status}`);
+      }
       const evData: EventListResponse = await evRes.json();
       setEvents(evData.events);
 
-      if (catRes.ok) {
+      const catCT = catRes.headers.get('content-type') ?? '';
+      if (catRes.ok && catCT.includes('application/json')) {
         const catData: Category[] = await catRes.json();
         setCategories(catData);
       }
