@@ -51,14 +51,20 @@ def _payload(event: dict[str, Any], index: str, sourcetype: str = "fastapi") -> 
 
 async def log_app_error(event: dict[str, Any]) -> None:
     """Application errors: 4xx/5xx responses, unhandled exceptions, frontend JS errors."""
+    if not _HEC_TOKEN:
+        return
     asyncio.create_task(_ship(_payload(event, "society_app_errors")))
 
 
 async def log_web_access(event: dict[str, Any]) -> None:
     """Successful API requests (2xx/3xx)."""
+    if not _HEC_TOKEN:
+        return
     asyncio.create_task(_ship(_payload(event, "society_web_access")))
 
 
 async def log_security(event: dict[str, Any]) -> None:
     """Auth events: login, token refresh, 401/403, Keycloak callbacks."""
+    if not _HEC_TOKEN:
+        return
     asyncio.create_task(_ship(_payload(event, "society_security")))

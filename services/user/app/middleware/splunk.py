@@ -24,7 +24,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.splunk_logger import log_app_error, log_security, log_web_access
+from app.splunk_logger import _HEC_TOKEN, log_app_error, log_security, log_web_access
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +101,10 @@ class SplunkLoggingMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         if path in _SKIP_PATHS or path.startswith("/docs/"):
+            return await call_next(request)
+
+        # Splunk not configured — zero overhead pass-through
+        if not _HEC_TOKEN:
             return await call_next(request)
 
         start      = time.perf_counter()

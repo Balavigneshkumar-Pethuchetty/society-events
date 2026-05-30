@@ -23,6 +23,7 @@ interface AuthContextValue {
   token: string | null;
   isPending: boolean; // registered in Keycloak but no role assigned yet
   login: () => void;
+  loginWithGoogle: () => void;
   register: () => void;
   logout: () => void;
 }
@@ -84,8 +85,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token,     setToken]       = useState<string | null>(null);
   const refreshTimer                = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const login    = useCallback(() => keycloak.login(), []);
-  const register = useCallback(() => keycloak.register(), []);
+  const login            = useCallback(() => keycloak.login(), []);
+  const loginWithGoogle  = useCallback(() => keycloak.login({ idpHint: 'google' }), []);
+  const register         = useCallback(() => keycloak.register(), []);
   const logout   = useCallback(() => {
     // Trailing slash ensures the URI matches the "http://localhost:3000/*" pattern in Keycloak
     keycloak.logout({ redirectUri: window.location.origin + '/' });
@@ -144,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isPending = !!user && user.primaryRole === 'pending';
 
   return (
-    <AuthContext.Provider value={{ isLoading, user, token, isPending, login, register, logout }}>
+    <AuthContext.Provider value={{ isLoading, user, token, isPending, login, loginWithGoogle, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
