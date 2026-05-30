@@ -166,6 +166,40 @@ services:
     networks:
       - society_net
 
+  # ─── Event Service (port 3002) ───────────────────────────────────────────
+  event-service:
+    build:
+      context: ./services/event
+      dockerfile: Dockerfile
+    container_name: society_event_service
+    restart: always
+    environment:
+      DB_HOST:           postgres
+      DB_PORT:           5432
+      DB_NAME:           society_events
+      DB_USER:           ${POSTGRES_USER}
+      DB_PASSWORD:       ${POSTGRES_PASSWORD}
+      KEYCLOAK_URL:              http://keycloak:8080
+      KEYCLOAK_REALM:            society-events
+      KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
+      INTERNAL_API_KEY:          ${INTERNAL_API_KEY:-change-this-in-prod}
+      SOCIETY_ID:                11100000-0000-0000-0000-000000000001
+      SPLUNK_HEC_URL:            http://splunk:8088/services/collector/event
+      SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3002/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - society_net
+
   # ─── Shell App (production build) ─────────────────────────────────────────
   # Opt-in only: docker compose --profile frontend up -d --build
   # For local dev use: npm run dev inside frontend/shell (Vite HMR, no Docker)

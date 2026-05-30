@@ -4,10 +4,10 @@
 .PHONY: help up down restart logs ps reset seed shell-db shell-redis sync-users setup-google-idp \
         frontend frontend-install frontend-docker \
         restart-nginx restart-keycloak restart-postgres restart-redis \
-        restart-pgadmin restart-user-service restart-cloudflared \
+        restart-pgadmin restart-user-service restart-event-service restart-cloudflared \
         restart-mfe-admin restart-mfe-events restart-mfe-booking restart-mfe-payment \
         restart-splunk restart-fluent-bit \
-        logs-nginx logs-kc logs-db logs-user \
+        logs-nginx logs-kc logs-db logs-user logs-events \
         logs-cloudflared logs-mfe-admin logs-mfe-events logs-mfe-booking logs-mfe-payment \
         logs-splunk logs-fluent-bit \
         monitoring-up monitoring-down \
@@ -46,7 +46,7 @@ down: ## Stop and remove containers (data volumes preserved)
 
 restart: ## Restart all core services (rebuilds frontend to pick up code changes)
 	docker compose --profile frontend up -d --build frontend mfe-admin mfe-events mfe-booking mfe-payment
-	docker compose restart nginx keycloak postgres redis pgadmin user-service cloudflared
+	docker compose restart nginx keycloak postgres redis pgadmin user-service event-service cloudflared
 
 ## ── Individual service restarts ─────────────────────────────────────────────
 restart-nginx: ## Restart nginx only
@@ -66,6 +66,9 @@ restart-pgadmin: ## Restart pgAdmin only
 
 restart-user-service: ## Rebuild & restart user service (picks up code changes)
 	docker compose up -d --build user-service
+
+restart-event-service: ## Rebuild & restart event service (picks up code changes)
+	docker compose up -d --build event-service
 
 restart-cloudflared: ## Restart Cloudflare tunnel
 	docker compose restart cloudflared
@@ -133,6 +136,9 @@ logs-db: ## Follow Postgres logs only
 
 logs-user: ## Follow user service logs only
 	docker compose logs -f user-service
+
+logs-events: ## Follow event service logs only
+	docker compose logs -f event-service
 
 logs-cloudflared: ## Follow Cloudflare tunnel logs
 	docker compose logs -f cloudflared

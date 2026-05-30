@@ -22,8 +22,24 @@ export default defineConfig(({ mode }) => ({
       },
     }),
   ],
-  server:  { port: 4001, cors: true },
-  preview: { port: 4001, cors: true },
+  server: {
+    port: 4001,
+    cors: true,
+    proxy: {
+      '/realms':     { target: 'http://localhost:8080' },
+      '/resources':  { target: 'http://localhost:8080' },
+      '/api/events': { target: 'http://localhost:8080' },
+    },
+  },
+  preview: {
+    port: 4001,
+    cors: true,
+    proxy: {
+      '/realms':     { target: 'http://localhost:8080' },
+      '/resources':  { target: 'http://localhost:8080' },
+      '/api/events': { target: 'http://localhost:8080' },
+    },
+  },
   build: {
     target: 'esnext',
     modulePreload: false,

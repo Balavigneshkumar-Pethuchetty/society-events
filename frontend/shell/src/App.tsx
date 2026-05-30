@@ -30,6 +30,7 @@ interface ManageRoutesProps {
 interface EventsAppProps {
   societyName?: string;
   city?: string;
+  token?: string | null;
 }
 
 interface SponsorAppProps {
@@ -251,7 +252,7 @@ function AdminWrapper() {
 
 // ── App shell ─────────────────────────────────────────────────────────────────
 function AppShell() {
-  const { isLoading, user, isPending } = useAuth();
+  const { isLoading, user, isPending, token } = useAuth();
   const { name: societyName, city } = useSociety();
 
   useEffect(() => {
@@ -289,7 +290,7 @@ function AppShell() {
 
         <Route path="/events/*" element={
           <React.Suspense fallback={<MfeFallback label="Events" />}>
-            <RemoteEventsApp societyName={societyName} city={city} />
+            <RemoteEventsApp societyName={societyName} city={city} token={token} />
           </React.Suspense>
         } />
 
