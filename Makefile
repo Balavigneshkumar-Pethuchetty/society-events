@@ -1,7 +1,7 @@
 # Society Events — Developer Makefile
 # Usage: make <target>
 
-.PHONY: help up down restart free-ports logs ps reset seed shell-db shell-redis sync-users setup-google-idp \
+.PHONY: help up down restart free-ports validate-ports logs ps reset seed shell-db shell-redis sync-users setup-google-idp \
         frontend frontend-install frontend-docker \
         restart-nginx restart-keycloak restart-postgres restart-redis \
         restart-pgadmin restart-user-service restart-event-service restart-cloudflared \
@@ -43,12 +43,38 @@ free-ports: ## Kill stale rootlessport processes that hold project ports (Podman
 	done; \
 	[ "$$_released" = "1" ] && sleep 1 || true
 
-up: .env ## Start all core services (detached)
+validate-ports: .env ## Validate that host ports in .env do not conflict
+	@get_env() { \
+	  value=$$(grep -m1 "^$$1=" .env 2>/dev/null | cut -d= -f2- | tr -d '"[:space:]' || true); \
+	  printf '%s' "$${value:-$$2}"; \
+	}; \
+	ports="NGINX_PORT:$$(get_env NGINX_PORT 8080) KEYCLOAK_PORT:$$(get_env KEYCLOAK_PORT 8081) POSTGRES_PORT:$$(get_env POSTGRES_PORT 5432) REDIS_PORT:$$(get_env REDIS_PORT 6379) SPLUNK_PORT:$$(get_env SPLUNK_PORT 8000)"; \
+	seen=""; \
+	has_conflict=0; \
+	for item in $$ports; do \
+	  name=$${item%%:*}; \
+	  port=$${item#*:}; \
+	  for previous in $$seen; do \
+	    previous_name=$${previous%%:*}; \
+	    previous_port=$${previous#*:}; \
+	    if [ "$$port" = "$$previous_port" ]; then \
+	      echo "  [validate-ports] $$name and $$previous_name both use host port $$port"; \
+	      has_conflict=1; \
+	    fi; \
+	  done; \
+	  seen="$$seen $$item"; \
+	done; \
+	if [ "$$has_conflict" = "1" ]; then \
+	  echo "  Update .env so each exposed service has a unique host port."; \
+	  exit 1; \
+	fi
+
+up: .env validate-ports ## Start all services needed by the public site (detached)
 	@$(MAKE) -s free-ports
-	docker compose up -d --build
+	docker compose --profile frontend up -d --build
 	@echo ""
 	@echo "  $(CYAN)Services starting… (all routed through nginx on port $${NGINX_PORT:-8080})$(RESET)"
-	@echo "  Frontend  → http://localhost:$${NGINX_PORT:-8080}/          (requires --profile frontend)"
+	@echo "  Frontend  → http://localhost:$${NGINX_PORT:-8080}/"
 	@echo "  Keycloak  → http://localhost:$${KEYCLOAK_PORT:-8081}/admin/                    (direct — bypasses nginx)"
 	@echo "  pgAdmin   → http://localhost:$${NGINX_PORT:-8080}/pgadmin/  (nginx basic auth)"
 	@echo "  Cloudflared tunnel starts automatically with core services."
@@ -220,7 +246,9 @@ sync-users: ## Sync users from keycloak/realm.json → postgres (inserts only, n
 reset: ## ⚠ Destroy ALL volumes, restart from scratch, then sync users from realm.json
 	@echo "$(CYAN)Stopping containers and removing volumes…$(RESET)"
 	docker compose down -v --remove-orphans
-	docker compose up -d --build
+	@$(MAKE) -s validate-ports
+	@$(MAKE) -s free-ports
+	docker compose --profile frontend up -d --build
 	@echo "$(CYAN)Waiting for postgres to be healthy…$(RESET)"
 	@until docker compose exec -T postgres pg_isready -U $${POSTGRES_USER:-society_user} -d society_events -q; do sleep 2; done
 	@$(MAKE) sync-users

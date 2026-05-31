@@ -11,6 +11,7 @@ services:
       NGINX_PORT:           ${NGINX_PORT}
       NGINX_ADMIN_USER:     ${NGINX_ADMIN_USER:-admin}
       NGINX_ADMIN_PASSWORD: ${NGINX_ADMIN_PASSWORD}
+      KEYCLOAK_PORT:        ${KEYCLOAK_PORT}
     ports:
       - "0.0.0.0:${NGINX_PORT}:${NGINX_PORT}"
     volumes:
@@ -18,6 +19,12 @@ services:
     depends_on:
       keycloak:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:${NGINX_PORT}/nginx-health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - society_net
 
@@ -80,7 +87,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:${KEYCLOAK_PORT}/health/ready || exit 1"]
+      test: ["CMD-SHELL", "bash -lc 'exec 3<>/dev/tcp/localhost/9000; printf \"GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; grep -q \"200 OK\" <&3'"]
       interval: 20s
       timeout: 10s
       retries: 15
@@ -107,6 +114,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/pgadmin/misc/ping | grep -q PING"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - society_net
 
@@ -217,6 +230,12 @@ services:
     container_name: society_frontend
     restart: always
     # No host port — served by nginx at /
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - society_net
 
@@ -229,6 +248,12 @@ services:
     container_name: society_mfe_admin
     restart: always
     # No host port — served by nginx at /mfe-admin/
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - society_net
 
@@ -240,6 +265,12 @@ services:
       dockerfile: Dockerfile
     container_name: society_mfe_events
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - society_net
 
@@ -251,6 +282,12 @@ services:
       dockerfile: Dockerfile
     container_name: society_mfe_booking
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - society_net
 
@@ -262,6 +299,12 @@ services:
       dockerfile: Dockerfile
     container_name: society_mfe_payment
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - society_net
 
@@ -322,6 +365,12 @@ services:
       - ./cloudflared/4f6ad36b-5a4a-4f31-9612-b11129f33205.json:/etc/cloudflared/4f6ad36b-5a4a-4f31-9612-b11129f33205.json:ro
     depends_on:
       - nginx
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--config", "/etc/cloudflared/config.yml", "ingress", "validate"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     networks:
       - society_net
 
