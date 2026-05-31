@@ -97,7 +97,7 @@ monitoring-up: ## Start Splunk + Fluent Bit monitoring stack
 	@echo ""
 	@echo "  $(CYAN)Monitoring stack starting…$(RESET)"
 	@echo "  Splunk UI → http://localhost:$${NGINX_PORT:-8080}/splunk/  (nginx proxy)"
-	@echo "  Splunk direct → http://localhost:8000  (dev only)"
+	@echo "  Splunk direct → http://localhost:$${SPLUNK_PORT:-8000}  (dev only)"
 	@echo "  Run 'make logs-splunk' to follow Splunk startup logs."
 	@echo ""
 
@@ -106,7 +106,7 @@ monitoring-down: ## Stop Splunk + Fluent Bit monitoring stack
 
 splunk-up: ## Start Splunk only (without Fluent Bit)
 	docker compose --profile monitoring up -d splunk
-	@echo "  $(CYAN)Splunk starting — UI at http://localhost:8000$(RESET)"
+	@echo "  $(CYAN)Splunk starting — UI at http://localhost:$${SPLUNK_PORT:-8000}$(RESET)"
 
 splunk-down: ## Stop Splunk only
 	docker compose --profile monitoring stop splunk
