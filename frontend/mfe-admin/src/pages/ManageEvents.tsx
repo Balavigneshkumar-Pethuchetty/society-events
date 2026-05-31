@@ -636,7 +636,7 @@ function TicketTypesTab({
   );
 }
 
-// ── Event form dialog (3 tabs) ────────────────────────────────────────────────
+// ── Event form dialog (3-step save flow) ─────────────────────────────────────
 
 interface FormState {
   title: string; description: string; venue: string;
@@ -647,14 +647,15 @@ interface FormState {
 }
 
 function EventForm({
-  open, token, categories, initial, onClose, onSaved,
+  open, token, categories, initial, onClose, onSaved, onPublish, onCancel,
 }: {
   open: boolean; token: string; categories: Category[];
   initial?: EventItem; onClose: () => void; onSaved: (id?: string) => void;
+  onPublish?: () => void; onCancel?: () => void;
 }) {
-  const [tab,    setTab]    = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState<string | null>(null);
+  const [tab,     setTab]     = useState(0);
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | undefined>(initial?.id);
 
   const [form, setForm] = useState<FormState>({
@@ -675,10 +676,11 @@ function EventForm({
 
   const patch = (p: Partial<FormState>) => setForm(f => ({ ...f, ...p }));
 
-  const handleSave = async () => {
+  // Save all current form state to the backend; optionally advance to nextTab.
+  const handleSave = async (nextTab?: number) => {
     setError(null);
-    if (!form.title || !form.venue || !form.start_time || !form.end_time) {
-      setError('Title, venue, and dates are required.');
+    if (!form.title.trim() || !form.venue.trim() || !form.start_time || !form.end_time) {
+      setError('Title, venue, and start / end dates are required.');
       setTab(0);
       return;
     }
@@ -699,17 +701,16 @@ function EventForm({
         is_free:        form.is_free,
         category_id:    form.category_id || null,
       };
-      if (initial) {
-        await eventsApiFetch(`/events/${initial.id}`, token, { method: 'PUT', body: JSON.stringify(body) });
-        setSavedId(initial.id);
-        onSaved(initial.id);
+      let id = savedId;
+      if (id) {
+        await eventsApiFetch(`/events/${id}`, token, { method: 'PUT', body: JSON.stringify(body) });
       } else {
         const res = await eventsApiFetch<{ id: string }>('/events', token, { method: 'POST', body: JSON.stringify(body) });
-        setSavedId(res.id);
-        onSaved(res.id);
-        // Switch to Ticket Types tab so user can immediately add types
-        setTab(2);
+        id = res.id;
+        setSavedId(id);
       }
+      onSaved(id);
+      if (nextTab !== undefined) setTab(nextTab);
     } catch (e: unknown) {
       setError((e as Error).message);
     } finally {
@@ -717,28 +718,49 @@ function EventForm({
     }
   };
 
+  const hasId       = !!savedId;
+  const isDraft     = initial ? initial.status === 'draft'     : hasId;
+  const isPublished = initial ? initial.status === 'published' : false;
+
+  const STEP_LABELS = ['1. Event Details', '2. Location', '3. Ticket Types'];
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ fontWeight: 700, pb: 0 }}>
-        {initial ? `Edit — ${initial.title}` : 'Create New Event'}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          {initial ? `Edit — ${initial.title}` : 'Create New Event'}
+          {initial && (
+            <Chip
+              label={STATUS_STYLE[initial.status]?.label ?? initial.status}
+              color={STATUS_STYLE[initial.status]?.color ?? 'default'}
+              size="small" sx={{ fontWeight: 700, fontSize: 11 }}
+            />
+          )}
+          {!initial && hasId && (
+            <Chip label="Draft saved" size="small" color="default" sx={{ fontSize: 11 }} />
+          )}
+        </Box>
       </DialogTitle>
 
       <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-          <Tab label="Event Details"  />
-          <Tab label="Location"       />
-          <Tab label={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-              <LocalActivityIcon sx={{ fontSize: 16 }} /> Ticket Types
-            </Box>
-          } />
+          {STEP_LABELS.map((label, i) => (
+            <Tab key={label} label={label}
+              disabled={i > 0 && !hasId}
+              icon={i > 0 && !hasId
+                ? <Typography fontSize={10} color="text.disabled">Save step 1 first</Typography>
+                : undefined}
+              iconPosition="end"
+              sx={{ fontSize: 13 }}
+            />
+          ))}
         </Tabs>
       </Box>
 
       <DialogContent dividers sx={{ minHeight: 420 }}>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-        {/* ── Tab 0: Event Details ─────────────────────────────────────────── */}
+        {/* ── Step 1: Event Details (no ticket fields here) ─────────────────── */}
         {tab === 0 && (
           <Stack spacing={2.5} sx={{ pt: 1 }}>
             <TextField label="Title *" size="small" fullWidth value={form.title}
@@ -775,36 +797,10 @@ function EventForm({
                 </TextField>
               </Grid>
             </Grid>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={4}>
-                <TextField label="Ticket pricing" select size="small" fullWidth
-                  value={form.is_free ? 'true' : 'false'}
-                  onChange={e => { const f = e.target.value === 'true'; patch({ is_free: f }); if (f) patch({ ticket_price: '0' }); }}>
-                  <MenuItem value="true">Free event</MenuItem>
-                  <MenuItem value="false">Paid event</MenuItem>
-                </TextField>
-              </Grid>
-              {!form.is_free && (
-                <>
-                  <Grid item xs={4}>
-                    <TextField label="Default ticket price" type="number" size="small" fullWidth
-                      value={form.ticket_price} onChange={e => patch({ ticket_price: e.target.value })} />
-                  </Grid>
-                  <Grid item xs={4}>
-                    <TextField label="Currency" select size="small" fullWidth
-                      value={form.price_currency} onChange={e => patch({ price_currency: e.target.value })}>
-                      {['INR','USD','GBP','EUR','SGD','AED'].map(c => (
-                        <MenuItem key={c} value={c}>{c}</MenuItem>
-                      ))}
-                    </TextField>
-                  </Grid>
-                </>
-              )}
-            </Grid>
           </Stack>
         )}
 
-        {/* ── Tab 1: Location ──────────────────────────────────────────────── */}
+        {/* ── Step 2: Location ─────────────────────────────────────────────── */}
         {tab === 1 && (
           <LocationTab
             venue={form.venue}
@@ -820,27 +816,95 @@ function EventForm({
           />
         )}
 
-        {/* ── Tab 2: Ticket Types ──────────────────────────────────────────── */}
+        {/* ── Step 3: Pricing + Ticket Types ───────────────────────────────── */}
         {tab === 2 && (
-          <TicketTypesTab eventId={savedId} token={token} />
+          <Stack spacing={3} sx={{ pt: 1 }}>
+            {/* Pricing section */}
+            <Box>
+              <Typography fontSize={12} fontWeight={700} color="text.secondary"
+                textTransform="uppercase" letterSpacing={0.5} mb={1.5}>
+                Event Pricing
+              </Typography>
+              <Grid container spacing={2} alignItems="center">
+                <Grid item xs={4}>
+                  <TextField label="Ticket pricing" select size="small" fullWidth
+                    value={form.is_free ? 'true' : 'false'}
+                    onChange={e => {
+                      const f = e.target.value === 'true';
+                      patch({ is_free: f });
+                      if (f) patch({ ticket_price: '0' });
+                    }}>
+                    <MenuItem value="true">Free event</MenuItem>
+                    <MenuItem value="false">Paid event</MenuItem>
+                  </TextField>
+                </Grid>
+                {!form.is_free && (
+                  <>
+                    <Grid item xs={4}>
+                      <TextField label="Default ticket price" type="number" size="small" fullWidth
+                        value={form.ticket_price} onChange={e => patch({ ticket_price: e.target.value })} />
+                    </Grid>
+                    <Grid item xs={4}>
+                      <TextField label="Currency" select size="small" fullWidth
+                        value={form.price_currency} onChange={e => patch({ price_currency: e.target.value })}>
+                        {['INR','USD','GBP','EUR','SGD','AED'].map(c => (
+                          <MenuItem key={c} value={c}>{c}</MenuItem>
+                        ))}
+                      </TextField>
+                    </Grid>
+                  </>
+                )}
+              </Grid>
+            </Box>
+
+            <Divider />
+
+            {/* Ticket types */}
+            <Box>
+              <Typography fontSize={12} fontWeight={700} color="text.secondary"
+                textTransform="uppercase" letterSpacing={0.5} mb={1.5}>
+                Ticket Types
+              </Typography>
+              <TicketTypesTab eventId={savedId} token={token} />
+            </Box>
+          </Stack>
         )}
       </DialogContent>
 
       <DialogActions sx={{ px: 3, py: 2, justifyContent: 'space-between' }}>
-        <Typography fontSize={12} color="text.secondary">
-          {tab === 2 && savedId ? 'Changes to ticket types are saved immediately.' : ''}
-        </Typography>
+        {/* Left side: publish / cancel event actions */}
         <Stack direction="row" spacing={1}>
-          <Button onClick={onClose}>Close</Button>
-          {tab !== 2 && (
-            <Button variant="contained" onClick={() => void handleSave()} disabled={saving}
-              startIcon={saving ? <CircularProgress size={14} /> : <SaveIcon />}>
-              {initial ? 'Save Changes' : 'Create Draft'}
+          {isDraft && onPublish && (
+            <Button variant="contained" color="success" size="small"
+              startIcon={<PublishIcon />} onClick={onPublish}>
+              Publish Event
             </Button>
           )}
-          {tab !== 2 && !initial && (
-            <Button variant="outlined" onClick={() => setTab(tab + 1)} disabled={tab === 2}>
-              Next →
+          {isPublished && onCancel && (
+            <Button variant="outlined" color="error" size="small"
+              startIcon={<CancelIcon />} onClick={onCancel}>
+              Cancel Event
+            </Button>
+          )}
+        </Stack>
+
+        {/* Right side: step navigation */}
+        <Stack direction="row" spacing={1}>
+          <Button onClick={onClose}>Close</Button>
+          {tab > 0 && (
+            <Button variant="outlined" onClick={() => setTab(tab - 1)}>
+              ← Back
+            </Button>
+          )}
+          {tab < 2 ? (
+            <Button variant="contained" onClick={() => void handleSave(tab + 1)} disabled={saving}
+              startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}>
+              {saving ? 'Saving…' : 'Save & Next →'}
+            </Button>
+          ) : (
+            <Button variant="contained" onClick={() => void handleSave()} disabled={saving}
+              startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}>
+              {saving ? 'Saving…' : (initial ? 'Save Changes' : 'Save Draft')}
             </Button>
           )}
         </Stack>
@@ -906,13 +970,15 @@ export function ManageEvents({ token, id }: Props) {
   useEffect(() => { void load(); }, [load]);
 
   const action = (label: string, fn: () => Promise<void>) => setConfirm({ label, action: fn });
-  const publish  = (e: EventItem) => action(`Publish "${e.title}"?`, async () => { await eventsApiFetch(`/events/${e.id}/publish`, token!, { method: 'PATCH' }); setActionMsg(`"${e.title}" published.`); void load(); });
-  const cancel   = (e: EventItem) => action(`Cancel "${e.title}"? This closes registrations.`, async () => { await eventsApiFetch(`/events/${e.id}/cancel`, token!, { method: 'PATCH' }); setActionMsg(`"${e.title}" cancelled.`); void load(); });
+  const publish  = (e: EventItem) => action(`Publish "${e.title}"? It will become visible to all members.`, async () => { await eventsApiFetch(`/events/${e.id}/publish`, token!, { method: 'PATCH' }); setActionMsg(`"${e.title}" published.`); void load(); });
+  const cancel   = (e: EventItem) => action(`Cancel "${e.title}"? This will close registrations and notify members.`, async () => { await eventsApiFetch(`/events/${e.id}/cancel`, token!, { method: 'PATCH' }); setActionMsg(`"${e.title}" cancelled.`); void load(); });
   const complete = (e: EventItem) => action(`Mark "${e.title}" as completed?`, async () => { await eventsApiFetch(`/events/${e.id}/complete`, token!, { method: 'PATCH' }); setActionMsg(`"${e.title}" completed.`); void load(); });
-  const remove   = (e: EventItem) => action(`Delete draft "${e.title}"? Cannot be undone.`, async () => { await eventsApiFetch(`/events/${e.id}`, token!, { method: 'DELETE' }); setActionMsg(`"${e.title}" deleted.`); void load(); });
+  const remove   = (e: EventItem) => action(`Delete draft "${e.title}"? This cannot be undone.`, async () => { await eventsApiFetch(`/events/${e.id}`, token!, { method: 'DELETE' }); setActionMsg(`"${e.title}" deleted.`); void load(); });
   const openEdit = (e: EventItem) => { setEditTarget(e); setFormOpen(true); };
   const handleFormClose = () => { setFormOpen(false); setEditTarget(undefined); };
   const handleFormSaved = () => { void load(); };
+  const handleFormPublish = () => { if (editTarget) { handleFormClose(); publish(editTarget); } };
+  const handleFormCancel  = () => { if (editTarget) { handleFormClose(); cancel(editTarget);  } };
 
   if (!token) {
     return <Container maxWidth="md" sx={{ pt: 6 }}><Alert severity="warning">You must be logged in to manage events.</Alert></Container>;
@@ -1026,22 +1092,55 @@ export function ManageEvents({ token, id }: Props) {
                         <Chip label={ss.label} color={ss.color} size="small" sx={{ fontWeight: 700, fontSize: 11 }} />
                       </TableCell>
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                        <Stack direction="row" spacing={0.5}>
+                        <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
                           {ev.status === 'draft' && (
                             <>
-                              <Tooltip title="Edit draft"><IconButton size="small" color="primary" onClick={() => openEdit(ev)}><EditIcon fontSize="small" /></IconButton></Tooltip>
-                              <Tooltip title="Publish"><IconButton size="small" color="success" onClick={() => publish(ev)}><PublishIcon fontSize="small" /></IconButton></Tooltip>
-                              <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => remove(ev)}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                              <Tooltip title="Edit draft">
+                                <IconButton size="small" color="primary" onClick={() => openEdit(ev)}>
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Button size="small" variant="contained" color="success"
+                                startIcon={<PublishIcon sx={{ fontSize: 14 }} />}
+                                onClick={() => publish(ev)}
+                                sx={{ fontSize: 11, textTransform: 'none', px: 1.25, py: 0.25 }}>
+                                Publish
+                              </Button>
+                              <Tooltip title="Delete draft">
+                                <IconButton size="small" color="error" onClick={() => remove(ev)}>
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
                             </>
                           )}
                           {ev.status === 'published' && (
                             <>
-                              <Tooltip title="Edit event"><IconButton size="small" color="primary" onClick={() => openEdit(ev)}><EditIcon fontSize="small" /></IconButton></Tooltip>
-                              <Tooltip title="Complete"><IconButton size="small" color="info" onClick={() => complete(ev)}><CheckCircleIcon fontSize="small" /></IconButton></Tooltip>
-                              <Tooltip title="Cancel"><IconButton size="small" color="error" onClick={() => cancel(ev)}><CancelIcon fontSize="small" /></IconButton></Tooltip>
+                              <Tooltip title="Edit event">
+                                <IconButton size="small" color="primary" onClick={() => openEdit(ev)}>
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Mark as completed">
+                                <IconButton size="small" color="info" onClick={() => complete(ev)}>
+                                  <CheckCircleIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Button size="small" variant="outlined" color="error"
+                                startIcon={<CancelIcon sx={{ fontSize: 14 }} />}
+                                onClick={() => cancel(ev)}
+                                sx={{ fontSize: 11, textTransform: 'none', px: 1.25, py: 0.25 }}>
+                                Cancel Event
+                              </Button>
                             </>
                           )}
-                          <Tooltip title="View in events page"><IconButton size="small" onClick={() => window.open('/events', '_blank')}><OpenInNewIcon fontSize="small" /></IconButton></Tooltip>
+                          {(ev.status === 'cancelled' || ev.status === 'completed') && (
+                            <Typography fontSize={11} color="text.disabled" sx={{ px: 0.5 }}>No actions</Typography>
+                          )}
+                          <Tooltip title="View in events page">
+                            <IconButton size="small" onClick={() => window.open('/events', '_blank')}>
+                              <OpenInNewIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                         </Stack>
                       </TableCell>
                     </TableRow>
@@ -1057,6 +1156,8 @@ export function ManageEvents({ token, id }: Props) {
         <EventForm
           open={formOpen} token={token} categories={categories}
           initial={editTarget} onClose={handleFormClose} onSaved={handleFormSaved}
+          onPublish={editTarget?.status === 'draft'     ? handleFormPublish : undefined}
+          onCancel ={editTarget?.status === 'published' ? handleFormCancel  : undefined}
         />
       )}
 

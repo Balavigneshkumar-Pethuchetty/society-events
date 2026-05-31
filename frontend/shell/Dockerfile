@@ -1,10 +1,11 @@
-# ── Build ────────────────────────────────────────────────────────────────────
+# ── Build ─────────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+ARG VITE_MODE=production
+RUN if [ "$VITE_MODE" = "development" ]; then npm run build:dev; else npm run build; fi
 
 # ── Runtime (nginx serves the SPA) ───────────────────────────────────────────
 FROM nginx:alpine AS runtime

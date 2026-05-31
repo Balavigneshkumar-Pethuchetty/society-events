@@ -36,14 +36,15 @@ services:
     environment:
       POSTGRES_USER:     ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB:       society_events
+      POSTGRES_DB:       ${POSTGRES_DB:-society_events}
+      KEYCLOAK_DB:       ${KEYCLOAK_DB:-keycloak}
     ports:
       - "127.0.0.1:${POSTGRES_PORT}:${POSTGRES_PORT}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d society_events"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-society_events}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -59,7 +60,7 @@ services:
     command: start-dev --import-realm --spi-theme-cache-themes=false --spi-theme-cache-templates=false
     environment:
       KC_DB:                   postgres
-      KC_DB_URL:               jdbc:postgresql://postgres:${POSTGRES_PORT}/keycloak
+      KC_DB_URL:               jdbc:postgresql://postgres:${POSTGRES_PORT}/${KEYCLOAK_DB:-keycloak}
       KC_DB_USERNAME:          ${POSTGRES_USER}
       KC_DB_PASSWORD:          ${POSTGRES_PASSWORD}
       KEYCLOAK_ADMIN:          ${KEYCLOAK_ADMIN_USER:-admin}
@@ -103,10 +104,11 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL:              ${PGADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD:           ${PGADMIN_PASSWORD}
-      PGADMIN_CONFIG_SERVER_MODE:         "False"
+      PGADMIN_CONFIG_SERVER_MODE:              "False"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
-      PGADMIN_CONFIG_LOGIN_BANNER:        "'Society Events — Local Dev'"
-      SCRIPT_NAME:                        /pgadmin   # pgAdmin subpath prefix
+      PGADMIN_CONFIG_WTF_CSRF_ENABLED:         "False"
+      PGADMIN_CONFIG_LOGIN_BANNER:             "'Society Events — Local Dev'"
+      SCRIPT_NAME:                             /pgadmin   # pgAdmin subpath prefix
     volumes:
       - pgadmin_data:/var/lib/pgadmin
       - ./db/pgadmin/servers.json:/pgadmin4/servers.json:ro
@@ -156,7 +158,7 @@ services:
     environment:
       DB_HOST:           postgres
       DB_PORT:           ${POSTGRES_PORT}
-      DB_NAME:           society_events
+      DB_NAME:           ${POSTGRES_DB:-society_events}
       DB_USER:           ${POSTGRES_USER}
       DB_PASSWORD:       ${POSTGRES_PASSWORD}
       KEYCLOAK_URL:              http://keycloak:${KEYCLOAK_PORT}
@@ -195,7 +197,7 @@ services:
     environment:
       DB_HOST:           postgres
       DB_PORT:           ${POSTGRES_PORT}
-      DB_NAME:           society_events
+      DB_NAME:           ${POSTGRES_DB:-society_events}
       DB_USER:           ${POSTGRES_USER}
       DB_PASSWORD:       ${POSTGRES_PASSWORD}
       KEYCLOAK_URL:              http://keycloak:${KEYCLOAK_PORT}
@@ -219,7 +221,7 @@ services:
     networks:
       - society_net
 
-  # ─── Shell App (production build) ─────────────────────────────────────────
+  # ─── Shell App ────────────────────────────────────────────────────────────
   # Opt-in only: docker compose --profile frontend up -d --build
   # For local dev use: npm run dev inside frontend/shell (Vite HMR, no Docker)
   frontend:
@@ -227,6 +229,8 @@ services:
     build:
       context: ./frontend/shell
       dockerfile: Dockerfile
+      args:
+        VITE_MODE: ${VITE_MODE:-production}
     container_name: society_frontend
     restart: always
     # No host port — served by nginx at /
@@ -239,12 +243,14 @@ services:
     networks:
       - society_net
 
-  # ─── MFE: Admin (production build) ──────────────────────────────────────────
+  # ─── MFE: Admin ─────────────────────────────────────────────────────────────
   mfe-admin:
     profiles: [frontend]
     build:
       context: ./frontend/mfe-admin
       dockerfile: Dockerfile
+      args:
+        VITE_MODE: ${VITE_MODE:-production}
     container_name: society_mfe_admin
     restart: always
     # No host port — served by nginx at /mfe-admin/
@@ -257,12 +263,14 @@ services:
     networks:
       - society_net
 
-  # ─── MFE: Events (production build) ─────────────────────────────────────────
+  # ─── MFE: Events ─────────────────────────────────────────────────────────────
   mfe-events:
     profiles: [frontend]
     build:
       context: ./frontend/mfe-events
       dockerfile: Dockerfile
+      args:
+        VITE_MODE: ${VITE_MODE:-production}
     container_name: society_mfe_events
     restart: always
     healthcheck:
@@ -274,12 +282,14 @@ services:
     networks:
       - society_net
 
-  # ─── MFE: Booking (production build) ────────────────────────────────────────
+  # ─── MFE: Booking ────────────────────────────────────────────────────────────
   mfe-booking:
     profiles: [frontend]
     build:
       context: ./frontend/mfe-booking
       dockerfile: Dockerfile
+      args:
+        VITE_MODE: ${VITE_MODE:-production}
     container_name: society_mfe_booking
     restart: always
     healthcheck:
@@ -291,12 +301,14 @@ services:
     networks:
       - society_net
 
-  # ─── MFE: Payment (production build) ────────────────────────────────────────
+  # ─── MFE: Payment ────────────────────────────────────────────────────────────
   mfe-payment:
     profiles: [frontend]
     build:
       context: ./frontend/mfe-payment
       dockerfile: Dockerfile
+      args:
+        VITE_MODE: ${VITE_MODE:-production}
     container_name: society_mfe_payment
     restart: always
     healthcheck:
@@ -324,7 +336,7 @@ services:
       SPLUNK_PASSWORD:   ${SPLUNK_PASSWORD:-}
       SPLUNK_HEC_TOKEN:  ${SPLUNK_HEC_TOKEN:-}
     ports:
-      - "127.0.0.1:${SPLUNK_PORT}:${SPLUNK_PORT}"   # localhost only — remote access via nginx /splunk/
+      - "127.0.0.1:${SPLUNK_PORT:-8000}:${SPLUNK_PORT:-8000}"   # localhost only — remote access via nginx /splunk/
     volumes:
       - splunk_data:/opt/splunk/var
     healthcheck:
@@ -377,18 +389,18 @@ services:
 # ─── Volumes ─────────────────────────────────────────────────────────────────
 volumes:
   postgres_data:
-    name: society_postgres_data
+    name: ${COMPOSE_PROJECT_NAME:-society}_postgres_data
   pgadmin_data:
-    name: society_pgadmin_data
+    name: ${COMPOSE_PROJECT_NAME:-society}_pgadmin_data
   redis_data:
-    name: society_redis_data
+    name: ${COMPOSE_PROJECT_NAME:-society}_redis_data
   nginx_logs:
-    name: society_nginx_logs
+    name: ${COMPOSE_PROJECT_NAME:-society}_nginx_logs
   splunk_data:
-    name: society_splunk_data
+    name: ${COMPOSE_PROJECT_NAME:-society}_splunk_data
 
 # ─── Network ─────────────────────────────────────────────────────────────────
 networks:
   society_net:
-    name: society_network
+    name: ${COMPOSE_PROJECT_NAME:-society}_network
     driver: bridge

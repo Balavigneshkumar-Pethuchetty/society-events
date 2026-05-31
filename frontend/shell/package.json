@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite --port 3000",
     "build": "tsc && vite build",
-    "preview": "vite preview --port 3000"
+    "build:dev": "tsc && vite build --mode development",
+    "preview": "vite preview --port 3000",
+    "preview:dev": "vite preview --port 3000 --mode development",
+    "start:dev": "npm run build:dev && npm run preview:dev"
   },
   "dependencies": {
     "@emotion/react": "^11.13.0",

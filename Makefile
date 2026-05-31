@@ -26,9 +26,11 @@
         splunk-up splunk-down fluent-bit-up fluent-bit-down
 
 ## ── Environment ─────────────────────────────────────────────────────────────
-ENV      ?= prod
-ENV_FILE := $(if $(filter prod,$(ENV)),.env,.env.$(ENV))
-COMPOSE  := docker compose --env-file $(ENV_FILE)
+ENV              ?= prod
+ENV_FILE         := $(if $(filter prod,$(ENV)),.env,.env.$(ENV))
+COMPOSE          := docker compose --env-file $(ENV_FILE)
+COMPOSE_PROJECT  := $(shell grep -m1 '^COMPOSE_PROJECT_NAME=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo society)
+POSTGRES_DB_NAME := $(shell grep -m1 '^POSTGRES_DB=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo society_events)
 
 ## ── Colours ─────────────────────────────────────────────────────────────────
 CYAN  := \033[0;36m
@@ -97,12 +99,23 @@ up: validate-ports ## Start all services (detached). ENV=dev|test|stage|prod
 	@$(MAKE) -s free-ports ENV=$(ENV)
 	$(COMPOSE) --profile frontend up -d --build
 	@echo ""
-	@echo "  $(CYAN)[$(ENV)] Services starting…$(RESET)"
-	@echo "  Env file  → $(ENV_FILE)"
-	@echo "  Frontend  → http://localhost:$$(grep -m1 '^NGINX_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]')/"
-	@echo "  Keycloak  → http://localhost:$$(grep -m1 '^KEYCLOAK_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]')/admin/"
-	@echo "  Run 'make logs ENV=$(ENV)' to follow logs."
-	@echo ""
+	@_pub=$$(grep -m1 '^KEYCLOAK_PUBLIC_URL=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
+	 _port=$$(grep -m1 '^NGINX_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo 8080); \
+	 _kc_port=$$(grep -m1 '^KEYCLOAK_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo 8081); \
+	 if echo "$$_pub" | grep -qv "localhost\|127\.0\.0\.1"; then \
+	   _site="$$_pub"; \
+	   _kc_admin="http://localhost:$$_kc_port/admin/"; \
+	 else \
+	   _site="http://localhost:$$_port"; \
+	   _kc_admin="http://localhost:$$_kc_port/admin/"; \
+	 fi; \
+	 echo ""; \
+	 echo "  $(CYAN)[$(ENV)] Services starting…$(RESET)"; \
+	 echo "  Env file  → $(ENV_FILE)"; \
+	 echo "  Frontend  → $$_site/"; \
+	 echo "  Keycloak  → $$_kc_admin (direct — bypasses nginx)"; \
+	 echo "  Run 'make logs ENV=$(ENV)' to follow logs."; \
+	 echo ""
 
 down: ## Stop and remove all containers for the active environment
 	$(COMPOSE) --profile frontend --profile monitoring down
@@ -224,15 +237,15 @@ logs-fluent-bit: ## Follow Fluent Bit logs (monitoring profile)
 	$(COMPOSE) --profile monitoring logs -f fluent-bit
 
 ## ── Database ────────────────────────────────────────────────────────────────
-shell-db: ## Open psql in the society_events database
-	$(COMPOSE) exec postgres psql -U $$(grep -m1 '^POSTGRES_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]') -d society_events
+shell-db: ## Open psql in the active environment's database
+	$(COMPOSE) exec postgres psql -U $$(grep -m1 '^POSTGRES_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]') -d $(POSTGRES_DB_NAME)
 
 shell-redis: ## Open redis-cli (authenticates if REDIS_PASSWORD is set)
 	$(COMPOSE) exec redis redis-cli $$(grep -m1 '^REDIS_PASSWORD=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' | grep -q . && echo "-a $$(grep -m1 '^REDIS_PASSWORD=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]')") --no-auth-warning
 
 seed: ## Re-run only the seed script (idempotent — uses ON CONFLICT DO NOTHING)
 	$(COMPOSE) exec -T postgres \
-	  psql -U $$(grep -m1 '^POSTGRES_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]') -d society_events \
+	  psql -U $$(grep -m1 '^POSTGRES_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]') -d $(POSTGRES_DB_NAME) \
 	  -f /docker-entrypoint-initdb.d/02_seed.sql
 	@echo "Seed complete."
 
@@ -241,7 +254,7 @@ migrate: ## Run pending SQL migrations in db/migrations/ (idempotent)
 	  echo "Running $$f…"; \
 	  $(COMPOSE) exec -T postgres psql \
 	    -U $$(grep -m1 '^POSTGRES_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]') \
-	    -d society_events -f /dev/stdin < $$f; \
+	    -d $(POSTGRES_DB_NAME) -f /dev/stdin < $$f; \
 	done
 	@echo "Migrations complete."
 
@@ -250,11 +263,11 @@ setup-google-idp: ## Apply Google IDP + first-broker-login flow to the RUNNING K
 
 sync-users: ## Sync users from keycloak/realm.json → postgres (inserts only, never overwrites)
 	docker run --rm \
-	  --network society_network \
+	  --network $(COMPOSE_PROJECT)_network \
 	  -v $(PWD)/keycloak/realm.json:/realm.json:ro \
 	  -v $(PWD)/scripts/sync_keycloak_users.py:/sync.py:ro \
 	  -e POSTGRES_HOST=society_postgres \
-	  -e POSTGRES_DB=society_events \
+	  -e POSTGRES_DB=$(POSTGRES_DB_NAME) \
 	  -e POSTGRES_USER=$$(grep -m1 '^POSTGRES_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]') \
 	  -e POSTGRES_PASSWORD=$$(grep -m1 '^POSTGRES_PASSWORD=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]') \
 	  -e REALM_JSON_PATH=/realm.json \
@@ -271,7 +284,7 @@ reset: ## ⚠ Destroy ALL volumes for the active env, restart from scratch, then
 	@echo "$(CYAN)Waiting for postgres to be healthy…$(RESET)"
 	@until $(COMPOSE) exec -T postgres pg_isready \
 	    -U $$(grep -m1 '^POSTGRES_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]') \
-	    -d society_events -q; do sleep 2; done
+	    -d $(POSTGRES_DB_NAME) -q; do sleep 2; done
 	@$(MAKE) sync-users ENV=$(ENV)
 	@echo "$(CYAN)Fresh [$(ENV)] environment ready.$(RESET)"
 
