@@ -1,7 +1,7 @@
 # Society Events — Developer Makefile
 # Usage: make <target>
 
-.PHONY: help up down restart logs ps reset seed shell-db shell-redis sync-users setup-google-idp \
+.PHONY: help up down restart free-ports logs ps reset seed shell-db shell-redis sync-users setup-google-idp \
         frontend frontend-install frontend-docker \
         restart-nginx restart-keycloak restart-postgres restart-redis \
         restart-pgadmin restart-user-service restart-event-service restart-cloudflared \
@@ -26,7 +26,25 @@ help: ## Show this help
 	@echo ""
 
 ## ── Core lifecycle ──────────────────────────────────────────────────────────
+free-ports: ## Kill stale rootlessport processes that hold project ports (Podman rootless workaround)
+	@_released=0; \
+	for port in \
+	    $$(grep -m1 '^NGINX_PORT='    .env 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo 8080) \
+	    $$(grep -m1 '^KEYCLOAK_PORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo 8081) \
+	    $$(grep -m1 '^POSTGRES_PORT=' .env 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo 5432) \
+	    $$(grep -m1 '^REDIS_PORT='    .env 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo 6379) \
+	    $$(grep -m1 '^SPLUNK_PORT='   .env 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo 8000); do \
+	  pid=$$(ss -Htlnp | grep ":$$port[[:space:]]" | grep -o 'pid=[0-9]*' | cut -d= -f2 | head -1); \
+	  if [ -n "$$pid" ]; then \
+	    echo "  [free-ports] releasing port $$port (pid $$pid)"; \
+	    kill "$$pid" 2>/dev/null || true; \
+	    _released=1; \
+	  fi; \
+	done; \
+	[ "$$_released" = "1" ] && sleep 1 || true
+
 up: .env ## Start all core services (detached)
+	@$(MAKE) -s free-ports
 	docker compose up -d --build
 	@echo ""
 	@echo "  $(CYAN)Services starting… (all routed through nginx on port $${NGINX_PORT:-8080})$(RESET)"
@@ -43,6 +61,7 @@ up: .env ## Start all core services (detached)
 
 down: ## Stop and remove all containers across all profiles (data volumes preserved)
 	docker compose --profile frontend --profile monitoring down
+	@$(MAKE) -s free-ports
 
 restart: ## Restart all core services (rebuilds frontend to pick up code changes)
 	docker compose --profile frontend up -d --build frontend mfe-admin mfe-events mfe-booking mfe-payment
