@@ -41,8 +41,8 @@ up: .env ## Start all core services (detached)
 	@echo ""
 	@echo "  For LAN access run scripts/wsl2_port_forward.ps1 as Administrator."
 
-down: ## Stop and remove containers (data volumes preserved)
-	docker compose down
+down: ## Stop and remove all containers across all profiles (data volumes preserved)
+	docker compose --profile frontend --profile monitoring down
 
 restart: ## Restart all core services (rebuilds frontend to pick up code changes)
 	docker compose --profile frontend up -d --build frontend mfe-admin mfe-events mfe-booking mfe-payment
