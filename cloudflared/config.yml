@@ -3,7 +3,7 @@ credentials-file: /etc/cloudflared/4f6ad36b-5a4a-4f31-9612-b11129f33205.json
 
 ingress:
   - hostname: gm-global-techies-town.club
-    service: http://nginx:80
+    service: http://nginx:8080
   - hostname: www.gm-global-techies-town.club
-    service: http://nginx:80
+    service: http://nginx:8080
   - service: http_status:404
