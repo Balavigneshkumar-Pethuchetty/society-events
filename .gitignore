@@ -1,5 +1,8 @@
 # ── Secrets ───────────────────────────────────────────────────────────────────
 .env
+.env.dev
+.env.test
+.env.stage
 *.pem
 *.key
 cloudflared/*.json
