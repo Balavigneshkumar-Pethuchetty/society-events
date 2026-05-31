@@ -293,9 +293,10 @@ def _raise_auto_link_priority(token: str) -> None:
 
 def main() -> None:
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
-        print("✗  GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in the environment.")
-        print("   Ensure .env is populated and re-run: make setup-google-idp")
-        sys.exit(1)
+        print("⚠  GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET not set — skipping Google IDP setup.")
+        print("   The 'Continue with Google' button will not appear on the login page.")
+        print("   Set both variables in .env and re-run: make setup-google-idp")
+        return
 
     print()
     print("  Configuring Google Social Login in Keycloak…")

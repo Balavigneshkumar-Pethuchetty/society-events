@@ -279,17 +279,7 @@
   ],
   "registrationEmailAsUsername": false,
   "verifyEmail": false,
-  "smtpServer": {
-    "host": "smtp.gmail.com",
-    "port": "587",
-    "from": "${env.GMAIL_SMTP_USER}",
-    "fromDisplayName": "GM Global Techies Town",
-    "ssl": "false",
-    "starttls": "true",
-    "auth": "true",
-    "user": "${env.GMAIL_SMTP_USER}",
-    "password": "${env.GMAIL_APP_PASSWORD}"
-  },
+  "smtpServer": {},
   "attributes": {
     "userProfileEnabled": "true"
   },
@@ -298,7 +288,7 @@
       "alias": "google",
       "displayName": "Google",
       "providerId": "google",
-      "enabled": true,
+      "enabled": false,
       "updateProfileFirstLoginMode": "off",
       "trustEmail": true,
       "storeToken": false,
@@ -307,8 +297,8 @@
       "linkOnly": false,
       "firstBrokerLoginFlowAlias": "first broker login - google",
       "config": {
-        "clientId": "${env.GOOGLE_CLIENT_ID}",
-        "clientSecret": "${env.GOOGLE_CLIENT_SECRET}",
+        "clientId": "${env.GOOGLE_CLIENT_ID:-}",
+        "clientSecret": "${env.GOOGLE_CLIENT_SECRET:-}",
         "defaultScope": "openid profile email",
         "disableUserInfo": "false",
         "useJwksUrl": "true",
