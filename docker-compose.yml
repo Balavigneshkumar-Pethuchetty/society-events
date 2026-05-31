@@ -65,8 +65,11 @@ services:
       KC_HOSTNAME_URL:         ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}  # public URL for email links
       GOOGLE_CLIENT_ID:        ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET:    ${GOOGLE_CLIENT_SECRET}
+      GMAIL_SMTP_USER:         ${GMAIL_SMTP_USER}
+      GMAIL_APP_PASSWORD:      ${GMAIL_APP_PASSWORD}
+      KEYCLOAK_API_CLIENT_SECRET: ${KEYCLOAK_API_CLIENT_SECRET}
     ports:
-      - "8081:8080"
+      - "127.0.0.1:${KEYCLOAK_PORT:-8081}:8080"
     volumes:
       - ./keycloak:/opt/keycloak/data/import:ro
       - ./keycloak/themes:/opt/keycloak/themes:ro
@@ -115,7 +118,8 @@ services:
       --requirepass ${REDIS_PASSWORD}
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
-    # No host port — only accessible within society_net
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -145,7 +149,7 @@ services:
       KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
       KEYCLOAK_ADMIN_USER:       ${KEYCLOAK_ADMIN_USER:-admin}
       KEYCLOAK_ADMIN_PASSWORD:   ${KEYCLOAK_ADMIN_PASSWORD}
-      INTERNAL_API_KEY:          ${INTERNAL_API_KEY:-change-this-in-prod}
+      INTERNAL_API_KEY:          ${INTERNAL_API_KEY}
       SOCIETY_ID:                11100000-0000-0000-0000-000000000001
       SOCIETY_NAME:              ${SOCIETY_NAME:-GM Global Techies Town}
       SOCIETY_SHORT_NAME:        ${SOCIETY_SHORT_NAME:-GMGT}
@@ -182,7 +186,7 @@ services:
       KEYCLOAK_URL:              http://keycloak:8080
       KEYCLOAK_REALM:            society-events
       KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
-      INTERNAL_API_KEY:          ${INTERNAL_API_KEY:-change-this-in-prod}
+      INTERNAL_API_KEY:          ${INTERNAL_API_KEY}
       SOCIETY_ID:                11100000-0000-0000-0000-000000000001
       SPLUNK_HEC_URL:            http://splunk:8088/services/collector/event
       SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
@@ -272,7 +276,7 @@ services:
     restart: always
     environment:
       SPLUNK_START_ARGS: --accept-license
-      SPLUNK_PASSWORD:   ${SPLUNK_PASSWORD:-Splunk2026!}
+      SPLUNK_PASSWORD:   ${SPLUNK_PASSWORD}
       SPLUNK_HEC_TOKEN:  ${SPLUNK_HEC_TOKEN:-}
     ports:
       - "127.0.0.1:8000:8000"   # localhost only — remote access via nginx /splunk/

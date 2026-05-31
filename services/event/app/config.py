@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     keycloak_url: str = "http://keycloak:8080"
     keycloak_realm: str = "society-events"
     keycloak_public_url: str = "http://localhost:8080"
-    internal_api_key: str = "change-this-in-prod"
+    internal_api_key: str
     society_id: str = "11100000-0000-0000-0000-000000000001"
 
     splunk_hec_url: str = "http://splunk:8088/services/collector/event"

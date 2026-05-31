@@ -31,11 +31,11 @@ up: .env ## Start all core services (detached)
 	@echo ""
 	@echo "  $(CYAN)Services starting… (all routed through nginx on port $${NGINX_PORT:-8080})$(RESET)"
 	@echo "  Frontend  → http://localhost:$${NGINX_PORT:-8080}/          (requires --profile frontend)"
-	@echo "  Keycloak  → http://localhost:8081/admin/                    (direct — bypasses nginx)"
+	@echo "  Keycloak  → http://localhost:$${KEYCLOAK_PORT:-8081}/admin/                    (direct — bypasses nginx)"
 	@echo "  pgAdmin   → http://localhost:$${NGINX_PORT:-8080}/pgadmin/  (nginx basic auth)"
 	@echo "  Cloudflared tunnel starts automatically with core services."
 	@echo ""
-	@echo "  Postgres and Redis are internal only (no host port)."
+	@echo "  Postgres is internal only. Redis → 127.0.0.1:$${REDIS_PORT:-6379} (localhost only)."
 	@echo "  Monitoring (Splunk + Fluent Bit) — run: make monitoring-up"
 	@echo "  Run 'make logs' to follow logs or 'make ps' to check health."
 	@echo ""
@@ -166,7 +166,7 @@ shell-db: ## Open psql in the society_events database
 	docker compose exec postgres psql -U $${POSTGRES_USER:-society_user} -d society_events
 
 shell-redis: ## Open redis-cli
-	docker compose exec redis redis-cli -a $${REDIS_PASSWORD:-R3d!sP@ss2025}
+	docker compose exec redis redis-cli -a $${REDIS_PASSWORD}
 
 seed: ## Re-run only the seed script (idempotent — uses ON CONFLICT DO NOTHING)
 	docker compose exec -T postgres \
@@ -192,7 +192,7 @@ sync-users: ## Sync users from keycloak/realm.json → postgres (inserts only, n
 	  -e POSTGRES_HOST=society_postgres \
 	  -e POSTGRES_DB=society_events \
 	  -e POSTGRES_USER=$${POSTGRES_USER:-society_user} \
-	  -e POSTGRES_PASSWORD=$${POSTGRES_PASSWORD:-S0c!etyP@ss2025} \
+	  -e POSTGRES_PASSWORD=$${POSTGRES_PASSWORD} \
 	  -e REALM_JSON_PATH=/realm.json \
 	  python:3.12-alpine \
 	  sh -c "pip install psycopg2-binary -q && python /sync.py"

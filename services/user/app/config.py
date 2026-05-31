@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     keycloak_public_url: str = "http://localhost:8080"
     # Keycloak master-realm admin credentials for role assignment via Admin REST API
     keycloak_admin_user: str = "admin"
-    keycloak_admin_password: str = "change-this-in-prod"
-    internal_api_key: str = "change-this-in-prod"
+    keycloak_admin_password: str
+    internal_api_key: str
     # Default society UUID matches seed data; override for multi-society later
     society_id: str = "11100000-0000-0000-0000-000000000001"
     society_name: str = "GM Global Techies Town"

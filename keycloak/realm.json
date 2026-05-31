@@ -109,7 +109,7 @@
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
       "protocol": "openid-connect",
-      "secret": "society-api-secret-change-in-prod",
+      "secret": "${env.KEYCLOAK_API_CLIENT_SECRET}",
       "defaultClientScopes": [
         "openid",
         "profile",
@@ -282,13 +282,13 @@
   "smtpServer": {
     "host": "smtp.gmail.com",
     "port": "587",
-    "from": "gm.gtt.club@gmail.com",
+    "from": "${env.GMAIL_SMTP_USER}",
     "fromDisplayName": "GM Global Techies Town",
     "ssl": "false",
     "starttls": "true",
     "auth": "true",
-    "user": "gm.gtt.club@gmail.com",
-    "password": "gcvj clcn pchr lfnx"
+    "user": "${env.GMAIL_SMTP_USER}",
+    "password": "${env.GMAIL_APP_PASSWORD}"
   },
   "attributes": {
     "userProfileEnabled": "true"
