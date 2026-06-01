@@ -320,72 +320,6 @@ services:
     networks:
       - society_net
 
-  # ─── Splunk (monitoring profile) ────────────────────────────────────────────
-  # Start with: docker compose --profile monitoring up -d splunk fluent-bit
-  # Web UI:  http://localhost:8000  (admin / $SPLUNK_PASSWORD)
-  # HEC:     http://splunk:8088     (internal only, token = $SPLUNK_HEC_TOKEN)
-  splunk:
-    profiles: [monitoring]
-    build:
-      context: ./splunk
-      dockerfile: Dockerfile
-    container_name: society_splunk
-    restart: always
-    environment:
-      SPLUNK_START_ARGS: --accept-license
-      SPLUNK_PASSWORD:   ${SPLUNK_PASSWORD:-}
-      SPLUNK_HEC_TOKEN:  ${SPLUNK_HEC_TOKEN:-}
-    ports:
-      - "127.0.0.1:${SPLUNK_PORT:-8000}:${SPLUNK_PORT:-8000}"   # localhost only — remote access via nginx /splunk/
-    volumes:
-      - splunk_data:/opt/splunk/var
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/splunk/en-US/account/login || exit 1"]
-      interval: 30s
-      timeout: 15s
-      retries: 10
-      start_period: 120s
-    networks:
-      - society_net
-
-  # ─── Fluent Bit — nginx log shipper (monitoring profile) ─────────────────────
-  fluent-bit:
-    profiles: [monitoring]
-    image: fluent/fluent-bit:3.1
-    container_name: society_fluent_bit
-    restart: always
-    environment:
-      SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:-}
-    volumes:
-      - nginx_logs:/var/log/nginx:ro
-      - ./fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
-      - ./fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
-    depends_on:
-      splunk:
-        condition: service_healthy
-    networks:
-      - society_net
-
-  # ─── Cloudflare Tunnel ───────────────────────────────────────────────────────
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: society_cloudflared
-    restart: always
-    command: tunnel --config /etc/cloudflared/config.yml run
-    volumes:
-      - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
-      - ./cloudflared/4f6ad36b-5a4a-4f31-9612-b11129f33205.json:/etc/cloudflared/4f6ad36b-5a4a-4f31-9612-b11129f33205.json:ro
-    depends_on:
-      - nginx
-    healthcheck:
-      test: ["CMD", "cloudflared", "tunnel", "--config", "/etc/cloudflared/config.yml", "ingress", "validate"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    networks:
-      - society_net
-
 # ─── Volumes ─────────────────────────────────────────────────────────────────
 volumes:
   postgres_data:
@@ -396,8 +330,6 @@ volumes:
     name: ${COMPOSE_PROJECT_NAME:-society}_redis_data
   nginx_logs:
     name: ${COMPOSE_PROJECT_NAME:-society}_nginx_logs
-  splunk_data:
-    name: ${COMPOSE_PROJECT_NAME:-society}_splunk_data
 
 # ─── Network ─────────────────────────────────────────────────────────────────
 networks:

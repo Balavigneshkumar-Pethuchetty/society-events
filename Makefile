@@ -22,13 +22,26 @@
         logs-nginx logs-kc logs-db logs-user logs-events \
         logs-cloudflared logs-mfe-admin logs-mfe-events logs-mfe-booking logs-mfe-payment \
         logs-splunk logs-fluent-bit \
-        monitoring-up monitoring-down \
+        _check-monitoring monitoring-up monitoring-down \
         splunk-up splunk-down fluent-bit-up fluent-bit-down
 
 ## ── Environment ─────────────────────────────────────────────────────────────
+# ENV=prod   → docker-compose.yml + docker-compose.monitoring.yml + docker-compose.prod.yml
+# ENV=stage  → docker-compose.yml + docker-compose.monitoring.yml
+# ENV=dev    → docker-compose.yml  (no Splunk, no Cloudflared)
+# ENV=test   → docker-compose.yml  (no Splunk, no Cloudflared)
 ENV              ?= prod
 ENV_FILE         := $(if $(filter prod,$(ENV)),.env,.env.$(ENV))
-COMPOSE          := docker compose --env-file $(ENV_FILE)
+
+ifeq ($(ENV),prod)
+  COMPOSE_FILES := -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.prod.yml
+else ifeq ($(ENV),stage)
+  COMPOSE_FILES := -f docker-compose.yml -f docker-compose.monitoring.yml
+else
+  COMPOSE_FILES := -f docker-compose.yml
+endif
+
+COMPOSE          := docker compose --env-file $(ENV_FILE) $(COMPOSE_FILES)
 COMPOSE_PROJECT  := $(shell grep -m1 '^COMPOSE_PROJECT_NAME=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo society)
 POSTGRES_DB_NAME := $(shell grep -m1 '^POSTGRES_DB=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo society_events)
 
@@ -99,7 +112,8 @@ up: validate-ports ## Start all services (detached). ENV=dev|test|stage|prod
 	@$(MAKE) -s free-ports ENV=$(ENV)
 	$(COMPOSE) --profile frontend up -d --build
 	@echo ""
-	@_pub=$$(grep -m1 '^KEYCLOAK_PUBLIC_URL=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
+	@_splunk_pw=$$(grep -m1 '^SPLUNK_PASSWORD=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]'); \
+	_pub=$$(grep -m1 '^KEYCLOAK_PUBLIC_URL=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
 	 _port=$$(grep -m1 '^NGINX_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo 8080); \
 	 _kc_port=$$(grep -m1 '^KEYCLOAK_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo 8081); \
 	 if echo "$$_pub" | grep -qv "localhost\|127\.0\.0\.1"; then \
@@ -114,16 +128,42 @@ up: validate-ports ## Start all services (detached). ENV=dev|test|stage|prod
 	 echo "  Env file  → $(ENV_FILE)"; \
 	 echo "  Frontend  → $$_site/"; \
 	 echo "  Keycloak  → $$_kc_admin (direct — bypasses nginx)"; \
+	 echo ""; \
+	 echo "  $(CYAN)Browser pages$(RESET)"; \
+	 echo "  App home         → $$_site/"; \
+	 echo "  Forgot password  → $$_site/forgot-password"; \
+	 echo "  Profile          → $$_site/profile"; \
+	 echo "  Events           → $$_site/events"; \
+	 echo "  Tickets          → $$_site/tickets"; \
+	 echo "  Checkout         → $$_site/checkout"; \
+	 echo "  Payments         → $$_site/payments"; \
+	 echo "  Event manager    → $$_site/manage"; \
+	 echo "  Admin panel      → $$_site/admin"; \
+	 echo "  Sponsor portal   → $$_site/sponsor"; \
+	 echo "  QR scanner       → $$_site/scanner"; \
+	 echo "  Entry log        → $$_site/entry-log"; \
+	 echo ""; \
+	 echo "  $(CYAN)Admin / docs$(RESET)"; \
+	 echo "  Keycloak admin   → $$_kc_admin"; \
+	 echo "  pgAdmin          → $$_site/pgadmin/"; \
+	 if [ -n "$$_splunk_pw" ]; then echo "  Splunk           → $$_site/splunk/"; fi; \
+	 echo "  User API docs    → $$_site/api/users/docs"; \
+	 echo "  Event API docs   → $$_site/api/events/docs"; \
+	 echo ""; \
+	 echo "  $(CYAN)MFE preview roots$(RESET)"; \
+	 echo "  Admin MFE        → $$_site/mfe-admin/"; \
+	 echo "  Events MFE       → $$_site/mfe-events/"; \
+	 echo "  Booking MFE      → $$_site/mfe-booking/"; \
+	 echo "  Payment MFE      → $$_site/mfe-payment/"; \
 	 echo "  Run 'make logs ENV=$(ENV)' to follow logs."; \
 	 echo ""
 
 down: ## Stop and remove all containers for the active environment
-	$(COMPOSE) --profile frontend --profile monitoring down
+	$(COMPOSE) --profile frontend down
 	@$(MAKE) -s free-ports ENV=$(ENV)
 
 restart: ## Restart all core services (rebuilds changed images)
-	$(COMPOSE) --profile frontend up -d --build frontend mfe-admin mfe-events mfe-booking mfe-payment
-	$(COMPOSE) restart nginx keycloak postgres redis pgadmin user-service event-service cloudflared
+	$(COMPOSE) --profile frontend up -d --build
 
 ## ── Individual service restarts ─────────────────────────────────────────────
 restart-nginx: ## Rebuild & restart nginx (nginx.conf is baked into the image)
@@ -162,35 +202,41 @@ restart-mfe-booking: ## Rebuild & restart mfe-booking container
 restart-mfe-payment: ## Rebuild & restart mfe-payment container
 	$(COMPOSE) --profile frontend up -d --build mfe-payment
 
-restart-splunk: ## Restart Splunk only (monitoring profile)
-	$(COMPOSE) --profile monitoring restart splunk
+restart-splunk: ## Restart Splunk only (stage/prod)
+	$(COMPOSE) restart splunk
 
-restart-fluent-bit: ## Restart Fluent Bit only (monitoring profile)
-	$(COMPOSE) --profile monitoring restart fluent-bit
+restart-fluent-bit: ## Restart Fluent Bit only (stage/prod)
+	$(COMPOSE) restart fluent-bit
 
-## ── Monitoring stack ────────────────────────────────────────────────────────
-monitoring-up: ## Start Splunk + Fluent Bit monitoring stack
-	$(COMPOSE) --profile monitoring up -d splunk fluent-bit
+## ── Monitoring stack (stage / prod only) ────────────────────────────────────
+_check-monitoring:
+	@if [ "$(ENV)" != "stage" ] && [ "$(ENV)" != "prod" ]; then \
+	  echo "  ERROR: monitoring targets require ENV=stage or ENV=prod (got ENV=$(ENV))"; \
+	  exit 1; \
+	fi
+
+monitoring-up: _check-monitoring ## Start Splunk + Fluent Bit (ENV=stage|prod)
+	$(COMPOSE) up -d splunk fluent-bit
 	@echo ""
 	@echo "  $(CYAN)Monitoring stack starting… [$(ENV)]$(RESET)"
 	@echo "  Splunk UI → http://localhost:$$(grep -m1 '^NGINX_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]')/splunk/"
 	@echo "  Run 'make logs-splunk ENV=$(ENV)' to follow Splunk startup logs."
 	@echo ""
 
-monitoring-down: ## Stop Splunk + Fluent Bit monitoring stack
-	$(COMPOSE) --profile monitoring stop splunk fluent-bit
+monitoring-down: _check-monitoring ## Stop Splunk + Fluent Bit (ENV=stage|prod)
+	$(COMPOSE) stop splunk fluent-bit
 
-splunk-up: ## Start Splunk only (without Fluent Bit)
-	$(COMPOSE) --profile monitoring up -d splunk
+splunk-up: _check-monitoring ## Start Splunk only (ENV=stage|prod)
+	$(COMPOSE) up -d splunk
 
-splunk-down: ## Stop Splunk only
-	$(COMPOSE) --profile monitoring stop splunk
+splunk-down: _check-monitoring ## Stop Splunk only (ENV=stage|prod)
+	$(COMPOSE) stop splunk
 
-fluent-bit-up: ## Start Fluent Bit only (Splunk must already be running)
-	$(COMPOSE) --profile monitoring up -d fluent-bit
+fluent-bit-up: _check-monitoring ## Start Fluent Bit only — Splunk must already be running
+	$(COMPOSE) up -d fluent-bit
 
-fluent-bit-down: ## Stop Fluent Bit only
-	$(COMPOSE) --profile monitoring stop fluent-bit
+fluent-bit-down: _check-monitoring ## Stop Fluent Bit only (ENV=stage|prod)
+	$(COMPOSE) stop fluent-bit
 
 ## ── Status ──────────────────────────────────────────────────────────────────
 ps: ## Show service status and health
@@ -230,11 +276,11 @@ logs-mfe-booking: ## Follow mfe-booking logs
 logs-mfe-payment: ## Follow mfe-payment logs
 	$(COMPOSE) --profile frontend logs -f mfe-payment
 
-logs-splunk: ## Follow Splunk logs (monitoring profile)
-	$(COMPOSE) --profile monitoring logs -f splunk
+logs-splunk: ## Follow Splunk logs (ENV=stage|prod)
+	$(COMPOSE) logs -f splunk
 
-logs-fluent-bit: ## Follow Fluent Bit logs (monitoring profile)
-	$(COMPOSE) --profile monitoring logs -f fluent-bit
+logs-fluent-bit: ## Follow Fluent Bit logs (ENV=stage|prod)
+	$(COMPOSE) logs -f fluent-bit
 
 ## ── Database ────────────────────────────────────────────────────────────────
 shell-db: ## Open psql in the active environment's database
@@ -277,7 +323,7 @@ sync-users: ## Sync users from keycloak/realm.json → postgres (inserts only, n
 ## ── Reset ───────────────────────────────────────────────────────────────────
 reset: ## ⚠ Destroy ALL volumes for the active env, restart from scratch, then sync users
 	@echo "$(CYAN)Stopping containers and removing volumes… [$(ENV)]$(RESET)"
-	$(COMPOSE) --profile frontend --profile monitoring down -v --remove-orphans
+	$(COMPOSE) --profile frontend down -v --remove-orphans
 	@$(MAKE) -s validate-ports ENV=$(ENV)
 	@$(MAKE) -s free-ports ENV=$(ENV)
 	$(COMPOSE) --profile frontend up -d --build
