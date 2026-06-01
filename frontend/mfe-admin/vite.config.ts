@@ -2,8 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import federation from '@originjs/vite-plugin-federation';
 
-export default defineConfig(({ mode }) => ({
-  base: mode === 'development' ? '/' : '/mfe-admin/',
+export default defineConfig(({ command, mode }) => ({
+  base: command === 'serve' ? '/' : '/mfe-admin/',
   plugins: [
     react(),
     federation({
@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => ({
         './AdminRoutes':  './src/AdminRoutes',
         './SponsorApp':   './src/SponsorApp',
       },
+      // Cast to any to satisfy type differences between plugin SharedConfig and our desired options
       shared: {
         'react':           { singleton: true, requiredVersion: '^18.3.1' },
         'react-dom':       { singleton: true, requiredVersion: '^18.3.1' },
@@ -21,7 +22,7 @@ export default defineConfig(({ mode }) => ({
         '@mui/material':   { singleton: true, requiredVersion: '^5.16.7' },
         '@emotion/react':  { singleton: true, requiredVersion: '^11.13.0' },
         '@emotion/styled': { singleton: true, requiredVersion: '^11.13.0' },
-      },
+      } as any,
     }),
   ],
   server: {
