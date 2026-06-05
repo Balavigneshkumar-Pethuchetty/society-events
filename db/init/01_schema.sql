@@ -42,9 +42,10 @@ CREATE TABLE IF NOT EXISTS apartment (
 CREATE TABLE IF NOT EXISTS users (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     apartment_id        UUID        REFERENCES apartment(id) ON DELETE SET NULL,
+    username            VARCHAR(255) UNIQUE,                -- set for phone-registered accounts
     name                VARCHAR(255) NOT NULL,
-    email               VARCHAR(255) NOT NULL UNIQUE,
-    phone               VARCHAR(20),
+    email               VARCHAR(255),                       -- nullable for phone-only accounts
+    phone               VARCHAR(20)  UNIQUE,                -- E.164 format: +91XXXXXXXXXX
     role                VARCHAR(50) NOT NULL DEFAULT 'resident',
                         -- 'admin' | 'committee_member' | 'resident' | 'security_guard' | 'sponsor'
     keycloak_sub        VARCHAR(255) UNIQUE,  -- Keycloak user UUID (sub claim)
@@ -53,6 +54,9 @@ CREATE TABLE IF NOT EXISTS users (
     is_active           BOOLEAN     NOT NULL DEFAULT TRUE,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Partial unique index on email (NULL is allowed, uniqueness enforced only when set)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email) WHERE email IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- ADMIN_ACTIONS  (persistent audit log of every admin user-management action)
@@ -246,8 +250,10 @@ CREATE TABLE IF NOT EXISTS notification (
 
 -- users
 CREATE INDEX IF NOT EXISTS idx_users_keycloak_sub  ON users(keycloak_sub);
-CREATE INDEX IF NOT EXISTS idx_users_email          ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_role           ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_email         ON users(email) WHERE email IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_phone         ON users(phone) WHERE phone IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_username      ON users(username) WHERE username IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_role          ON users(role);
 
 -- apartment
 CREATE INDEX IF NOT EXISTS idx_apartment_society    ON apartment(society_id);

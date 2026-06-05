@@ -5,7 +5,8 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 ARG VITE_MODE=production
-RUN if [ "$VITE_MODE" = "development" ]; then npm run build:dev; else npm run build; fi
+ARG VITE_APP_ENV=prod
+RUN if [ "$VITE_MODE" = "development" ]; then VITE_APP_ENV=$VITE_APP_ENV npm run build:dev; else VITE_APP_ENV=$VITE_APP_ENV npm run build; fi
 
 # ── Runtime (nginx serves the SPA) ───────────────────────────────────────────
 FROM nginx:alpine AS runtime

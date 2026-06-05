@@ -57,7 +57,8 @@ services:
     image: quay.io/keycloak/keycloak:25.0
     container_name: society_keycloak
     restart: always
-    command: start-dev --import-realm --spi-theme-cache-themes=false --spi-theme-cache-templates=false
+    # --features=token-exchange enables RFC 8693 token exchange required for OTP login
+    command: start-dev --import-realm --features=token-exchange --spi-theme-cache-themes=false --spi-theme-cache-templates=false
     environment:
       KC_DB:                   postgres
       KC_DB_URL:               jdbc:postgresql://postgres:${POSTGRES_PORT}/${KEYCLOAK_DB:-keycloak}
@@ -187,6 +188,53 @@ services:
     networks:
       - society_net
 
+  # ─── OTP Bridge Service (port 3003) ──────────────────────────────────────
+  otp-service:
+    build:
+      context: ./services/otp
+      dockerfile: Dockerfile
+    container_name: society_otp_service
+    restart: always
+    environment:
+      REDIS_URL:                  redis://redis:${REDIS_PORT}
+      REDIS_PASSWORD:             ${REDIS_PASSWORD}
+      KEYCLOAK_URL:               http://keycloak:${KEYCLOAK_PORT}
+      KEYCLOAK_REALM:             society-events
+      KEYCLOAK_ADMIN_USER:        ${KEYCLOAK_ADMIN_USER:-admin}
+      KEYCLOAK_ADMIN_PASSWORD:    ${KEYCLOAK_ADMIN_PASSWORD}
+      OTP_BRIDGE_CLIENT_ID:       otp-bridge
+      OTP_BRIDGE_CLIENT_SECRET:   ${OTP_BRIDGE_CLIENT_SECRET}
+      USER_SERVICE_URL:           http://user-service:3001
+      INTERNAL_API_KEY:           ${INTERNAL_API_KEY}
+      SOCIETY_NAME:               ${SOCIETY_NAME:-GM Global Techies Town}
+      SMS_GATEWAY:                ${SMS_GATEWAY:-log}
+      FAST2SMS_API_KEY:           ${FAST2SMS_API_KEY:-}
+      HTTP_SMS_URL:               ${HTTP_SMS_URL:-}
+      HTTP_SMS_API_KEY:           ${HTTP_SMS_API_KEY:-}
+      HTTP_SMS_FROM:              ${HTTP_SMS_FROM:-}
+      GAMMU_CONFIG:               /etc/gammurc
+      OTP_TTL_SECONDS:            300
+      OTP_MAX_ATTEMPTS:           3
+      OTP_RATE_LIMIT_SECONDS:     60
+    # Uncomment and set USB_MODEM_DEVICE in .env when using Gammu with a physical modem:
+    # devices:
+    #   - ${USB_MODEM_DEVICE:-/dev/ttyUSB0}:/dev/ttyUSB0
+    depends_on:
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      user-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3003/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - society_net
+
   # ─── Event Service (port 3002) ───────────────────────────────────────────
   event-service:
     build:
@@ -231,6 +279,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_MODE: ${VITE_MODE:-production}
+        VITE_APP_ENV: ${VITE_APP_ENV:-prod}
     container_name: society_frontend
     restart: always
     # No host port — served by nginx at /

@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import LoginIcon from '@mui/icons-material/Login';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import PhoneIcon from '@mui/icons-material/Phone';
 import EventIcon from '@mui/icons-material/Event';
 import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
 import GroupsIcon from '@mui/icons-material/Groups';
@@ -12,7 +13,7 @@ import SecurityIcon from '@mui/icons-material/Security';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import QrCodeIcon from '@mui/icons-material/QrCode';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSociety } from '../contexts/SocietyContext';
 
@@ -79,6 +80,7 @@ const HOW_IT_WORKS = [
 export function Landing() {
   const { login, loginWithGoogle, register } = useAuth();
   const { name, city } = useSociety();
+  const navigate = useNavigate();
 
   return (
     <Box component="main" sx={{ bgcolor: 'background.default' }}>
@@ -159,8 +161,8 @@ export function Landing() {
             </Button>
           </Stack>
 
-          {/* Google sign-in */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center', mb: 3.5 }}>
+          {/* Alternative sign-in options */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center', mb: 2.5 }}>
             <Box sx={{ flex: 1, maxWidth: 120, height: '1px', bgcolor: 'rgba(255,255,255,0.18)' }} />
             <Box
               component="span"
@@ -170,6 +172,28 @@ export function Landing() {
             </Box>
             <Box sx={{ flex: 1, maxWidth: 120, height: '1px', bgcolor: 'rgba(255,255,255,0.18)' }} />
           </Box>
+
+          {/* Mobile OTP login */}
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1.5 }}>
+            <Button
+              variant="outlined"
+              size="large"
+              startIcon={<PhoneIcon />}
+              onClick={() => navigate('/mobile-login')}
+              sx={{
+                px: 4, py: 1.5, fontWeight: 600, fontSize: 15,
+                color: '#a5b4fc',
+                borderColor: 'rgba(165,180,252,0.5)',
+                borderRadius: '8px',
+                textTransform: 'none',
+                '&:hover': { borderColor: '#a5b4fc', bgcolor: 'rgba(165,180,252,0.08)' },
+                minWidth: 240,
+              }}
+            >
+              Sign in with Mobile OTP
+            </Button>
+          </Box>
+
           <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3.5 }}>
             <Button
               variant="contained"
@@ -201,7 +225,14 @@ export function Landing() {
           </Box>
 
           <Typography sx={{ fontSize: 13, color: 'rgba(165,180,252,0.8)' }}>
-            New members: register with your email — the committee activates your account within 24 hours.
+            New members: register with email or{' '}
+            <Link
+              to="/phone-register"
+              style={{ color: '#a5b4fc', textDecoration: 'underline' }}
+            >
+              mobile number
+            </Link>
+            {' '}— committee activates within 24 hours.
           </Typography>
 
           <Typography sx={{ fontSize: 13, color: 'rgba(165,180,252,0.6)', mt: 1.5 }}>

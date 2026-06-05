@@ -11,6 +11,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserService } from '../contexts/UserServiceContext';
 import { ROLE_COLORS, ROLE_LABELS } from '../theme';
+import { PhoneInputField } from '../components/PhoneInputField';
 
 function aptLabel(apt: { block: string; unit_number: string; type: string }) {
   return `Block ${apt.block} — Flat ${apt.unit_number} (${apt.type})`;
@@ -82,13 +83,10 @@ function PersonalInfoCard() {
               size="small"
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
-            <TextField
-              label="Phone number"
+          <Grid item xs={12}>
+            <PhoneInputField
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+91-XXXXX-XXXXX"
-              fullWidth
+              onChange={setPhone}
               size="small"
             />
           </Grid>

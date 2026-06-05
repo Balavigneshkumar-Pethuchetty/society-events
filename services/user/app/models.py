@@ -16,8 +16,9 @@ class UserResponse(BaseModel):
     id: UUID
     apartment_id: Optional[UUID] = None
     apartment: Optional[ApartmentBrief] = None
+    username: Optional[str] = None
     name: str
-    email: str
+    email: Optional[str] = None   # nullable for phone-only accounts
     phone: Optional[str] = None
     role: str
     keycloak_sub: Optional[str] = None

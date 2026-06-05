@@ -46,7 +46,7 @@
       },
       {
         "name": "sponsor",
-        "description": "External sponsor — can view sponsored events and manage refund requests"
+        "description": "External sponsor \u2014 can view sponsored events and manage refund requests"
       }
     ]
   },
@@ -122,6 +122,27 @@
         "email",
         "roles"
       ]
+    },
+    {
+      "clientId": "otp-bridge",
+      "name": "OTP Bridge Service",
+      "description": "Internal service for mobile OTP authentication (token exchange / impersonation)",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${env.OTP_BRIDGE_CLIENT_SECRET}",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "protocol": "openid-connect",
+      "fullScopeAllowed": true,
+      "attributes": {
+        "display.on.consent.screen": "false",
+        "oauth2.token.response.key.include.id.token.true": "false"
+      }
     }
   ],
   "users": [
@@ -281,6 +302,16 @@
         "committee_member",
         "resident"
       ]
+    },
+    {
+      "username": "service-account-otp-bridge",
+      "enabled": true,
+      "serviceAccountClientId": "otp-bridge",
+      "clientRoles": {
+        "realm-management": [
+          "impersonation"
+        ]
+      }
     }
   ],
   "registrationEmailAsUsername": false,
@@ -323,7 +354,7 @@
   "authenticationFlows": [
     {
       "alias": "first broker login - google",
-      "description": "First broker login flow for Google — auto-links existing accounts by email, creates new ones otherwise",
+      "description": "First broker login flow for Google \u2014 auto-links existing accounts by email, creates new ones otherwise",
       "providerId": "basic-flow",
       "topLevel": true,
       "builtIn": false,

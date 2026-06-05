@@ -96,7 +96,7 @@ async def forgot_password(body: ForgotPasswordRequest, pool: Pool = Depends(get_
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 _USER_COLS = """
-    u.id, u.apartment_id, u.name, u.email, u.phone, u.role,
+    u.id, u.apartment_id, u.username, u.name, u.email, u.phone, u.role,
     u.keycloak_sub, u.identity_provider, u.is_active, u.created_at,
     a.id   AS apt_id,
     a.block, a.unit_number, a.type AS apt_type
@@ -119,6 +119,7 @@ def _row_to_user(row) -> UserResponse:
         id=row["id"],
         apartment_id=row["apartment_id"],
         apartment=apt,
+        username=row["username"],
         name=row["name"],
         email=row["email"],
         phone=row["phone"],
@@ -150,14 +151,18 @@ async def sync_user(
     if not sub:
         raise HTTPException(status_code=400, detail="Token missing 'sub' claim")
 
+    email = email or None  # normalise empty string to NULL
+
     async with pool.acquire() as conn:
+        # Check if this phone-registered user already exists (keycloak_sub match)
+        # If so, just refresh name/email without touching phone or username.
         upsert = await conn.fetchrow(
             """
             INSERT INTO users (name, email, keycloak_sub, role, is_active, identity_provider)
             VALUES ($1, $2, $3, 'resident', FALSE, 'keycloak')
             ON CONFLICT (keycloak_sub) DO UPDATE
                 SET name  = EXCLUDED.name,
-                    email = EXCLUDED.email
+                    email = COALESCE(EXCLUDED.email, users.email)
             RETURNING id, (xmax = 0) AS is_new
             """,
             name, email, sub,

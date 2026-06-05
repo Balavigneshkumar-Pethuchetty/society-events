@@ -154,8 +154,8 @@ export function Home() {
         </Container>
       </Box>
 
-      {/* Debug panel */}
-      <Box sx={{ bgcolor: '#f0fdf4', borderTop: '1px solid #bbf7d0', py: 2 }}>
+      {/* Debug panel — dev and test only */}
+      {['dev', 'test'].includes(import.meta.env.VITE_APP_ENV) && <Box sx={{ bgcolor: '#f0fdf4', borderTop: '1px solid #bbf7d0', py: 2 }}>
         <Container maxWidth="lg">
           <Accordion disableGutters elevation={0} sx={{ bgcolor: 'transparent' }}>
             <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: '#166534' }} />} sx={{ px: 0 }}>
@@ -175,7 +175,7 @@ export function Home() {
             </AccordionDetails>
           </Accordion>
         </Container>
-      </Box>
+      </Box>}
 
     </Box>
   );

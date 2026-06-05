@@ -9,6 +9,8 @@ import { Nav } from './components/Nav';
 import { Home } from './pages/Home';
 import { Landing } from './pages/Landing';
 import { ForgotPassword } from './pages/ForgotPassword';
+import { MobileLogin } from './pages/MobileLogin';
+import { PhoneRegister } from './pages/PhoneRegister';
 import { PendingApproval } from './pages/PendingApproval';
 import { Profile } from './pages/Profile';
 import { theme } from './theme';
@@ -267,7 +269,9 @@ function AppShell() {
     return (
       <BrowserRouter>
         <Routes>
-          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/forgot-password"  element={<ForgotPassword />} />
+          <Route path="/mobile-login"     element={<MobileLogin />} />
+          <Route path="/phone-register"   element={<PhoneRegister />} />
           <Route path="*" element={<><Nav /><Landing /></>} />
         </Routes>
       </BrowserRouter>
