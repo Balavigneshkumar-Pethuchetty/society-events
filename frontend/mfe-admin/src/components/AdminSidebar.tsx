@@ -2,28 +2,42 @@ import React from 'react';
 import { Box, Drawer, IconButton, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 
-const SIDEBAR = [
-  'Dashboard', 'Users', 'Events', 'Sponsors',
-  'Categories', 'Payments & Refunds', 'Reports', 'Settings',
+const SIDEBAR: { label: string; path: string }[] = [
+  { label: 'Dashboard',          path: '/admin' },
+  { label: 'Users',              path: '/admin/users' },
+  { label: 'Building',           path: '/admin/building' },
+  { label: 'Units',              path: '/admin/units' },
+  { label: 'Events',             path: '/admin/events' },
+  { label: 'Sponsors',           path: '/admin/sponsors' },
+  { label: 'Categories',         path: '/admin/categories' },
+  { label: 'Payments & Refunds', path: '/admin/refunds' },
+  { label: 'Reports',            path: '/admin/reports' },
+  { label: 'Settings',           path: '/admin/settings' },
 ];
 
-function SidebarContent({ active }: { active: string }) {
+function navigate(path: string) {
+  window.history.pushState({}, '', path);
+  window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+}
+
+function SidebarContent({ active, onNavigate }: { active: string; onNavigate?: () => void }) {
   return (
     <Box sx={{ pt: 1 }}>
-      {SIDEBAR.map((item) => (
+      {SIDEBAR.map(({ label, path }) => (
         <Box
-          key={item}
+          key={label}
+          onClick={() => { navigate(path); onNavigate?.(); }}
           sx={{
             px: 2.5, py: 1.25, fontSize: 14, cursor: 'pointer',
-            color: item === active ? '#6366f1' : '#475569',
-            fontWeight: item === active ? 700 : 400,
-            bgcolor: item === active ? '#ede9fe' : 'transparent',
-            borderRight: item === active ? '3px solid #6366f1' : '3px solid transparent',
+            color: label === active ? '#6366f1' : '#475569',
+            fontWeight: label === active ? 700 : 400,
+            bgcolor: label === active ? '#ede9fe' : 'transparent',
+            borderRight: label === active ? '3px solid #6366f1' : '3px solid transparent',
             transition: 'all .15s',
-            '&:hover': { bgcolor: item === active ? '#ede9fe' : '#f1f5f9', color: item === active ? '#6366f1' : '#0f172a' },
+            '&:hover': { bgcolor: label === active ? '#ede9fe' : '#f1f5f9', color: label === active ? '#6366f1' : '#0f172a' },
           }}
         >
-          {item}
+          {label}
         </Box>
       ))}
     </Box>
@@ -54,7 +68,7 @@ export function AdminSidebar({ active, mobileOpen, onMobileClose }: AdminSidebar
             <CloseIcon fontSize="small" />
           </IconButton>
         </Box>
-        <SidebarContent active={active} />
+        <SidebarContent active={active} onNavigate={onMobileClose} />
       </Drawer>
 
       {/* Desktop: permanent sidebar */}

@@ -3,6 +3,8 @@ import { Box, Typography } from '@mui/material';
 import { SponsorManagement } from './pages/SponsorManagement';
 import { SponsorshipRefunds } from './pages/SponsorshipRefunds';
 import { UserApproval } from './pages/UserApproval';
+import { BuildingStructure } from './pages/BuildingStructure';
+import { UnitManagement } from './pages/UnitManagement';
 
 function ComingSoon() {
   return (
@@ -28,6 +30,8 @@ export function AdminRoutes({ token = null, onLogin, page }: AdminRoutesProps) {
     console.log('[AdminRoutes] → rendering UserApproval');
     return <UserApproval token={token} onLogin={onLogin} />;
   }
+  if (page === 'building') return <BuildingStructure token={token} />;
+  if (page === 'units')    return <UnitManagement token={token} />;
   if (page === 'sponsors') return <SponsorManagement />;
   if (page === 'refunds') return <SponsorshipRefunds />;
   console.log('[AdminRoutes] → rendering ComingSoon (unmatched page)');
