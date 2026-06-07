@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from app.database import get_pool
 from app.auth import require_internal_key
 from app.models import UserResponse
-from app.routes.users import _USER_COLS, _USER_JOIN, _row_to_user
+from app.routes.users import _USER_COLS, _row_to_user, _fetch_user_apartments
 
 router = APIRouter(dependencies=[Depends(require_internal_key)])
 
@@ -25,12 +25,13 @@ async def get_by_sub(
 ):
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.keycloak_sub = $1",
+            f"SELECT {_USER_COLS} FROM users u WHERE u.keycloak_sub = $1",
             keycloak_sub,
         )
-    if not row:
-        raise HTTPException(status_code=404, detail="User not found")
-    return _row_to_user(row)
+        if not row:
+            raise HTTPException(status_code=404, detail="User not found")
+        apartments = await _fetch_user_apartments(conn, row["id"])
+    return _row_to_user(row, apartments)
 
 
 @router.get(
@@ -44,12 +45,13 @@ async def get_by_phone(
 ):
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.phone = $1",
+            f"SELECT {_USER_COLS} FROM users u WHERE u.phone = $1",
             phone,
         )
-    if not row:
-        raise HTTPException(status_code=404, detail="User not found")
-    return _row_to_user(row)
+        if not row:
+            raise HTTPException(status_code=404, detail="User not found")
+        apartments = await _fetch_user_apartments(conn, row["id"])
+    return _row_to_user(row, apartments)
 
 
 class PhoneRegisterRequest(BaseModel):
@@ -108,10 +110,11 @@ async def register_phone_user(
             )
 
         full = await conn.fetchrow(
-            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1",
+            f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1",
             user_id,
         )
-    return _row_to_user(full)
+        apartments = await _fetch_user_apartments(conn, user_id)
+    return _row_to_user(full, apartments)
 
 
 @router.get(
@@ -125,9 +128,10 @@ async def get_by_id(
 ):
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1",
+            f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1",
             user_id,
         )
-    if not row:
-        raise HTTPException(status_code=404, detail="User not found")
-    return _row_to_user(row)
+        if not row:
+            raise HTTPException(status_code=404, detail="User not found")
+        apartments = await _fetch_user_apartments(conn, user_id)
+    return _row_to_user(row, apartments)

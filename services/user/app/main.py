@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 
 from app.database import wait_for_db, close_pool, get_pool
 from app.models import SocietyConfig
-from app.routes import users, internal, notifications, logs
+from app.routes import users, internal, notifications, logs, building
 from app.middleware.splunk import SplunkLoggingMiddleware
 from app.metrics_collector import collect_metrics
 
@@ -84,6 +84,7 @@ app.add_middleware(SplunkLoggingMiddleware)
 app.include_router(users.router,         prefix="/users",          tags=["users"])
 app.include_router(notifications.router, prefix="/notifications",   tags=["notifications"])
 app.include_router(internal.router,      prefix="/internal/users",  tags=["internal"])
+app.include_router(building.router,      prefix="/building",        tags=["building"])
 app.include_router(logs.router,          tags=["ops"])
 
 

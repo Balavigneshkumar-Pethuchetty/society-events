@@ -1,5 +1,6 @@
 from uuid import UUID
 from typing import Optional
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Query
 from asyncpg import Pool
 import httpx
@@ -10,6 +11,7 @@ from app.config import settings
 from app.models import (
     UserResponse,
     UserUpdateRequest,
+    UserUnitRequest,
     ApartmentAssignRequest,
     RoleUpdateRequest,
     ApartmentResponse,
@@ -27,98 +29,135 @@ router = APIRouter()
 
 @router.post("/forgot-password", status_code=204, summary="Send password reset email")
 async def forgot_password(body: ForgotPasswordRequest, pool: Pool = Depends(get_pool)):
-    # Check local DB first — single source of truth
+    email = body.email.strip().lower()
+
+    # Check local DB for is_active / identity_provider guards
     async with pool.acquire() as conn:
         db_user = await conn.fetchrow(
             "SELECT id, is_active, identity_provider FROM users WHERE email = $1",
-            body.email.strip().lower(),
+            email,
         )
 
-    if not db_user:
-        raise HTTPException(
-            status_code=404,
-            detail="No account found with this email address. Please check and try again.",
-        )
-
-    if not db_user["is_active"]:
-        raise HTTPException(
-            status_code=403,
-            detail="Your account is pending approval or has been deactivated. "
-                   "Please contact the administrator.",
-        )
-
-    if db_user["identity_provider"] != "keycloak":
-        raise HTTPException(
-            status_code=400,
-            detail="This account uses a social login (Google/GitHub). "
-                   "Password reset is not available — sign in via your provider.",
-        )
-
-    async with httpx.AsyncClient(timeout=10) as client:
-        token_resp = await client.post(
-            f"{settings.keycloak_url}/realms/master/protocol/openid-connect/token",
-            data={
-                "client_id": "admin-cli",
-                "grant_type": "password",
-                "username": settings.keycloak_admin_user,
-                "password": settings.keycloak_admin_password,
-            },
-        )
-        if token_resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Auth service unavailable")
-        admin_token = token_resp.json()["access_token"]
-        headers = {"Authorization": f"Bearer {admin_token}"}
-        realm = settings.keycloak_realm
-
-        search_resp = await client.get(
-            f"{settings.keycloak_url}/admin/realms/{realm}/users",
-            params={"email": body.email.strip().lower(), "exact": "true"},
-            headers=headers,
-        )
-        kc_users = search_resp.json() if search_resp.status_code == 200 else []
-        if not kc_users:
+    # If found in local DB, apply guards; otherwise fall through to Keycloak lookup
+    if db_user is not None:
+        if not db_user["is_active"]:
             raise HTTPException(
-                status_code=404,
-                detail="No account found with this email address. Please check and try again.",
+                status_code=403,
+                detail="Your account is pending approval or has been deactivated. "
+                       "Please contact the administrator.",
+            )
+        if db_user["identity_provider"] != "keycloak":
+            raise HTTPException(
+                status_code=400,
+                detail="This account uses a social login (Google/GitHub). "
+                       "Password reset is not available — sign in via your provider.",
             )
 
-        user_id = kc_users[0]["id"]
-        reset_resp = await client.put(
-            f"{settings.keycloak_url}/admin/realms/{realm}/users/{user_id}/execute-actions-email",
-            params={"client_id": "society-frontend", "redirect_uri": f"{settings.keycloak_public_url}/"},
-            headers=headers,
-            json=["UPDATE_PASSWORD"],
-        )
-        if reset_resp.status_code not in (200, 204):
-            raise HTTPException(status_code=502, detail="Could not send reset email. Please try again later.")
+    # Build X-Forwarded-* headers so Keycloak uses the public URL in email links.
+    # KC_PROXY_HEADERS=xforwarded means Keycloak trusts these from any caller.
+    _parsed = urlparse(settings.keycloak_public_url)
+    _scheme = _parsed.scheme
+    _port = _parsed.port or (443 if _scheme == "https" else 80)
+    _fwd_host = f"{_parsed.hostname}:{_port}" if _port not in (80, 443) else _parsed.hostname
+    _proxy_headers = {
+        "X-Forwarded-Host":  _fwd_host,
+        "X-Forwarded-Proto": _scheme,
+        "X-Forwarded-Port":  str(_port),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            token_resp = await client.post(
+                f"{settings.keycloak_url}/realms/master/protocol/openid-connect/token",
+                data={
+                    "client_id": "admin-cli",
+                    "grant_type": "password",
+                    "username": settings.keycloak_admin_user,
+                    "password": settings.keycloak_admin_password,
+                },
+                headers=_proxy_headers,
+            )
+            if token_resp.status_code != 200:
+                raise HTTPException(status_code=502, detail="Auth service unavailable")
+            admin_token = token_resp.json()["access_token"]
+            headers = {"Authorization": f"Bearer {admin_token}", **_proxy_headers}
+            realm = settings.keycloak_realm
+
+            search_resp = await client.get(
+                f"{settings.keycloak_url}/admin/realms/{realm}/users",
+                params={"email": email, "exact": "true"},
+                headers=headers,
+            )
+            kc_users = search_resp.json() if search_resp.status_code == 200 else []
+            if not kc_users:
+                raise HTTPException(
+                    status_code=404,
+                    detail="No account found with this email address. Please check and try again.",
+                )
+
+            kc_user = kc_users[0]
+            if not kc_user.get("enabled", True):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Your account is pending approval or has been deactivated. "
+                           "Please contact the administrator.",
+                )
+
+            reset_resp = await client.put(
+                f"{settings.keycloak_url}/admin/realms/{realm}/users/{kc_user['id']}/execute-actions-email",
+                params={"client_id": "society-frontend", "redirect_uri": f"{settings.app_public_url}/"},
+                headers=headers,
+                json=["UPDATE_PASSWORD"],
+            )
+            if reset_resp.status_code not in (200, 204):
+                raise HTTPException(status_code=502, detail="Could not send reset email. Please try again later.")
+    except HTTPException:
+        raise
+    except (httpx.ConnectError, httpx.TimeoutException):
+        raise HTTPException(status_code=503, detail="Authentication service is temporarily unavailable. Please try again in a moment.")
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 _USER_COLS = """
-    u.id, u.apartment_id, u.username, u.name, u.email, u.phone, u.role,
+    u.id, u.username, u.name, u.email, u.phone, u.role,
     u.keycloak_sub, u.identity_provider, u.is_active, u.created_at,
-    a.id   AS apt_id,
-    a.block, a.unit_number, a.type AS apt_type
+    u.structure_node_id
 """
 
-_USER_JOIN = "LEFT JOIN apartment a ON a.id = u.apartment_id"
+_USER_JOIN = ""  # no apartment join — apartments fetched separately via user_apartments
 
 
-def _row_to_user(row) -> UserResponse:
+async def _fetch_user_apartments(conn, user_id) -> list:
     from app.models import ApartmentBrief
-    apt = None
-    if row["apt_id"]:
-        apt = ApartmentBrief(
-            id=row["apt_id"],
-            block=row["block"],
-            unit_number=row["unit_number"],
-            type=row["apt_type"],
-        )
+    rows = await conn.fetch(
+        """
+        SELECT a.id, a.block, a.unit_number, a.type
+        FROM user_apartments ua
+        JOIN apartment a ON a.id = ua.apartment_id
+        WHERE ua.user_id = $1
+        ORDER BY ua.added_at
+        """,
+        user_id,
+    )
+    return [
+        ApartmentBrief(id=r["id"], block=r["block"], unit_number=r["unit_number"], type=r["type"])
+        for r in rows
+    ]
+
+
+async def _fetch_user_units(conn, user_id) -> list:
+    rows = await conn.fetch(
+        "SELECT node_id FROM user_units WHERE user_id = $1 ORDER BY added_at",
+        user_id,
+    )
+    return [r["node_id"] for r in rows]
+
+
+def _row_to_user(row, apartments: list, unit_node_ids: list = []) -> UserResponse:
     return UserResponse(
         id=row["id"],
-        apartment_id=row["apartment_id"],
-        apartment=apt,
+        apartments=apartments,
         username=row["username"],
         name=row["name"],
         email=row["email"],
@@ -128,6 +167,8 @@ def _row_to_user(row) -> UserResponse:
         identity_provider=row["identity_provider"],
         is_active=row["is_active"],
         created_at=row["created_at"],
+        structure_node_id=row["structure_node_id"],
+        unit_node_ids=unit_node_ids,
     )
 
 
@@ -189,12 +230,14 @@ async def sync_user(
                 )
 
         row = await conn.fetchrow(
-            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1",
+            f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1",
             user_id,
         )
-    if row is None:
-        raise HTTPException(status_code=500, detail="User not found after sync")
-    return _row_to_user(row)
+        if row is None:
+            raise HTTPException(status_code=500, detail="User not found after sync")
+        apartments = await _fetch_user_apartments(conn, user_id)
+        units = await _fetch_user_units(conn, user_id)
+    return _row_to_user(row, apartments, units)
 
 
 # ── /me endpoints ─────────────────────────────────────────────────────────────
@@ -209,12 +252,14 @@ async def get_me(
         raise HTTPException(status_code=401, detail="Token missing 'sub' claim — add 'basic' scope to Keycloak client")
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.keycloak_sub = $1",
+            f"SELECT {_USER_COLS} FROM users u WHERE u.keycloak_sub = $1",
             sub,
         )
-    if not row:
-        raise HTTPException(status_code=404, detail="User not found — call /users/sync first")
-    return _row_to_user(row)
+        if not row:
+            raise HTTPException(status_code=404, detail="User not found — call /users/sync first")
+        apartments = await _fetch_user_apartments(conn, row["id"])
+        units = await _fetch_user_units(conn, row["id"])
+    return _row_to_user(row, apartments, units)
 
 
 @router.put("/me", response_model=UserResponse, summary="Update own profile")
@@ -241,15 +286,18 @@ async def update_me(
         )
         if not row:
             raise HTTPException(status_code=404, detail="User not found")
+        user_id = row["id"]
         row = await conn.fetchrow(
-            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1",
-            row["id"],
+            f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1",
+            user_id,
         )
-    return _row_to_user(row)
+        apartments = await _fetch_user_apartments(conn, user_id)
+        units = await _fetch_user_units(conn, user_id)
+    return _row_to_user(row, apartments, units)
 
 
-@router.put("/me/apartment", response_model=UserResponse, summary="Assign apartment to self")
-async def assign_my_apartment(
+@router.post("/me/apartments", response_model=UserResponse, summary="Add an apartment to own profile")
+async def add_my_apartment(
     body: ApartmentAssignRequest,
     claims: dict = Depends(get_current_claims),
     pool: Pool = Depends(get_pool),
@@ -261,17 +309,157 @@ async def assign_my_apartment(
         if not apt:
             raise HTTPException(status_code=404, detail="Apartment not found")
 
-        row = await conn.fetchrow(
-            "UPDATE users SET apartment_id = $1 WHERE keycloak_sub = $2 RETURNING id",
-            body.apartment_id, claims["sub"],
+        user = await conn.fetchrow(
+            "SELECT id FROM users WHERE keycloak_sub = $1", claims["sub"]
         )
-        if not row:
+        if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        row = await conn.fetchrow(
-            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1",
-            row["id"],
+        user_id = user["id"]
+
+        await conn.execute(
+            """
+            INSERT INTO user_apartments (user_id, apartment_id)
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+            """,
+            user_id, body.apartment_id,
         )
-    return _row_to_user(row)
+
+        row = await conn.fetchrow(f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1", user_id)
+        apartments = await _fetch_user_apartments(conn, user_id)
+        units = await _fetch_user_units(conn, user_id)
+    return _row_to_user(row, apartments, units)
+
+
+@router.delete(
+    "/me/apartments/{apartment_id}",
+    response_model=UserResponse,
+    summary="Remove an apartment from own profile",
+)
+async def remove_my_apartment(
+    apartment_id: UUID,
+    claims: dict = Depends(get_current_claims),
+    pool: Pool = Depends(get_pool),
+):
+    async with pool.acquire() as conn:
+        user = await conn.fetchrow(
+            "SELECT id FROM users WHERE keycloak_sub = $1", claims["sub"]
+        )
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user_id = user["id"]
+
+        deleted = await conn.execute(
+            "DELETE FROM user_apartments WHERE user_id = $1 AND apartment_id = $2",
+            user_id, apartment_id,
+        )
+        if deleted == "DELETE 0":
+            raise HTTPException(status_code=404, detail="Apartment not linked to this user")
+
+        row = await conn.fetchrow(f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1", user_id)
+        apartments = await _fetch_user_apartments(conn, user_id)
+        units = await _fetch_user_units(conn, user_id)
+    return _row_to_user(row, apartments, units)
+
+
+# ── self-service unit management ─────────────────────────────────────────────
+# Privileged callers (admin / committee_member) mutate user_units directly.
+# Non-privileged callers get a pending request created instead, keeping the
+# many-to-many user_units model intact with proper approval gating.
+# Role is resolved from JWT first; local DB role is used as fallback so that
+# admins with stale / sparse JWTs are never mis-classified as residents.
+
+def _is_privileged(claims: dict, db_role: Optional[str]) -> bool:
+    realm_roles: list[str] = claims.get("realm_access", {}).get("roles", [])
+    return any(r in realm_roles for r in ("admin", "committee_member")) or \
+           db_role in ("admin", "committee_member")
+
+
+@router.post("/me/units", response_model=UserResponse, summary="Add a flat/unit to own profile")
+async def add_my_unit(
+    body: UserUnitRequest,
+    claims: dict = Depends(get_current_claims),
+    pool: Pool = Depends(get_pool),
+):
+    async with pool.acquire() as conn:
+        user = await conn.fetchrow(
+            "SELECT id, role FROM users WHERE keycloak_sub = $1", claims["sub"]
+        )
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        node = await conn.fetchrow(
+            "SELECT id FROM structure_nodes WHERE id = $1", body.node_id
+        )
+        if not node:
+            raise HTTPException(status_code=404, detail="Structure node not found")
+        user_id = user["id"]
+
+        if _is_privileged(claims, user["role"]):
+            await conn.execute(
+                "INSERT INTO user_units (user_id, node_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                user_id, body.node_id,
+            )
+        else:
+            # Non-privileged: submit a pending add request (idempotent)
+            existing = await conn.fetchrow(
+                "SELECT id FROM unit_assignment_requests "
+                "WHERE user_id = $1 AND node_id = $2 AND type = 'add' AND status = 'pending'",
+                user_id, body.node_id,
+            )
+            if not existing:
+                await conn.execute(
+                    "INSERT INTO unit_assignment_requests (user_id, node_id, type) VALUES ($1, $2, 'add')",
+                    user_id, body.node_id,
+                )
+
+        row = await conn.fetchrow(f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1", user_id)
+        apts = await _fetch_user_apartments(conn, user_id)
+        units = await _fetch_user_units(conn, user_id)
+    return _row_to_user(row, apts, units)
+
+
+@router.delete(
+    "/me/units/{node_id}",
+    response_model=UserResponse,
+    summary="Remove a flat/unit from own profile",
+)
+async def remove_my_unit(
+    node_id: UUID,
+    claims: dict = Depends(get_current_claims),
+    pool: Pool = Depends(get_pool),
+):
+    async with pool.acquire() as conn:
+        user = await conn.fetchrow(
+            "SELECT id, role FROM users WHERE keycloak_sub = $1", claims["sub"]
+        )
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user_id = user["id"]
+
+        if _is_privileged(claims, user["role"]):
+            deleted = await conn.execute(
+                "DELETE FROM user_units WHERE user_id = $1 AND node_id = $2",
+                user_id, node_id,
+            )
+            if deleted == "DELETE 0":
+                raise HTTPException(status_code=404, detail="Unit not linked to this user")
+        else:
+            # Non-privileged: submit a pending remove request (idempotent)
+            existing = await conn.fetchrow(
+                "SELECT id FROM unit_assignment_requests "
+                "WHERE user_id = $1 AND node_id = $2 AND type = 'remove' AND status = 'pending'",
+                user_id, node_id,
+            )
+            if not existing:
+                await conn.execute(
+                    "INSERT INTO unit_assignment_requests (user_id, node_id, type) VALUES ($1, $2, 'remove')",
+                    user_id, node_id,
+                )
+
+        row = await conn.fetchrow(f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1", user_id)
+        apartments = await _fetch_user_apartments(conn, user_id)
+        units = await _fetch_user_units(conn, user_id)
+    return _row_to_user(row, apartments, units)
 
 
 # ── admin / committee endpoints ───────────────────────────────────────────────
@@ -307,14 +495,43 @@ async def list_users(
         )
         rows = await conn.fetch(
             f"""
-            SELECT {_USER_COLS} FROM users u {_USER_JOIN}
+            SELECT {_USER_COLS} FROM users u
             WHERE {where}
             ORDER BY u.created_at DESC
             LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}
             """,
             *params, limit, offset,
         )
-    return UserListResponse(total=total, items=[_row_to_user(r) for r in rows])
+        user_ids = [r["id"] for r in rows]
+        apt_rows = await conn.fetch(
+            """
+            SELECT ua.user_id, a.id, a.block, a.unit_number, a.type
+            FROM user_apartments ua
+            JOIN apartment a ON a.id = ua.apartment_id
+            WHERE ua.user_id = ANY($1::uuid[])
+            ORDER BY ua.added_at
+            """,
+            user_ids,
+        ) if user_ids else []
+        unit_rows = await conn.fetch(
+            "SELECT user_id, node_id FROM user_units WHERE user_id = ANY($1::uuid[]) ORDER BY added_at",
+            user_ids,
+        ) if user_ids else []
+
+    from collections import defaultdict
+    from app.models import ApartmentBrief
+    apts_by_user: dict = defaultdict(list)
+    for r in apt_rows:
+        apts_by_user[r["user_id"]].append(
+            ApartmentBrief(id=r["id"], block=r["block"], unit_number=r["unit_number"], type=r["type"])
+        )
+    units_by_user: dict = defaultdict(list)
+    for r in unit_rows:
+        units_by_user[r["user_id"]].append(r["node_id"])
+    return UserListResponse(
+        total=total,
+        items=[_row_to_user(r, apts_by_user[r["id"]], units_by_user[r["id"]]) for r in rows],
+    )
 
 
 # ── admin stats (must be before /{user_id} to avoid UUID match on "admin-stats") ──
@@ -383,17 +600,16 @@ async def get_user(
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1",
+            f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1",
             user_id,
         )
-    if not row:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # Residents can only see their own profile
-    if not is_privileged and str(row["keycloak_sub"]) != claims.get("sub"):
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    return _row_to_user(row)
+        if not row:
+            raise HTTPException(status_code=404, detail="User not found")
+        # Residents can only see their own profile
+        if not is_privileged and str(row["keycloak_sub"]) != claims.get("sub"):
+            raise HTTPException(status_code=403, detail="Access denied")
+        apartments = await _fetch_user_apartments(conn, user_id)
+    return _row_to_user(row, apartments)
 
 
 @router.patch(
@@ -426,10 +642,11 @@ async def update_role(
             "role_changed", body.role,
         )
         row = await conn.fetchrow(
-            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1",
+            f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1",
             row["id"],
         )
-    return _row_to_user(row)
+        apartments = await _fetch_user_apartments(conn, user_id)
+    return _row_to_user(row, apartments)
 
 
 @router.patch(
@@ -451,10 +668,11 @@ async def set_active(
         if not row:
             raise HTTPException(status_code=404, detail="User not found")
         row = await conn.fetchrow(
-            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1",
+            f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1",
             row["id"],
         )
-    return _row_to_user(row)
+        apartments = await _fetch_user_apartments(conn, user_id)
+    return _row_to_user(row, apartments)
 
 
 # ── Keycloak admin helper ─────────────────────────────────────────────────────
@@ -604,10 +822,11 @@ async def approve_user(
         await _record_action(conn, claims, user_id, row["name"], row["email"], "approved", body.role)
 
         full = await conn.fetchrow(
-            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1",
+            f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1",
             updated["id"],
         )
-    return _row_to_user(full)
+        apartments = await _fetch_user_apartments(conn, updated["id"])
+    return _row_to_user(full, apartments)
 
 
 @router.delete(
@@ -681,8 +900,9 @@ async def revoke_user(
         await conn.execute("UPDATE users SET is_active = FALSE WHERE id = $1", user_id)
         await _record_action(conn, claims, user_id, row["name"], row["email"], "revoked")
         full = await conn.fetchrow(
-            f"SELECT {_USER_COLS} FROM users u {_USER_JOIN} WHERE u.id = $1", user_id,
+            f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1", user_id,
         )
+        apartments = await _fetch_user_apartments(conn, user_id)
 
     if row["keycloak_sub"]:
         try:
@@ -690,7 +910,7 @@ async def revoke_user(
         except Exception:
             pass
 
-    return _row_to_user(full)
+    return _row_to_user(full, apartments)
 
 
 # ── apartments ────────────────────────────────────────────────────────────────

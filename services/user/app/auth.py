@@ -3,7 +3,9 @@ import httpx
 from fastapi import HTTPException, Security, Depends
 from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
 from jose import jwt, JWTError
+from asyncpg import Pool
 from app.config import settings
+from app.database import get_pool
 
 _oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=(
@@ -52,14 +54,28 @@ async def get_current_claims(
 
 
 def require_role(*roles: str):
-    """Dependency factory — raises 403 if caller's primary role is not in roles."""
-    async def _check(claims: dict = Depends(get_current_claims)) -> dict:
-        realm_roles: list[str] = (
-            claims.get("realm_access", {}).get("roles", [])
-        )
-        if not any(r in realm_roles for r in roles):
-            raise HTTPException(status_code=403, detail="Insufficient role")
-        return claims
+    """Dependency factory — raises 403 if caller's role is not in roles.
+
+    Checks JWT realm_access.roles first; falls back to the local DB role when
+    the JWT is sparse or stale (e.g. immediately after Keycloak role assignment).
+    """
+    async def _check(
+        claims: dict = Depends(get_current_claims),
+        pool: Pool = Depends(get_pool),
+    ) -> dict:
+        realm_roles: list[str] = claims.get("realm_access", {}).get("roles", [])
+        if any(r in realm_roles for r in roles):
+            return claims
+        # JWT didn't carry the role — check the local DB as fallback
+        sub = claims.get("sub")
+        if sub:
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT role FROM users WHERE keycloak_sub = $1", sub
+                )
+            if row and row["role"] in roles:
+                return claims
+        raise HTTPException(status_code=403, detail="Insufficient role")
     return _check
 
 
