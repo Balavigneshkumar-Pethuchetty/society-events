@@ -113,6 +113,10 @@ validate-ports: check-env ## Validate that host ports in the active env file do 
 up: validate-ports ## Start all services (detached). ENV=dev|test|stage|prod
 	@$(MAKE) -s free-ports ENV=$(ENV)
 	$(COMPOSE) --profile frontend up -d --build
+	@echo "  Activating host port bindings…"
+	@$(COMPOSE) restart nginx keycloak 2>/dev/null || true
+	@echo "  Starting Cloudflare tunnel…"
+	@docker compose --env-file $(ENV_FILE) -f docker-compose.yml -f docker-compose.prod.yml up -d cloudflared 2>/dev/null || true
 	@echo ""
 	@_splunk_pw=$$(grep -m1 '^SPLUNK_PASSWORD=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]'); \
 	_pub=$$(grep -m1 '^KEYCLOAK_PUBLIC_URL=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
@@ -162,8 +166,60 @@ up: validate-ports ## Start all services (detached). ENV=dev|test|stage|prod
 	 echo ""
 
 down: ## Stop and remove all containers for the active environment
-	$(COMPOSE) --profile frontend down
+	$(COMPOSE) --profile frontend down --remove-orphans
 	@$(MAKE) -s free-ports ENV=$(ENV)
+
+fix-ports: ## Re-bind host ports when localhost stops responding (WSL2/Podman rootlessport dies)
+	@echo "Restarting port forwarders…"
+	@$(COMPOSE) restart nginx keycloak 2>/dev/null || true
+	@echo "  Port 8080: $$(ss -tlnp | grep -c ':8080' && echo ok || echo FAILED)"
+	@echo "  Port 8081: $$(ss -tlnp | grep -c ':8081' && echo ok || echo FAILED)"
+
+setup-email: ## Configure Keycloak SMTP (Gmail) — set GMAIL_SMTP_USER + GMAIL_APP_PASSWORD in env file first
+	@_user=$$(grep -m1 '^GMAIL_SMTP_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
+	_pass=$$(grep -m1 '^GMAIL_APP_PASSWORD=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
+	_kc_user=$$(grep -m1 '^KEYCLOAK_ADMIN_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo admin); \
+	_kc_pass=$$(grep -m1 '^KEYCLOAK_ADMIN_PASSWORD=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
+	_kc_port=$$(grep -m1 '^KEYCLOAK_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo 8081); \
+	_realm=$$(grep -m1 '^KEYCLOAK_REALM=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]'); \
+	[ -z "$$_realm" ] && _realm=society-events; \
+	if [ -z "$$_user" ] || [ -z "$$_pass" ]; then \
+	  echo "$(CYAN)ERROR: Set GMAIL_SMTP_USER and GMAIL_APP_PASSWORD in $(ENV_FILE) first$(RESET)"; \
+	  exit 1; \
+	fi; \
+	echo "  Obtaining Keycloak admin token…"; \
+	_token=$$(curl -s -X POST "http://localhost:$$_kc_port/realms/master/protocol/openid-connect/token" \
+	  -d "client_id=admin-cli&grant_type=password&username=$$_kc_user&password=$$_kc_pass" \
+	  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null); \
+	if [ -z "$$_token" ]; then echo "$(CYAN)ERROR: Could not get Keycloak admin token$(RESET)"; exit 1; fi; \
+	echo "  Configuring SMTP for realm $$_realm…"; \
+	curl -s -X PUT "http://localhost:$$_kc_port/admin/realms/$$_realm" \
+	  -H "Authorization: Bearer $$_token" \
+	  -H "Content-Type: application/json" \
+	  -d "{\"smtpServer\":{\"host\":\"smtp.gmail.com\",\"port\":\"587\",\"from\":\"$$_user\",\"fromDisplayName\":\"GM Global Techies Town\",\"auth\":\"true\",\"ssl\":\"false\",\"starttls\":\"true\",\"user\":\"$$_user\",\"password\":\"$$_pass\"}}" \
+	  -o /dev/null -w "%{http_code}" | grep -q '204' \
+	  && echo "  $(CYAN)SMTP configured — test by running: make test-email ENV=$(ENV)$(RESET)" \
+	  || echo "  $(CYAN)ERROR: SMTP update failed$(RESET)"
+
+test-email: ## Send a test reset email to GMAIL_SMTP_USER (verifies SMTP works)
+	@_user=$$(grep -m1 '^GMAIL_SMTP_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
+	_kc_user=$$(grep -m1 '^KEYCLOAK_ADMIN_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo admin); \
+	_kc_pass=$$(grep -m1 '^KEYCLOAK_ADMIN_PASSWORD=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
+	_kc_port=$$(grep -m1 '^KEYCLOAK_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo 8081); \
+	_realm=$$(grep -m1 '^KEYCLOAK_REALM=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo society-events); \
+	_pub=$$(grep -m1 '^KEYCLOAK_PUBLIC_URL=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
+	_token=$$(curl -s -X POST "http://localhost:$$_kc_port/realms/master/protocol/openid-connect/token" \
+	  -d "client_id=admin-cli&grant_type=password&username=$$_kc_user&password=$$_kc_pass" \
+	  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null); \
+	_uid=$$(curl -s "http://localhost:$$_kc_port/admin/realms/$$_realm/users?email=$$_user&exact=true" \
+	  -H "Authorization: Bearer $$_token" \
+	  | python3 -c "import sys,json; u=json.load(sys.stdin); print(u[0]['id'] if u else '')" 2>/dev/null); \
+	if [ -z "$$_uid" ]; then echo "$(CYAN)User $$_user not found in Keycloak$(RESET)"; exit 1; fi; \
+	curl -s -X PUT "http://localhost:$$_kc_port/admin/realms/$$_realm/users/$$_uid/execute-actions-email" \
+	  -H "Authorization: Bearer $$_token" -H "Content-Type: application/json" \
+	  -G --data-urlencode "client_id=society-frontend" --data-urlencode "redirect_uri=$$_pub/" \
+	  -d '["UPDATE_PASSWORD"]' -w "\nHTTP %{http_code}\n" \
+	  && echo "  $(CYAN)Reset email sent to $$_user$(RESET)"
 
 restart: ## Restart all core services (rebuilds changed images)
 	$(COMPOSE) --profile frontend up -d --build
@@ -190,8 +246,8 @@ restart-user-service: ## Rebuild & restart user service (picks up code changes)
 restart-event-service: ## Rebuild & restart event service (picks up code changes)
 	$(COMPOSE) up -d --build event-service
 
-restart-cloudflared: ## Restart Cloudflare tunnel
-	$(COMPOSE) restart cloudflared
+restart-cloudflared: ## Start/restart Cloudflare tunnel (works for any ENV)
+	docker compose --env-file $(ENV_FILE) -f docker-compose.yml -f docker-compose.prod.yml up -d cloudflared
 
 restart-mfe-admin: ## Rebuild & restart mfe-admin container
 	$(COMPOSE) --profile frontend up -d --build mfe-admin

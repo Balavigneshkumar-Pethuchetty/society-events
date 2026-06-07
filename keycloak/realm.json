@@ -316,7 +316,17 @@
   ],
   "registrationEmailAsUsername": false,
   "verifyEmail": false,
-  "smtpServer": {},
+  "smtpServer": {
+    "host": "smtp.gmail.com",
+    "port": "587",
+    "from": "${env.GMAIL_SMTP_USER}",
+    "fromDisplayName": "GM Global Techies Town",
+    "auth": "true",
+    "ssl": "false",
+    "starttls": "true",
+    "user": "${env.GMAIL_SMTP_USER}",
+    "password": "${env.GMAIL_APP_PASSWORD}"
+  },
   "attributes": {
     "userProfileEnabled": "true"
   },

@@ -24,7 +24,7 @@ export function UserMenu() {
 
   const open      = Boolean(anchor);
   const firstName = user.name.split(' ')[0];
-  const apt       = dbUser?.apartment;
+  const apt       = dbUser?.apartments[0];
 
   return (
     <>

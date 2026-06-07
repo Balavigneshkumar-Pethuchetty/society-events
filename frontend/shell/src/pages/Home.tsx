@@ -73,8 +73,8 @@ const DEBUG_ROWS = (
   ['DB user ID',        dbUser?.id ?? '—'],
   ['DB role',           dbUser?.role ?? '—'],
   ['Phone',             dbUser?.phone ?? '—'],
-  ['Apartment',         dbUser?.apartment
-                          ? `Block ${dbUser.apartment.block} — ${dbUser.apartment.unit_number} (${dbUser.apartment.type})`
+  ['Apartments',        dbUser?.apartments.length
+                          ? dbUser.apartments.map((a) => `Block ${a.block} — ${a.unit_number} (${a.type})`).join(', ')
                           : '—'],
 ] as const;
 
@@ -86,7 +86,7 @@ export function Home() {
   const role               = user?.primaryRole ?? 'resident';
   const roleHint           = ROLE_WELCOME[role];
   const slots              = useMfeSlots(role);
-  const apt                = dbUser?.apartment;
+  const apt                = dbUser?.apartments[0];
 
   return (
     <Box component="main">

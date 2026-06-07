@@ -77,6 +77,9 @@ const HOW_IT_WORKS = [
   { step: '03', icon: <EmojiEventsIcon sx={{ fontSize: 28 }} />, title: 'Book & Attend', desc: 'Reserve your spot, pay online, and show your QR-code ticket at the gate. It\'s that simple.' },
 ];
 
+const showGoogleLogin  = !!import.meta.env.VITE_GOOGLE_LOGIN;
+const showMobileLogin  = !!import.meta.env.VITE_MOBILE_LOGIN;
+
 export function Landing() {
   const { login, loginWithGoogle, register } = useAuth();
   const { name, city } = useSociety();
@@ -162,76 +165,87 @@ export function Landing() {
           </Stack>
 
           {/* Alternative sign-in options */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center', mb: 2.5 }}>
-            <Box sx={{ flex: 1, maxWidth: 120, height: '1px', bgcolor: 'rgba(255,255,255,0.18)' }} />
-            <Box
-              component="span"
-              sx={{ color: 'rgba(165,180,252,0.7)', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}
-            >
-              or continue with
+          {(showMobileLogin || showGoogleLogin) && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center', mb: 2.5 }}>
+              <Box sx={{ flex: 1, maxWidth: 120, height: '1px', bgcolor: 'rgba(255,255,255,0.18)' }} />
+              <Box
+                component="span"
+                sx={{ color: 'rgba(165,180,252,0.7)', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}
+              >
+                or continue with
+              </Box>
+              <Box sx={{ flex: 1, maxWidth: 120, height: '1px', bgcolor: 'rgba(255,255,255,0.18)' }} />
             </Box>
-            <Box sx={{ flex: 1, maxWidth: 120, height: '1px', bgcolor: 'rgba(255,255,255,0.18)' }} />
-          </Box>
+          )}
 
           {/* Mobile OTP login */}
-          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1.5 }}>
-            <Button
-              variant="outlined"
-              size="large"
-              startIcon={<PhoneIcon />}
-              onClick={() => navigate('/mobile-login')}
-              sx={{
-                px: 4, py: 1.5, fontWeight: 600, fontSize: 15,
-                color: '#a5b4fc',
-                borderColor: 'rgba(165,180,252,0.5)',
-                borderRadius: '8px',
-                textTransform: 'none',
-                '&:hover': { borderColor: '#a5b4fc', bgcolor: 'rgba(165,180,252,0.08)' },
-                minWidth: 240,
-              }}
-            >
-              Sign in with Mobile OTP
-            </Button>
-          </Box>
+          {showMobileLogin && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1.5 }}>
+              <Button
+                variant="outlined"
+                size="large"
+                startIcon={<PhoneIcon />}
+                onClick={() => navigate('/mobile-login')}
+                sx={{
+                  px: 4, py: 1.5, fontWeight: 600, fontSize: 15,
+                  color: '#a5b4fc',
+                  borderColor: 'rgba(165,180,252,0.5)',
+                  borderRadius: '8px',
+                  textTransform: 'none',
+                  '&:hover': { borderColor: '#a5b4fc', bgcolor: 'rgba(165,180,252,0.08)' },
+                  minWidth: 240,
+                }}
+              >
+                Sign in with Mobile OTP
+              </Button>
+            </Box>
+          )}
 
-          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3.5 }}>
-            <Button
-              variant="contained"
-              size="large"
-              onClick={loginWithGoogle}
-              sx={{
-                px: 4, py: 1.5, fontWeight: 600, fontSize: 15,
-                bgcolor: '#ffffff',
-                color: '#3c4043',
-                border: '1px solid #dadce0',
-                boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-                borderRadius: '8px',
-                gap: 1.5,
-                textTransform: 'none',
-                '&:hover': { bgcolor: '#f8f9fa', boxShadow: '0 2px 8px rgba(0,0,0,0.18)', borderColor: '#c1c7cd' },
-                minWidth: 240,
-              }}
-              startIcon={
-                <Box
-                  component="img"
-                  src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z' fill='%234285F4'/%3E%3Cpath d='M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z' fill='%2334A853'/%3E%3Cpath d='M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z' fill='%23FBBC05'/%3E%3Cpath d='M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z' fill='%23EA4335'/%3E%3C/svg%3E"
-                  alt=""
-                  sx={{ width: 20, height: 20 }}
-                />
-              }
-            >
-              Continue with Google
-            </Button>
-          </Box>
+          {showGoogleLogin && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3.5 }}>
+              <Button
+                variant="contained"
+                size="large"
+                onClick={loginWithGoogle}
+                sx={{
+                  px: 4, py: 1.5, fontWeight: 600, fontSize: 15,
+                  bgcolor: '#ffffff',
+                  color: '#3c4043',
+                  border: '1px solid #dadce0',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+                  borderRadius: '8px',
+                  gap: 1.5,
+                  textTransform: 'none',
+                  '&:hover': { bgcolor: '#f8f9fa', boxShadow: '0 2px 8px rgba(0,0,0,0.18)', borderColor: '#c1c7cd' },
+                  minWidth: 240,
+                }}
+                startIcon={
+                  <Box
+                    component="img"
+                    src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z' fill='%234285F4'/%3E%3Cpath d='M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z' fill='%2334A853'/%3E%3Cpath d='M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z' fill='%23FBBC05'/%3E%3Cpath d='M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z' fill='%23EA4335'/%3E%3C/svg%3E"
+                    alt=""
+                    sx={{ width: 20, height: 20 }}
+                  />
+                }
+              >
+                Continue with Google
+              </Button>
+            </Box>
+          )}
 
           <Typography sx={{ fontSize: 13, color: 'rgba(165,180,252,0.8)' }}>
-            New members: register with email or{' '}
-            <Link
-              to="/phone-register"
-              style={{ color: '#a5b4fc', textDecoration: 'underline' }}
-            >
-              mobile number
-            </Link>
+            New members: register with email
+            {showMobileLogin && (
+              <>
+                {' '}or{' '}
+                <Link
+                  to="/phone-register"
+                  style={{ color: '#a5b4fc', textDecoration: 'underline' }}
+                >
+                  mobile number
+                </Link>
+              </>
+            )}
             {' '}— committee activates within 24 hours.
           </Typography>
 
@@ -356,7 +370,7 @@ export function Landing() {
           </Typography>
 
           <Grid container spacing={4} alignItems="flex-start">
-            {HOW_IT_WORKS.map((step, i) => (
+            {HOW_IT_WORKS.map((step) => (
               <Grid item xs={12} md={4} key={step.step}>
                 <Box sx={{ textAlign: 'center', px: { md: 1 } }}>
                   {/* Step number + connector */}
@@ -431,32 +445,34 @@ export function Landing() {
               Sign In
             </Button>
           </Stack>
-          <Button
-            variant="contained"
-            size="large"
-            onClick={loginWithGoogle}
-            sx={{
-              px: 4, py: 1.4, fontWeight: 600, fontSize: 14,
-              bgcolor: '#ffffff',
-              color: '#3c4043',
-              border: '1px solid #dadce0',
-              boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-              borderRadius: '8px',
-              gap: 1.5,
-              textTransform: 'none',
-              '&:hover': { bgcolor: '#f8f9fa', boxShadow: '0 2px 8px rgba(0,0,0,0.18)', borderColor: '#c1c7cd' },
-            }}
-            startIcon={
-              <Box
-                component="img"
-                src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z' fill='%234285F4'/%3E%3Cpath d='M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z' fill='%2334A853'/%3E%3Cpath d='M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z' fill='%23FBBC05'/%3E%3Cpath d='M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z' fill='%23EA4335'/%3E%3C/svg%3E"
-                alt=""
-                sx={{ width: 18, height: 18 }}
-              />
-            }
-          >
-            Continue with Google
-          </Button>
+          {showGoogleLogin && (
+            <Button
+              variant="contained"
+              size="large"
+              onClick={loginWithGoogle}
+              sx={{
+                px: 4, py: 1.4, fontWeight: 600, fontSize: 14,
+                bgcolor: '#ffffff',
+                color: '#3c4043',
+                border: '1px solid #dadce0',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
+                borderRadius: '8px',
+                gap: 1.5,
+                textTransform: 'none',
+                '&:hover': { bgcolor: '#f8f9fa', boxShadow: '0 2px 8px rgba(0,0,0,0.18)', borderColor: '#c1c7cd' },
+              }}
+              startIcon={
+                <Box
+                  component="img"
+                  src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z' fill='%234285F4'/%3E%3Cpath d='M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z' fill='%2334A853'/%3E%3Cpath d='M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z' fill='%23FBBC05'/%3E%3Cpath d='M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z' fill='%23EA4335'/%3E%3C/svg%3E"
+                  alt=""
+                  sx={{ width: 18, height: 18 }}
+                />
+              }
+            >
+              Continue with Google
+            </Button>
+          )}
 
           <Typography sx={{ mt: 3, fontSize: 12, color: 'rgba(165,180,252,0.7)' }}>
             New members require residency verification · Typically activated within 24 hours

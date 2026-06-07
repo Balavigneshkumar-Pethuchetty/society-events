@@ -1034,7 +1034,118 @@ export function ManageEvents({ token, id }: Props) {
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditTarget(undefined); setFormOpen(true); }}>Create Event</Button>
           </Paper>
         ) : (
-          <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
+          <>
+          {/* Mobile card layout – xs only */}
+          <Box sx={{ display: { xs: 'flex', sm: 'none' }, flexDirection: 'column', gap: 1.5 }}>
+            {events.map(ev => {
+              const ss = STATUS_STYLE[ev.status] ?? { label: ev.status, color: 'default' as const };
+              const hasLocation = ev.venue_lat != null && ev.venue_lng != null;
+              return (
+                <Paper key={ev.id} variant="outlined" sx={{ borderRadius: 2, p: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                    <Box sx={{ flex: 1, mr: 1, minWidth: 0 }}>
+                      <Typography fontWeight={700} fontSize={15} sx={{ wordBreak: 'break-word' }}>{ev.title}</Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
+                        <GroupIcon sx={{ fontSize: 11, color: 'text.secondary' }} />
+                        <Typography fontSize={12} color="text.secondary">By {ev.organizer_name}</Typography>
+                      </Box>
+                    </Box>
+                    <Chip label={ss.label} color={ss.color} size="small" sx={{ fontWeight: 700, fontSize: 11, flexShrink: 0 }} />
+                  </Box>
+
+                  {ev.category_name && (
+                    <Box sx={{ mb: 1 }}>
+                      <Chip label={ev.category_name} size="small"
+                        sx={{ bgcolor: ev.category_color ? `${ev.category_color}22` : '#f1f5f9', color: ev.category_color ?? '#475569', fontWeight: 600, fontSize: 11 }} />
+                    </Box>
+                  )}
+
+                  <Stack spacing={0.75} sx={{ mb: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <CalendarTodayIcon sx={{ fontSize: 13, color: 'text.secondary', flexShrink: 0 }} />
+                      <Typography fontSize={13}>{fmtDate(ev.start_time)}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.75 }}>
+                      <LocationOnIcon sx={{ fontSize: 14, color: hasLocation ? '#6366f1' : 'text.disabled', mt: 0.1, flexShrink: 0 }} />
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography fontSize={13} sx={{ wordBreak: 'break-word' }}>{ev.venue}</Typography>
+                        {hasLocation && (
+                          <Box component="a" href={mapsUrl(ev.venue_lat!, ev.venue_lng!)}
+                            target="_blank" rel="noopener noreferrer"
+                            sx={{ fontSize: 11, color: '#6366f1', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 0.25, '&:hover': { textDecoration: 'underline' } }}>
+                            <DirectionsIcon sx={{ fontSize: 11 }} /> Get Directions
+                          </Box>
+                        )}
+                      </Box>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <GroupIcon sx={{ fontSize: 13, color: 'text.secondary', flexShrink: 0 }} />
+                      <Typography fontSize={13} fontWeight={700}>{ev.confirmed_tickets}</Typography>
+                      <Typography fontSize={12} color="text.secondary">
+                        {ev.capacity ? `/ ${ev.capacity} registrations` : '∞ registrations'}
+                      </Typography>
+                    </Box>
+                  </Stack>
+
+                  <Divider sx={{ mb: 1.5 }} />
+
+                  <Stack direction="row" spacing={0.5} flexWrap="wrap" alignItems="center">
+                    {ev.status === 'draft' && (
+                      <>
+                        <Tooltip title="Edit draft">
+                          <IconButton size="small" color="primary" onClick={() => openEdit(ev)}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Button size="small" variant="contained" color="success"
+                          startIcon={<PublishIcon sx={{ fontSize: 14 }} />}
+                          onClick={() => publish(ev)}
+                          sx={{ fontSize: 11, textTransform: 'none', px: 1.25, py: 0.25 }}>
+                          Publish
+                        </Button>
+                        <Tooltip title="Delete draft">
+                          <IconButton size="small" color="error" onClick={() => remove(ev)}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </>
+                    )}
+                    {ev.status === 'published' && (
+                      <>
+                        <Tooltip title="Edit event">
+                          <IconButton size="small" color="primary" onClick={() => openEdit(ev)}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Mark as completed">
+                          <IconButton size="small" color="info" onClick={() => complete(ev)}>
+                            <CheckCircleIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Button size="small" variant="outlined" color="error"
+                          startIcon={<CancelIcon sx={{ fontSize: 14 }} />}
+                          onClick={() => cancel(ev)}
+                          sx={{ fontSize: 11, textTransform: 'none', px: 1.25, py: 0.25 }}>
+                          Cancel Event
+                        </Button>
+                      </>
+                    )}
+                    {(ev.status === 'cancelled' || ev.status === 'completed') && (
+                      <Typography fontSize={11} color="text.disabled" sx={{ px: 0.5 }}>No actions</Typography>
+                    )}
+                    <Tooltip title="View in events page">
+                      <IconButton size="small" onClick={() => window.open('/events', '_blank')}>
+                        <OpenInNewIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                </Paper>
+              );
+            })}
+          </Box>
+
+          {/* Table layout – sm and above */}
+          <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', display: { xs: 'none', sm: 'block' } }}>
             <Table>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#f8fafc' }}>
@@ -1149,6 +1260,7 @@ export function ManageEvents({ token, id }: Props) {
               </TableBody>
             </Table>
           </Paper>
+          </>
         )}
       </Container>
 

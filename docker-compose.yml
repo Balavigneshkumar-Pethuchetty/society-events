@@ -67,13 +67,12 @@ services:
       KEYCLOAK_ADMIN:          ${KEYCLOAK_ADMIN_USER:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
       KC_PROXY_HEADERS:        xforwarded     # trust X-Forwarded-* from nginx
-      KC_HOSTNAME_STRICT:      "false"
-      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HOSTNAME_STRICT:      "false"        # dynamic; email links use X-Forwarded-* headers
+      KC_HOSTNAME_STRICT_HTTPS: "false"       # nginx handles TLS; Keycloak runs plain HTTP
       KC_HTTP_ENABLED:         "true"
       KC_HEALTH_ENABLED:       "true"
       KC_LOG_LEVEL:            INFO
       KC_HTTP_PORT:            ${KEYCLOAK_PORT}
-      KC_HOSTNAME_URL:         ${KEYCLOAK_PUBLIC_URL}  # public URL for email links
       GOOGLE_CLIENT_ID:        ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET:    ${GOOGLE_CLIENT_SECRET:-}
       GMAIL_SMTP_USER:         ${GMAIL_SMTP_USER:-}
@@ -165,6 +164,7 @@ services:
       KEYCLOAK_URL:              http://keycloak:${KEYCLOAK_PORT}
       KEYCLOAK_REALM:            society-events
       KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL}
+      APP_PUBLIC_URL:            ${APP_PUBLIC_URL}
       KEYCLOAK_ADMIN_USER:       ${KEYCLOAK_ADMIN_USER:-admin}
       KEYCLOAK_ADMIN_PASSWORD:   ${KEYCLOAK_ADMIN_PASSWORD}
       INTERNAL_API_KEY:          ${INTERNAL_API_KEY}
