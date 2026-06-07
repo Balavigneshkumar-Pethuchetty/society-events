@@ -41,7 +41,6 @@ CREATE TABLE IF NOT EXISTS apartment (
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    apartment_id        UUID        REFERENCES apartment(id) ON DELETE SET NULL,
     username            VARCHAR(255) UNIQUE,                -- set for phone-registered accounts
     name                VARCHAR(255) NOT NULL,
     email               VARCHAR(255),                       -- nullable for phone-only accounts
@@ -57,6 +56,19 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Partial unique index on email (NULL is allowed, uniqueness enforced only when set)
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email) WHERE email IS NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- USER_APARTMENTS  (many-to-many: a resident can own / be linked to multiple flats)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_apartments (
+    user_id       UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    apartment_id  UUID        NOT NULL REFERENCES apartment(id) ON DELETE CASCADE,
+    added_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, apartment_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_apartments_user ON user_apartments(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_apartments_apt  ON user_apartments(apartment_id);
 
 -- ---------------------------------------------------------------------------
 -- ADMIN_ACTIONS  (persistent audit log of every admin user-management action)
@@ -609,3 +621,69 @@ FROM event e
 LEFT JOIN registration r ON r.event_id = e.id AND r.status = 'confirmed'
 GROUP BY e.id, e.title, e.status
 ORDER BY e.start_time;
+
+-- =============================================================================
+-- BUILDING HIERARCHY CONFIG  (flexible society/building structure level names)
+-- Level 1 is the top (e.g. Tower), deepest level is typically the billable unit.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS building_hierarchy_config (
+    id          SERIAL      PRIMARY KEY,
+    level_index INTEGER     NOT NULL UNIQUE CHECK (level_index >= 1),
+    level_name  VARCHAR(50) NOT NULL,
+    is_billable BOOLEAN     NOT NULL DEFAULT FALSE
+);
+
+-- ---------------------------------------------------------------------------
+-- STRUCTURE NODES  (recursive tree; any node can be Tower A, Wing B, Flat 101)
+-- Deleting a parent cascades to all descendants.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS structure_nodes (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    name        VARCHAR(255) NOT NULL,
+    level_index INTEGER     NOT NULL REFERENCES building_hierarchy_config(level_index) ON DELETE CASCADE,
+    parent_id   UUID        REFERENCES structure_nodes(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_structure_nodes_parent ON structure_nodes(parent_id);
+CREATE INDEX IF NOT EXISTS idx_structure_nodes_level  ON structure_nodes(level_index);
+
+-- Link each user to a specific unit (the billable-level node they reside in)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS structure_node_id UUID REFERENCES structure_nodes(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_users_structure_node ON users(structure_node_id) WHERE structure_node_id IS NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- USER_UNITS  (many-to-many: one user can hold multiple flats; multiple users
+-- can share one flat — co-owners, family members, tenants)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_units (
+    user_id   UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    node_id   UUID        NOT NULL REFERENCES structure_nodes(id) ON DELETE CASCADE,
+    added_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, node_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_units_user ON user_units(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_units_node ON user_units(node_id);
+
+-- ---------------------------------------------------------------------------
+-- UNIT_ASSIGNMENT_REQUESTS  (non-privileged users request to add or remove a
+-- flat; admin / committee_member approves or rejects)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS unit_assignment_requests (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    node_id     UUID        NOT NULL REFERENCES structure_nodes(id) ON DELETE CASCADE,
+    notes       TEXT,
+    type        VARCHAR(10) NOT NULL DEFAULT 'add'
+                CHECK (type IN ('add', 'remove')),
+    status      VARCHAR(20) NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'approved', 'rejected')),
+    reviewed_by UUID        REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_at TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_unit_requests_user   ON unit_assignment_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_unit_requests_node   ON unit_assignment_requests(node_id);
+CREATE INDEX IF NOT EXISTS idx_unit_requests_status ON unit_assignment_requests(status);
