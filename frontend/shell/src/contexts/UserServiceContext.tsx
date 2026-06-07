@@ -12,7 +12,10 @@ interface UserServiceContextValue {
   syncError: string | null;
   refreshProfile: () => Promise<void>;
   updateProfile: (data: { name?: string; phone?: string }) => Promise<void>;
-  assignApartment: (apartment_id: string) => Promise<void>;
+  addApartment: (apartment_id: string) => Promise<void>;
+  removeApartment: (apartment_id: string) => Promise<void>;
+  addUnit: (node_id: string) => Promise<void>;
+  removeUnit: (node_id: string) => Promise<void>;
 }
 
 const UserServiceContext = createContext<UserServiceContextValue | null>(null);
@@ -24,7 +27,6 @@ export function UserServiceProvider({ children }: { children: React.ReactNode })
   const [isSyncing,  setIsSyncing]  = useState(false);
   const [syncError,  setSyncError]  = useState<string | null>(null);
 
-  // On every new login (user.sub changes) sync to DB and fetch apartments.
   useEffect(() => {
     if (!user || !token) {
       setDbUser(null);
@@ -56,15 +58,33 @@ export function UserServiceProvider({ children }: { children: React.ReactNode })
     setDbUser(u);
   }, [token]);
 
-  const assignApartment = useCallback(async (apartment_id: string) => {
+  const addApartment = useCallback(async (apartment_id: string) => {
     if (!token) throw new Error('Not authenticated');
-    const u = await userService.assignApartment(token, apartment_id);
+    const u = await userService.addApartment(token, apartment_id);
+    setDbUser(u);
+  }, [token]);
+
+  const removeApartment = useCallback(async (apartment_id: string) => {
+    if (!token) throw new Error('Not authenticated');
+    const u = await userService.removeApartment(token, apartment_id);
+    setDbUser(u);
+  }, [token]);
+
+  const addUnit = useCallback(async (node_id: string) => {
+    if (!token) throw new Error('Not authenticated');
+    const u = await userService.units.add(token, node_id);
+    setDbUser(u);
+  }, [token]);
+
+  const removeUnit = useCallback(async (node_id: string) => {
+    if (!token) throw new Error('Not authenticated');
+    const u = await userService.units.remove(token, node_id);
     setDbUser(u);
   }, [token]);
 
   return (
     <UserServiceContext.Provider
-      value={{ dbUser, apartments, isSyncing, syncError, refreshProfile, updateProfile, assignApartment }}
+      value={{ dbUser, apartments, isSyncing, syncError, refreshProfile, updateProfile, addApartment, removeApartment, addUnit, removeUnit }}
     >
       {children}
     </UserServiceContext.Provider>
