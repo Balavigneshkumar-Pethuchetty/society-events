@@ -255,6 +255,12 @@ services:
       SOCIETY_ID:                11100000-0000-0000-0000-000000000001
       SPLUNK_HEC_URL:            http://splunk:8088/services/collector/event
       SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
+      SOCIETY_UPI_ID:            ${SOCIETY_UPI_ID:-}
+      SOCIETY_UPI_NAME:          ${SOCIETY_UPI_NAME:-}
+      SOCIETY_BANK_NAME:         ${SOCIETY_BANK_NAME:-}
+      SOCIETY_BANK_ACCOUNT:      ${SOCIETY_BANK_ACCOUNT:-}
+      SOCIETY_BANK_IFSC:         ${SOCIETY_BANK_IFSC:-}
+      SOCIETY_BANK_BENEFICIARY:  ${SOCIETY_BANK_BENEFICIARY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -262,6 +268,123 @@ services:
         condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3002/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - society_net
+
+  # ─── Registration Service (port 3005) ──────────────────────────────────────
+  registration-service:
+    build:
+      context: ./services/registration
+      dockerfile: Dockerfile
+    container_name: society_registration_service
+    restart: always
+    environment:
+      DB_HOST:           postgres
+      DB_PORT:           ${POSTGRES_PORT}
+      DB_NAME:           ${POSTGRES_DB:-society_events}
+      DB_USER:           ${POSTGRES_USER}
+      DB_PASSWORD:       ${POSTGRES_PASSWORD}
+      KEYCLOAK_URL:              http://keycloak:${KEYCLOAK_PORT}
+      KEYCLOAK_REALM:            society-events
+      KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL}
+      INTERNAL_API_KEY:          ${INTERNAL_API_KEY}
+      SOCIETY_ID:                11100000-0000-0000-0000-000000000001
+      SPLUNK_HEC_URL:            http://splunk:8088/services/collector/event
+      SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
+      SOCIETY_UPI_ID:            ${SOCIETY_UPI_ID:-}
+      SOCIETY_UPI_NAME:          ${SOCIETY_UPI_NAME:-}
+      SOCIETY_BANK_NAME:         ${SOCIETY_BANK_NAME:-}
+      SOCIETY_BANK_ACCOUNT:      ${SOCIETY_BANK_ACCOUNT:-}
+      SOCIETY_BANK_IFSC:         ${SOCIETY_BANK_IFSC:-}
+      SOCIETY_BANK_BENEFICIARY:  ${SOCIETY_BANK_BENEFICIARY:-}
+    volumes:
+      - registration_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3005/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - society_net
+
+  # ─── Ticket Service (port 3006) ──────────────────────────────────────────
+  ticket-service:
+    build:
+      context: ./services/ticket
+      dockerfile: Dockerfile
+    container_name: society_ticket_service
+    restart: always
+    environment:
+      DB_HOST:           postgres
+      DB_PORT:           ${POSTGRES_PORT}
+      DB_NAME:           ${POSTGRES_DB:-society_events}
+      DB_USER:           ${POSTGRES_USER}
+      DB_PASSWORD:       ${POSTGRES_PASSWORD}
+      KEYCLOAK_URL:              http://keycloak:${KEYCLOAK_PORT}
+      KEYCLOAK_REALM:            society-events
+      KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL}
+      INTERNAL_API_KEY:          ${INTERNAL_API_KEY}
+      SOCIETY_ID:                11100000-0000-0000-0000-000000000001
+      SPLUNK_HEC_URL:            http://splunk:8088/services/collector/event
+      SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3006/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - society_net
+
+  # ─── Payment & Reconciliation Service (port 3007) ────────────────────────
+  payment-service:
+    build:
+      context: ./services/payment
+      dockerfile: Dockerfile
+    container_name: society_payment_service
+    restart: always
+    environment:
+      DB_HOST:           postgres
+      DB_PORT:           ${POSTGRES_PORT}
+      DB_NAME:           ${POSTGRES_DB:-society_events}
+      DB_USER:           ${POSTGRES_USER}
+      DB_PASSWORD:       ${POSTGRES_PASSWORD}
+      KEYCLOAK_URL:              http://keycloak:${KEYCLOAK_PORT}
+      KEYCLOAK_REALM:            society-events
+      KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL}
+      INTERNAL_API_KEY:          ${INTERNAL_API_KEY}
+      SOCIETY_ID:                11100000-0000-0000-0000-000000000001
+      PAYMENT_PROVIDER:          ${PAYMENT_PROVIDER:-MANUAL_UPI}
+      IMAP_HOST:                 ${IMAP_HOST:-}
+      IMAP_PORT:                 ${IMAP_PORT:-993}
+      IMAP_USER:                 ${IMAP_USER:-}
+      IMAP_PASSWORD:             ${IMAP_PASSWORD:-}
+      IMAP_MAILBOX:              ${IMAP_MAILBOX:-INBOX}
+      RECONCILIATION_INTERVAL_SECONDS: ${RECONCILIATION_INTERVAL_SECONDS:-300}
+      SPLUNK_HEC_URL:            http://splunk:8088/services/collector/event
+      SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3007/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -280,6 +403,8 @@ services:
       args:
         VITE_MODE: ${VITE_MODE:-production}
         VITE_APP_ENV: ${VITE_APP_ENV:-prod}
+        VITE_GOOGLE_LOGIN: ${VITE_GOOGLE_LOGIN:-}
+        VITE_MOBILE_LOGIN: ${VITE_MOBILE_LOGIN:-}
     container_name: society_frontend
     restart: always
     # No host port — served by nginx at /
@@ -350,6 +475,25 @@ services:
     networks:
       - society_net
 
+  # ─── MFE: Tickets ────────────────────────────────────────────────────────────
+  mfe-tickets:
+    profiles: [frontend]
+    build:
+      context: ./frontend/mfe-tickets
+      dockerfile: Dockerfile
+      args:
+        VITE_MODE: ${VITE_MODE:-production}
+    container_name: society_mfe_tickets
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - society_net
+
   # ─── MFE: Payment ────────────────────────────────────────────────────────────
   mfe-payment:
     profiles: [frontend]
@@ -379,6 +523,8 @@ volumes:
     name: ${COMPOSE_PROJECT_NAME:-society}_redis_data
   nginx_logs:
     name: ${COMPOSE_PROJECT_NAME:-society}_nginx_logs
+  registration_uploads:
+    name: ${COMPOSE_PROJECT_NAME:-society}_registration_uploads
 
 # ─── Network ─────────────────────────────────────────────────────────────────
 networks:

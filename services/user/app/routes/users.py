@@ -626,10 +626,11 @@ async def update_role(
 ):
     async with pool.acquire() as conn:
         user_info = await conn.fetchrow(
-            "SELECT name, email FROM users WHERE id = $1", user_id
+            "SELECT name, email, keycloak_sub, role FROM users WHERE id = $1", user_id
         )
         if not user_info:
             raise HTTPException(status_code=404, detail="User not found")
+        old_role = user_info["role"]
         row = await conn.fetchrow(
             "UPDATE users SET role = $1 WHERE id = $2 RETURNING id",
             body.role, user_id,
@@ -646,6 +647,11 @@ async def update_role(
             row["id"],
         )
         apartments = await _fetch_user_apartments(conn, user_id)
+
+    # Sync role change to Keycloak so the user's next JWT reflects the new role
+    if user_info["keycloak_sub"]:
+        await _keycloak_update_role(user_info["keycloak_sub"], old_role, body.role)
+
     return _row_to_user(row, apartments)
 
 
@@ -713,6 +719,57 @@ async def _keycloak_assign_role(keycloak_sub: str, role_name: str) -> None:
         )
         if assign_resp.status_code not in (200, 204):
             raise HTTPException(status_code=502, detail=f"Keycloak role assign failed: {assign_resp.text}")
+
+
+_APP_ROLES = {"admin", "committee_member", "resident", "security_guard", "sponsor", "pending"}
+
+
+async def _keycloak_update_role(keycloak_sub: str, old_role: str | None, new_role: str) -> None:
+    """Remove the old app role and assign the new one in Keycloak."""
+    base = f"{settings.keycloak_url}/realms/master/protocol/openid-connect/token"
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(base, data={
+            "client_id": "admin-cli",
+            "grant_type": "password",
+            "username": settings.keycloak_admin_user,
+            "password": settings.keycloak_admin_password,
+        })
+        if resp.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"Keycloak admin token failed: {resp.text}")
+        admin_token = resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {admin_token}"}
+        realm = settings.keycloak_realm
+        mappings_url = f"{settings.keycloak_url}/admin/realms/{realm}/users/{keycloak_sub}/role-mappings/realm"
+
+        # Remove the old role if it's one of our app roles
+        if old_role and old_role in _APP_ROLES and old_role != new_role:
+            old_resp = await client.get(
+                f"{settings.keycloak_url}/admin/realms/{realm}/roles/{old_role}",
+                headers=headers,
+            )
+            if old_resp.status_code == 200:
+                old_rep = old_resp.json()
+                await client.request(
+                    "DELETE", mappings_url, headers=headers,
+                    json=[{"id": old_rep["id"], "name": old_rep["name"]}],
+                )
+
+        # Assign the new role
+        new_resp = await client.get(
+            f"{settings.keycloak_url}/admin/realms/{realm}/roles/{new_role}",
+            headers=headers,
+        )
+        if new_resp.status_code == 404:
+            raise HTTPException(status_code=400, detail=f"Keycloak role '{new_role}' not found")
+        new_resp.raise_for_status()
+        new_rep = new_resp.json()
+        assign = await client.post(
+            mappings_url, headers=headers,
+            json=[{"id": new_rep["id"], "name": new_rep["name"]}],
+        )
+        if assign.status_code not in (200, 204):
+            raise HTTPException(status_code=502, detail=f"Keycloak role assign failed: {assign.text}")
 
 
 # ── additional Keycloak helpers ──────────────────────────────────────────────

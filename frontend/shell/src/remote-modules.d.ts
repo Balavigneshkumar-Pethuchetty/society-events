@@ -6,7 +6,7 @@ declare module 'mfe_admin/ManageRoutes' {
 
 declare module 'mfe_admin/AdminRoutes' {
   import React from 'react';
-  interface AdminRoutesProps { token?: string | null }
+  interface AdminRoutesProps { token?: string | null; page?: string; role?: string }
   const AdminRoutes: React.ComponentType<AdminRoutesProps>;
   export { AdminRoutes };
 }
@@ -34,4 +34,11 @@ declare module 'mfe_payment/PaymentApp' {
   import React from 'react';
   const PaymentApp: React.ComponentType;
   export { PaymentApp };
+}
+
+declare module 'mfe_tickets/TicketsApp' {
+  import React from 'react';
+  interface TicketsAppProps { token?: string | null }
+  const TicketsApp: React.ComponentType<TicketsAppProps>;
+  export { TicketsApp };
 }

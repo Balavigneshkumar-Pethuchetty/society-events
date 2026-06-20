@@ -710,7 +710,11 @@ function EventForm({
         setSavedId(id);
       }
       onSaved(id);
-      if (nextTab !== undefined) setTab(nextTab);
+      if (nextTab !== undefined) {
+        setTab(nextTab);
+      } else {
+        onClose();
+      }
     } catch (e: unknown) {
       setError((e as Error).message);
     } finally {

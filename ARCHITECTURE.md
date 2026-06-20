@@ -2,7 +2,7 @@
 
 ## Overview
 
-**6 backend microservices** + **5 micro frontends**, connected through a central API Gateway and Keycloak for auth. Each service owns its domain of the DB schema.
+**7 backend microservices** + **6 micro frontends**, connected through a central API Gateway and Keycloak for auth. Each service owns its domain of the DB schema.
 
 ---
 
@@ -13,9 +13,20 @@
 | 1 | API Gateway (nginx) | 8080 | — | ✅ Implemented |
 | 2 | User Service | 3001 | users, apartment, notification, oauth_session | ✅ Implemented |
 | 3 | Event Service | 3002 | event, event_category, announcement, sponsor, event_sponsorship, event_expense, complimentary_ticket, vendor | ✅ Implemented |
-| 4 | Registration Service | 3003 | registration | 🔲 Planned |
-| 5 | Payment Service | 3004 | payment, refund, currency, exchange_rate | 🔲 Planned |
-| 6 | Notification Service | 3005 | notification (async dispatch) | 🔲 Planned |
+| 4 | Registration Service | 3005 | registration, payment, cart | ✅ Implemented |
+| 5 | Ticket Service | 3006 | ticket | ✅ Implemented |
+| 6 | Notification Service | — | notification (async dispatch) | 🔲 Planned |
+
+## Micro Frontends
+
+| MFE | Port | Route | Purpose | Status |
+|-----|------|-------|---------|--------|
+| shell | 3000 | `/` | Host + auth + nav | ✅ Implemented |
+| mfe-events | 4001 | `/events/*` | Event discovery + registration start | ✅ Implemented |
+| mfe-booking | 4002 | `/registrations/*` | Registration tracking + payment uploads | ✅ Implemented |
+| mfe-payment | 4003 | `/checkout/*`, `/payments/*` | Checkout + UPI QR + screenshot upload | ✅ Implemented |
+| mfe-admin | 4004 | `/admin/*`, `/manage/*` | Admin console + payment approvals | ✅ Implemented |
+| mfe-tickets | 4005 | `/tickets/*` | Confirmed tickets + gate-entry QR display | ✅ Implemented |
 
 ---
 
@@ -179,9 +190,9 @@ Owns the full event lifecycle and all event-related content.
 
 ---
 
-## 🔲 4. Registration Service — Node.js (port 3003)
+## ✅ 4. Registration Service — Python/FastAPI (port 3005)
 
-Owns the booking lifecycle from seat reservation to gate entry.
+Owns the full booking lifecycle: seat reservation → manual payment → admin review → gate entry.
 
 ### Registration
 - Register for a published event (enforce capacity, uniqueness per user per event via DB constraint)
@@ -190,30 +201,56 @@ Owns the booking lifecycle from seat reservation to gate entry.
 - Cancel own registration (if event not yet started)
 - Admin / organiser cancel any registration
 
-### Payment Coordination
-- Registration starts in `pending` state; transitions to `confirmed` on payment success
-- Free events: skip payment, confirm immediately
-- Listen for `payment.success` → confirm registration, generate QR code
-- Listen for `payment.refunded` → revert registration to `cancelled`
+### Manual Payment Flow
+- Free events: confirm immediately; Ticket Service lazily issues QR ticket on next `/tickets/my` call
+- Paid events: `pending_payment` → user uploads UPI screenshot → `pending_review` → admin approves/rejects
+- Rejected payments reset to `pending_payment` with a review note
+- Admin endpoint: `PATCH /registrations/{id}/review` (approve | reject)
+- Payment screenshots stored in `/app/uploads/payment-screenshots/` (Docker volume `registration_uploads`)
+- Society UPI/bank details served from `GET /payment-config`
 
-### QR Code Ticket
-- Generate a unique, signed base64 QR token on registration confirmation
-- Serve QR code for display in the Booking MFE (`/tickets/:id`)
+### UPI Payment QR
+- `GET /registrations/{id}/payment-qr` — SVG QR encoding the UPI deep-link (`upi://pay?pa=…&am=…`)
+- Amount is pre-filled so the user cannot modify it in their UPI app
 
-### Attendance / Gate Entry
-- Security guard scans QR code → validates token and event match
-- Mark registration status as `attended`
-- Prevent double-scan (idempotent: `attended` is a terminal state)
-
-### Inter-service Events Published
-| Event | Consumed by |
-|-------|-------------|
-| `registration.confirmed` | Notification Service → confirmation email + bell notification |
-| `registration.cancelled` | Notification Service → cancellation notice to user |
+### Cart
+- `PUT /registrations/cart` — upsert (one cart per user, replaces on new selection)
+- `GET /registrations/cart` — read saved cart (404 if empty)
+- `DELETE /registrations/cart` — cleared on successful registration
 
 ---
 
-## 🔲 5. Payment Service — Node.js (port 3004)
+## ✅ 5. Ticket Service — Python/FastAPI (port 3006)
+
+Owns the ticket lifecycle: issuance on registration confirmation, QR code generation, and gate-entry scanning.
+
+### Ticket Issuance
+- **Lazy issuance**: when `GET /tickets/my` is called, the service scans for any confirmed registrations that don't have a ticket yet and issues them automatically (idempotent — `ON CONFLICT DO NOTHING`)
+- Reuses existing `registration.qr_code` if present (backward compat for registrations confirmed before this service existed)
+- One ticket per registration (`UNIQUE(reg_id)` constraint)
+
+### QR Code Display
+- `GET /tickets/my` — returns all active + used tickets for the calling user
+- `GET /tickets/{id}/qr` — serves an SVG QR code (`image/svg+xml`) encoding the ticket's `qr_token`
+- Used by **mfe-tickets** "Show Ticket" button to display the gate-entry QR in a full-screen dialog
+- Cancelled tickets return `400`; QR is not served
+
+### Gate-Entry Scanning
+- `POST /tickets/scan` — accepts `{ token }` (security guard scans QR)
+  - Finds ticket by `qr_token`; validates it is `active`
+  - Marks `ticket.status = 'used'`, records `scanned_at` and `scanned_by`
+  - Also updates `registration.status = 'attended'` for cross-service consistency
+  - Already-scanned tickets return the existing record with `already_scanned: true` (idempotent)
+- Requires role: `admin`, `committee_member`, or `security_guard`
+
+### Ticket Management
+- `GET /tickets/{id}` — owner or privileged roles can view a single ticket
+- `DELETE /tickets/{id}` — admin only; cannot cancel a `used` ticket
+- `status` values: `active` → `used` (on scan) | `cancelled` (by admin)
+
+---
+
+## 🔲 6. Payment Service — Node.js (port 3004)
 
 Owns the payment transaction lifecycle, refunds, and multi-currency conversion.
 

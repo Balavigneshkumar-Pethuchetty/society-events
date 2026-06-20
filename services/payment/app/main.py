@@ -1,0 +1,83 @@
+import asyncio
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
+from fastapi.openapi.utils import get_openapi
+from fastapi.responses import HTMLResponse
+
+from app.config import settings
+from app.database import close_pool, get_pool, wait_for_db
+from app.middleware.splunk import SplunkLoggingMiddleware
+from app.reconciliation import inbox as reconciliation_inbox
+from app.routes import audit, payments, reconciliation, refunds, registry
+
+_OPENAPI_URL     = "openapi.json"
+_OAUTH2_REDIRECT = "/docs/oauth2-redirect"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await wait_for_db()
+    # Start IMAP reconciliation loop in the background
+    asyncio.create_task(reconciliation_inbox.reconciliation_loop())
+    yield
+    await close_pool()
+
+
+app = FastAPI(
+    title="Payment & Reconciliation Service",
+    description="Pluggable payment platform: manual UPI, committee registry, inbox reconciliation, refund ledger.",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url="/openapi.json",
+    swagger_ui_oauth2_redirect_url=_OAUTH2_REDIRECT,
+)
+
+
+@app.get(_OAUTH2_REDIRECT, include_in_schema=False)
+async def oauth2_redirect() -> HTMLResponse:
+    return get_swagger_ui_oauth2_redirect_html()
+
+
+@app.get("/docs", include_in_schema=False)
+async def swagger_ui() -> HTMLResponse:
+    return get_swagger_ui_html(
+        openapi_url=_OPENAPI_URL,
+        title="Payment & Reconciliation Service",
+        oauth2_redirect_url=_OAUTH2_REDIRECT,
+        init_oauth={"clientId": "society-frontend", "scopes": "openid profile email roles"},
+    )
+
+
+def _build_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(title=app.title, version=app.version,
+                         description=app.description, routes=app.routes)
+    schema["servers"] = [{"url": "/api/payments", "description": "via nginx"}]
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = _build_openapi
+
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(SplunkLoggingMiddleware)
+
+app.include_router(payments.router,        prefix="/payments",        tags=["payments"])
+app.include_router(refunds.router,         prefix="/refunds",         tags=["refunds"])
+app.include_router(reconciliation.router,  prefix="/reconciliation",  tags=["reconciliation"])
+app.include_router(registry.router,        prefix="/registry",        tags=["registry"])
+app.include_router(audit.router,           prefix="/audit",           tags=["audit"])
+
+
+@app.get("/health", tags=["ops"])
+async def health():
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.fetchval("SELECT 1")
+    return {"status": "ok", "service": "payment-service", "provider": settings.payment_provider}

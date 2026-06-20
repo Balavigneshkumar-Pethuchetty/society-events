@@ -1,398 +1,525 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import {
-  Alert, Box, Chip, Container, Divider,
-  InputAdornment, MenuItem, Paper, Select,
-  Stack, Step, StepLabel, Stepper,
-  Table, TableBody, TableCell, TableHead, TablePagination,
-  TableRow, TableSortLabel, Tab, Tabs, TextField, Typography,
+  Alert, Box, Button, Chip, CircularProgress, Container,
+  Divider, IconButton, Paper, Stack, Step, StepLabel,
+  Stepper, TextField, Tooltip, Typography,
 } from '@mui/material';
-import PaymentIcon from '@mui/icons-material/Payment';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
-import SearchIcon from '@mui/icons-material/Search';
+import AccountBalanceIcon  from '@mui/icons-material/AccountBalance';
+import CheckCircleIcon     from '@mui/icons-material/CheckCircle';
+import ContentCopyIcon     from '@mui/icons-material/ContentCopy';
+import ErrorOutlineIcon    from '@mui/icons-material/ErrorOutline';
+import HourglassTopIcon    from '@mui/icons-material/HourglassTop';
+import InfoOutlinedIcon    from '@mui/icons-material/InfoOutlined';
+import PaymentIcon         from '@mui/icons-material/Payment';
+import QrCode2Icon         from '@mui/icons-material/QrCode2';
+import RefreshIcon         from '@mui/icons-material/Refresh';
+import VerifiedIcon        from '@mui/icons-material/Verified';
 
-// ── Types & mock data ─────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-interface CheckoutItem {
-  label: string;
-  qty: number;
-  unitPrice: number;
+interface TicketItem { id: string | null; name: string; qty: number; price: number; is_free: boolean }
+
+interface CheckoutData {
+  eventId: string; eventTitle: string; eventVenue: string;
+  eventStart: string; currency: string; tickets: TicketItem[];
 }
 
-interface PaymentRecord {
-  id: string;
-  ref: string;
-  event: string;
-  date: string;
-  dateMs: number;
-  amount: number;
-  method: string;
-  status: 'success' | 'failed' | 'refunded';
-  emoji: string;
+interface Registration {
+  id: string; event_id: string; event_title: string;
+  event_start_time: string; event_end_time: string;
+  event_venue: string; event_is_free: boolean;
+  ticket_count: number; total_amount: number;
+  display_currency: string; status: string;
+  registered_at: string;
 }
 
-const CHECKOUT_ITEMS: CheckoutItem[] = [
-  { label: 'Annual Sports Day 2026 · General Entry', qty: 2, unitPrice: 150 },
-];
+interface Transaction {
+  txn_ref: string; status: string; amount: number;
+  payee_upi: string | null; payer_upi: string | null;
+  payment_utr: string | null; event_title: string;
+}
 
-const PAYMENT_HISTORY: PaymentRecord[] = [
-  { id: 'p1', ref: 'pay_QnM4x9Kzf3R', event: 'Annual Sports Day 2026',  date: '10 Jan 2026, 2:34 PM', dateMs: new Date('2026-01-10').getTime(), amount: 300, method: 'UPI · arjun@okicici', status: 'success',  emoji: '🏅' },
-  { id: 'p2', ref: 'pay_PLk2d7Bmw1T', event: "Children's Day Carnival", date: '2 Nov 2025, 11:20 AM',  dateMs: new Date('2025-11-02').getTime(), amount: 100, method: 'Card · •••• 4242', status: 'success',  emoji: '🎡' },
-  { id: 'p3', ref: 'pay_JhW9x2Rtv5C', event: 'Holi Colour Festival',    date: '5 Jan 2026, 9:05 AM',   dateMs: new Date('2026-01-05').getTime(), amount: 100, method: 'UPI · arjun@okicici', status: 'refunded', emoji: '🎨' },
-  { id: 'p4', ref: 'pay_XvK8p3Mnq7L', event: 'Diwali Mela 2025',        date: '15 Oct 2025, 4:48 PM',  dateMs: new Date('2025-10-15').getTime(), amount: 0,   method: '—',                 status: 'success',  emoji: '🪔' },
-];
+interface Collector {
+  upi_id: string; upi_name: string; upi_intent_uri: string;
+  event_title: string; amount: number; currency: string;
+}
 
-const STATUS_STYLE: Record<PaymentRecord['status'], { label: string; bgcolor: string; color: string }> = {
-  success:  { label: 'Success',  bgcolor: '#dcfce7', color: '#166534' },
-  failed:   { label: 'Failed',   bgcolor: '#fee2e2', color: '#991b1b' },
-  refunded: { label: 'Refunded', bgcolor: '#fef3c7', color: '#92400e' },
-};
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-const STEPS = ['Review Order', 'Payment', 'Confirmation'];
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
 
-type SortDir = 'asc' | 'desc';
-type SortKey = 'event' | 'dateMs' | 'amount' | 'status';
+function fmtAmount(n: number, currency = 'INR') {
+  if (n === 0) return 'Free';
+  return `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 0 })}`;
+}
+
+function CopyText({ value, mono = false }: { value: string; mono?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+      <Typography fontWeight={700} component="span" fontFamily={mono ? 'monospace' : undefined}>
+        {value}
+      </Typography>
+      <Tooltip title={copied ? 'Copied!' : 'Copy'}>
+        <IconButton size="small" onClick={() => {
+          navigator.clipboard.writeText(value);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }}>
+          {copied
+            ? <CheckCircleIcon sx={{ fontSize: 14, color: 'success.main' }} />
+            : <ContentCopyIcon sx={{ fontSize: 14 }} />}
+        </IconButton>
+      </Tooltip>
+    </Box>
+  );
+}
+
+function StatusChip({ status }: { status: string }) {
+  const map: Record<string, { label: string; color: 'default' | 'warning' | 'info' | 'success' | 'error'; icon: React.ReactElement }> = {
+    pending:           { label: 'Pending Verification', color: 'warning',  icon: <HourglassTopIcon /> },
+    verified:          { label: 'Verified',             color: 'success',  icon: <VerifiedIcon /> },
+    refund_requested:  { label: 'Refund Requested',     color: 'info',     icon: <InfoOutlinedIcon /> },
+    refunded:          { label: 'Refunded',             color: 'default',  icon: <AccountBalanceIcon /> },
+    cancelled:         { label: 'Cancelled',            color: 'error',    icon: <ErrorOutlineIcon /> },
+  };
+  const cfg = map[status] ?? { label: status, color: 'default', icon: <PaymentIcon /> };
+  return <Chip label={cfg.label} color={cfg.color} size="small" icon={cfg.icon} />;
+}
+
+// ── API ───────────────────────────────────────────────────────────────────────
+
+async function apiFetch(path: string, token: string, opts: RequestInit = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { Authorization: `Bearer ${token}`, ...(opts.headers ?? {}) },
+  });
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}));
+    throw new Error(b.detail ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
 
 // ── Checkout flow ─────────────────────────────────────────────────────────────
 
-function CheckoutFlow() {
-  const [step, setStep] = useState(0);
-  const [method, setMethod] = useState<'upi' | 'card' | null>(null);
+const STEPS = ['Confirm Booking', 'Scan & Pay', 'Track Payment'];
 
-  const subtotal = CHECKOUT_ITEMS.reduce((s, i) => s + i.qty * i.unitPrice, 0);
-  const convenience = Math.round(subtotal * 0.02);
-  const total = subtotal + convenience;
+function CheckoutFlow({ token }: { token: string }) {
+  const [step, setStep]               = useState(0);
+  const [checkoutData, setCheckoutData] = useState<CheckoutData | null>(null);
+  const [cartLoading, setCartLoading] = useState(true);
+  const [registration, setRegistration] = useState<Registration | null>(null);
+  const [collector, setCollector]     = useState<Collector | null>(null);
+  const [payerUpi, setPayerUpi]       = useState('');
+  const [transaction, setTransaction] = useState<Transaction | null>(null);
+  const [error, setError]             = useState<string | null>(null);
+  const [loading, setLoading]         = useState(false);
+  const pollRef                       = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  return (
-    <Box>
-      <Stepper activeStep={step} sx={{ mb: 4 }} alternativeLabel>
-        {STEPS.map(label => (
-          <Step key={label}><StepLabel>{label}</StepLabel></Step>
-        ))}
-      </Stepper>
+  useEffect(() => {
+    fetch('/api/registrations/registrations/cart', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) setCheckoutData({
+          eventId: d.event_id, eventTitle: d.event_title,
+          eventVenue: d.event_venue, eventStart: d.event_start,
+          currency: d.currency, tickets: d.tickets,
+        });
+        setCartLoading(false);
+      })
+      .catch(() => setCartLoading(false));
+  }, [token]);
 
-      {step === 0 && (
-        <Box>
-          <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', mb: 3 }}>
-            <Box sx={{ px: 2, py: 1.5, bgcolor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-              <Typography fontWeight={700}>Order Summary</Typography>
-            </Box>
-            <Box sx={{ p: 2 }}>
-              <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', p: 2, bgcolor: '#f8fafc', borderRadius: 1.5, mb: 2 }}>
-                <Typography fontSize={30}>🏅</Typography>
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography fontWeight={600} fontSize={15}>Annual Sports Day 2026</Typography>
-                  <Typography fontSize={13} color="text.secondary">Sat, 14 Feb 2026 · PVH Ground (Block A)</Typography>
-                </Box>
-              </Box>
+  // Poll transaction status until verified
+  useEffect(() => {
+    if (!transaction || transaction.status === 'verified' || transaction.status === 'cancelled') return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const updated: Transaction = await apiFetch(
+          `/api/payments/payments/${transaction.txn_ref}`, token
+        );
+        setTransaction(updated);
+        if (updated.status !== 'pending') clearInterval(pollRef.current!);
+      } catch { /* ignore poll errors */ }
+    }, 5000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [transaction?.txn_ref, transaction?.status]);
 
-              <Box sx={{ overflowX: 'auto' }}>
-                <Table size="small" sx={{ minWidth: 300 }}>
-                  <TableHead>
-                    <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                      <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>Item</TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 600, fontSize: 12 }}>Qty</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600, fontSize: 12 }}>Price</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600, fontSize: 12 }}>Total</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {CHECKOUT_ITEMS.map(item => (
-                      <TableRow key={item.label}>
-                        <TableCell sx={{ fontSize: 13 }}>{item.label}</TableCell>
-                        <TableCell align="center" sx={{ fontSize: 13 }}>{item.qty}</TableCell>
-                        <TableCell align="right" sx={{ fontSize: 13 }}>₹{item.unitPrice}</TableCell>
-                        <TableCell align="right" sx={{ fontSize: 13, fontWeight: 600 }}>₹{item.qty * item.unitPrice}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Box>
-
-              <Divider sx={{ my: 1.5 }} />
-              {[['Subtotal', subtotal], ['Convenience fee (2%)', convenience]].map(([k, v]) => (
-                <Box key={k as string} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                  <Typography fontSize={13} color="text.secondary">{k}</Typography>
-                  <Typography fontSize={13}>₹{v}</Typography>
-                </Box>
-              ))}
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1, pt: 1, borderTop: '2px solid #e2e8f0' }}>
-                <Typography fontWeight={700}>Total</Typography>
-                <Typography fontWeight={700} fontSize={17} color="#6366f1">₹{total}</Typography>
-              </Box>
-            </Box>
-          </Paper>
-
-          <Box component="button" onClick={() => setStep(1)}
-            sx={{ width: '100%', border: 'none', borderRadius: 1.5, py: 1.25, bgcolor: '#6366f1', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', '&:hover': { bgcolor: '#4f46e5' } }}>
-            Continue to Payment →
-          </Box>
-        </Box>
-      )}
-
-      {step === 1 && (
-        <Box>
-          <Typography fontWeight={700} mb={2}>Choose Payment Method</Typography>
-          <Stack spacing={1.5} sx={{ mb: 3 }}>
-            {([['upi', '📱', 'UPI', 'Google Pay, PhonePe, Paytm, BHIM'], ['card', '💳', 'Credit / Debit Card', 'Visa, Mastercard, RuPay']] as ['upi' | 'card', string, string, string][]).map(([id, emoji, label, sub]) => (
-              <Paper key={id} variant="outlined" onClick={() => setMethod(id)}
-                sx={{ p: 2, cursor: 'pointer', borderRadius: 2, borderColor: method === id ? '#6366f1' : '#e2e8f0', bgcolor: method === id ? '#f5f3ff' : '#fff', transition: 'all .15s', '&:hover': { borderColor: '#6366f1' } }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                  <Typography fontSize={24}>{emoji}</Typography>
-                  <Box sx={{ flex: 1 }}>
-                    <Typography fontWeight={600} fontSize={14}>{label}</Typography>
-                    <Typography fontSize={12} color="text.secondary">{sub}</Typography>
-                  </Box>
-                  <Box sx={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${method === id ? '#6366f1' : '#cbd5e1'}`, bgcolor: method === id ? '#6366f1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {method === id && <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#fff' }} />}
-                  </Box>
-                </Box>
-              </Paper>
-            ))}
-          </Stack>
-
-          <Alert severity="info" sx={{ mb: 3, fontSize: 13 }}>
-            You'll be redirected to Razorpay's secure payment page. Total: <strong>₹{total}</strong>
-          </Alert>
-
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <Box component="button" onClick={() => setStep(0)}
-              sx={{ flex: 1, border: '1.5px solid #e2e8f0', borderRadius: 1.5, py: 1.25, bgcolor: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', color: '#475569' }}>
-              ← Back
-            </Box>
-            <Box component="button" disabled={!method} onClick={() => setStep(2)}
-              sx={{ flex: 2, border: 'none', borderRadius: 1.5, py: 1.25, fontSize: 14, fontWeight: 700, cursor: method ? 'pointer' : 'not-allowed', bgcolor: method ? '#6366f1' : '#e2e8f0', color: method ? '#fff' : '#94a3b8' }}>
-              Pay ₹{total}
-            </Box>
-          </Box>
-        </Box>
-      )}
-
-      {step === 2 && (
-        <Box sx={{ textAlign: 'center', py: 2 }}>
-          <CheckCircleIcon sx={{ fontSize: 64, color: '#10b981', mb: 2 }} />
-          <Typography variant="h5" fontWeight={800} color="#0f172a" mb={1}>Payment Successful!</Typography>
-          <Typography color="text.secondary" mb={3}>
-            Your tickets for <strong>Annual Sports Day 2026</strong> are confirmed.
-          </Typography>
-
-          <Paper variant="outlined" sx={{ borderRadius: 2, p: 2, mb: 3, textAlign: 'left', maxWidth: 380, mx: 'auto' }}>
-            {[
-              ['Booking Ref', 'PVH-2026-0214-042'],
-              ['Amount Paid', `₹${total}`],
-              ['Payment Method', method === 'upi' ? 'UPI' : 'Card'],
-              ['Tickets', `${CHECKOUT_ITEMS[0].qty} × General Entry`],
-            ].map(([k, v]) => (
-              <Box key={k} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75, flexWrap: 'wrap', gap: 1 }}>
-                <Typography fontSize={13} color="text.secondary">{k}</Typography>
-                <Typography fontSize={13} fontWeight={600}>{v}</Typography>
-              </Box>
-            ))}
-          </Paper>
-
-          <Box component="button" onClick={() => setStep(0)}
-            sx={{ border: '1.5px solid #6366f1', borderRadius: 1.5, px: 3, py: 1, bgcolor: 'transparent', color: '#6366f1', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-            Back to Home
-          </Box>
-        </Box>
-      )}
-    </Box>
+  if (cartLoading) return (
+    <Container maxWidth="sm" sx={{ pt: 8, textAlign: 'center' }}><CircularProgress /></Container>
   );
-}
 
-// ── Payment History ───────────────────────────────────────────────────────────
+  if (!checkoutData) return (
+    <Container maxWidth="sm" sx={{ pt: 6, textAlign: 'center' }}>
+      <Typography variant="h6" color="text.secondary">No active cart found.</Typography>
+      <Button sx={{ mt: 2 }} variant="contained" onClick={() => { window.location.href = '/events'; }}>
+        Browse Events
+      </Button>
+    </Container>
+  );
 
-function PaymentHistory() {
-  const [search,    setSearch]    = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [sortKey,   setSortKey]   = useState<SortKey>('dateMs');
-  const [sortDir,   setSortDir]   = useState<SortDir>('desc');
-  const [page,      setPage]      = useState(0);
-  const [rpp,       setRpp]       = useState(10);
+  const total  = checkoutData.tickets.reduce((s, t) => s + (t.is_free ? 0 : t.price * t.qty), 0);
+  const isFree = total === 0;
+  const steps  = isFree ? ['Confirm Booking', 'Done'] : STEPS;
 
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir('asc'); }
-    setPage(0);
+  // Step 0: Confirm Booking → create registration (or resume existing)
+  async function handleConfirm() {
+    setLoading(true); setError(null);
+    try {
+      let reg: Registration;
+
+      // Try to create a new registration
+      const regRes = await fetch('/api/registrations/registrations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          event_id: checkoutData!.eventId,
+          tickets: checkoutData!.tickets.map(t => ({
+            ticket_type_id: t.id, ticket_type_name: t.name,
+            quantity: t.qty, unit_price: t.price,
+          })),
+          ticket_count: checkoutData!.tickets.reduce((s, t) => s + t.qty, 0),
+        }),
+      });
+
+      if (regRes.ok) {
+        reg = await regRes.json();
+      } else if (regRes.status === 409) {
+        // Already registered — resume the existing registration
+        const myRegs: Registration[] = await apiFetch('/api/registrations/registrations/my', token);
+        const existing = myRegs.find(
+          r => r.event_id === checkoutData!.eventId && r.status !== 'cancelled'
+        );
+        if (!existing) throw new Error('Already registered but could not locate your registration.');
+        reg = existing;
+      } else {
+        const b = await regRes.json().catch(() => ({}));
+        throw new Error((b as { detail?: string }).detail ?? `HTTP ${regRes.status}`);
+      }
+
+      setRegistration(reg);
+      fetch('/api/registrations/registrations/cart', {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+
+      // If already confirmed (paid or free), go straight to success screen
+      if (isFree || reg.status === 'confirmed') { setStep(1); return; }
+
+      // pending_payment — resolve collector and show QR
+      const col: Collector = await apiFetch(
+        `/api/payments/registry/events/${checkoutData!.eventId}/collector?amount=${total}`, token
+      );
+      setCollector(col);
+      setStep(1);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Registration failed');
+    } finally {
+      setLoading(false);
+    }
   }
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    const list = PAYMENT_HISTORY.filter(p =>
-      (p.event.toLowerCase().includes(q) || p.ref.toLowerCase().includes(q) || p.method.toLowerCase().includes(q)) &&
-      (statusFilter === '' || p.status === statusFilter)
-    );
-    return [...list].sort((a, b) => {
-      let va: string | number, vb: string | number;
-      if (sortKey === 'dateMs' || sortKey === 'amount') {
-        va = a[sortKey]; vb = b[sortKey];
-        return sortDir === 'asc' ? (va as number) - (vb as number) : (vb as number) - (va as number);
-      }
-      va = String(a[sortKey]); vb = String(b[sortKey]);
-      return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
-    });
-  }, [search, statusFilter, sortKey, sortDir]);
-
-  const paginated = filtered.slice(page * rpp, page * rpp + rpp);
+  // Step 1: User has scanned QR and clicks "I've Paid" (payer UPI is optional)
+  async function handlePaid() {
+    if (!registration) return;
+    setLoading(true); setError(null);
+    try {
+      const result = await apiFetch('/api/payments/payments/initiate', token, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_id: checkoutData!.eventId,
+          registration_id: registration.id,
+          payer_upi: payerUpi.trim(),
+        }),
+      });
+      // Fetch full transaction object
+      const txn: Transaction = await apiFetch(`/api/payments/payments/${result.txn_ref}`, token);
+      setTransaction(txn);
+      setStep(2);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not record payment');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
-      {/* Search + filter bar */}
-      <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <TextField
-          size="small"
-          placeholder="Search event, ref, method…"
-          value={search}
-          onChange={e => { setSearch(e.target.value); setPage(0); }}
-          InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 16, color: 'text.secondary' }} /></InputAdornment> }}
-          sx={{ minWidth: 200, flex: 1, maxWidth: 340, bgcolor: '#fff' }}
-        />
-        <Select
-          size="small"
-          displayEmpty
-          value={statusFilter}
-          onChange={e => { setStatusFilter(e.target.value); setPage(0); }}
-          sx={{ minWidth: 140, fontSize: 13, bgcolor: '#fff' }}
-        >
-          <MenuItem value="" sx={{ fontSize: 13 }}><em>All statuses</em></MenuItem>
-          <MenuItem value="success"  sx={{ fontSize: 13 }}>Success</MenuItem>
-          <MenuItem value="refunded" sx={{ fontSize: 13 }}>Refunded</MenuItem>
-          <MenuItem value="failed"   sx={{ fontSize: 13 }}>Failed</MenuItem>
-        </Select>
-        {(search || statusFilter) && (
-          <Typography fontSize={13} color="text.secondary">{filtered.length} of {PAYMENT_HISTORY.length}</Typography>
-        )}
-      </Box>
+    <Container maxWidth="sm" sx={{ py: 4 }}>
+      <Typography variant="h5" fontWeight={800} mb={3}>Checkout</Typography>
+      <Stepper activeStep={step} sx={{ mb: 4 }}>
+        {steps.map(l => <Step key={l}><StepLabel>{l}</StepLabel></Step>)}
+      </Stepper>
 
-      {/* ── Mobile: card list ── */}
-      {paginated.length === 0 ? (
-        <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>No payment records match your filter.</Box>
-      ) : (
-        <>
-          <Stack spacing={1.5} sx={{ display: { xs: 'flex', md: 'none' }, p: 2 }}>
-            {paginated.map(p => {
-              const s = STATUS_STYLE[p.status];
-              return (
-                <Paper key={p.id} variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, gap: 1 }}>
-                    <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', minWidth: 0 }}>
-                      <Typography fontSize={22} sx={{ flexShrink: 0 }}>{p.emoji}</Typography>
-                      <Typography fontWeight={700} fontSize={14} noWrap>{p.event}</Typography>
-                    </Box>
-                    <Typography fontWeight={800} fontSize={16} color={p.status === 'refunded' ? '#f59e0b' : '#0f172a'} sx={{ flexShrink: 0 }}>
-                      {p.amount > 0 ? `₹${p.amount}` : 'Free'}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <Chip label={s.label} size="small" sx={{ bgcolor: s.bgcolor, color: s.color, fontWeight: 600, fontSize: 11 }} />
-                    <Typography fontSize={12} color="text.secondary">{p.date}</Typography>
-                  </Box>
-                  <Box sx={{ mt: 1, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                    <Box>
-                      <Typography fontSize={11} color="text.secondary">Method</Typography>
-                      <Typography fontSize={12} fontWeight={600}>{p.method}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography fontSize={11} color="text.secondary">Reference</Typography>
-                      <Typography fontSize={11} sx={{ fontFamily: 'monospace', color: '#64748b' }}>{p.ref}</Typography>
-                    </Box>
-                  </Box>
-                </Paper>
-              );
-            })}
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
+
+      {/* ── Step 0: Order summary ── */}
+      {step === 0 && (
+        <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+          <Typography fontWeight={700} variant="h6" mb={0.5}>{checkoutData.eventTitle}</Typography>
+          <Typography variant="body2" color="text.secondary" mb={2}>
+            {fmtDate(checkoutData.eventStart)} · {checkoutData.eventVenue}
+          </Typography>
+          <Divider sx={{ mb: 2 }} />
+          <Stack spacing={1} mb={2}>
+            {checkoutData.tickets.map((t, i) => (
+              <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography variant="body2">{t.name} × {t.qty}</Typography>
+                <Typography variant="body2" fontWeight={600}>
+                  {t.is_free ? 'Free' : fmtAmount(t.price * t.qty, checkoutData.currency)}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+          <Divider sx={{ mb: 2 }} />
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+            <Typography fontWeight={700}>Total</Typography>
+            <Typography fontWeight={700} color="primary">{fmtAmount(total, checkoutData.currency)}</Typography>
+          </Box>
+          <Button fullWidth variant="contained" size="large" disabled={loading} onClick={handleConfirm}>
+            {loading ? <CircularProgress size={22} color="inherit" /> : isFree ? 'Register for Free' : 'Confirm & Proceed to Payment'}
+          </Button>
+        </Paper>
+      )}
+
+      {/* ── Step 1b: Free event confirmed OR already-confirmed paid registration ── */}
+      {step === 1 && (isFree || registration?.status === 'confirmed') && (
+        <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
+          <CheckCircleIcon sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
+          <Typography variant="h6" fontWeight={700}>Registration Confirmed!</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 3 }}>
+            {checkoutData.eventTitle} · {fmtDate(checkoutData.eventStart)}
+          </Typography>
+          <Button variant="contained" onClick={() => { window.location.href = '/tickets'; }}>View My Tickets</Button>
+        </Paper>
+      )}
+
+      {/* ── Step 1a: Pay via UPI ── */}
+      {step === 1 && !isFree && registration?.status !== 'confirmed' && collector && registration && (
+        <Stack spacing={3}>
+          <Alert severity="info" icon={<QrCode2Icon />}>
+            Scan the QR or copy the UPI ID below to pay <strong>{fmtAmount(total)}</strong>.
+            Then enter your own UPI ID and click <strong>"I've Paid"</strong>.
+          </Alert>
+
+          <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+            <Typography fontWeight={700} mb={2}>Pay via UPI</Typography>
+
+            <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              {/* QR rendered client-side from UPI intent URI */}
+              <Box sx={{ textAlign: 'center', flexShrink: 0 }}>
+                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1, display: 'inline-block' }}>
+                  <QRCodeSVG
+                    value={collector.upi_intent_uri}
+                    size={160}
+                    level="M"
+                    includeMargin={false}
+                  />
+                </Box>
+                <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
+                  Scan with any UPI app
+                </Typography>
+              </Box>
+
+              {/* Collector UPI details */}
+              <Stack spacing={1.5} sx={{ flex: 1, minWidth: 180 }}>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Amount</Typography>
+                  <Typography fontWeight={700} fontSize={20} color="primary.main">
+                    {fmtAmount(total)}
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Pay to UPI ID</Typography>
+                  <Box><CopyText value={collector.upi_id} mono /></Box>
+                  <Typography variant="caption" color="text.secondary">({collector.upi_name})</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption" color="text.secondary">Event</Typography>
+                  <Typography variant="body2" fontWeight={600}>{collector.event_title}</Typography>
+                </Box>
+              </Stack>
+            </Box>
+          </Paper>
+
+          {/* Payer UPI (optional) + submit */}
+          <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+            <Typography fontWeight={700} mb={1.5}>After Paying</Typography>
+            <Typography variant="body2" color="text.secondary" mb={2}>
+              Once you have transferred the amount, click the button below to notify the admin.
+              Optionally provide your UPI ID to make refunds easier.
+            </Typography>
+            <TextField
+              label="Your UPI ID (optional)"
+              value={payerUpi}
+              onChange={e => setPayerUpi(e.target.value)}
+              fullWidth size="small" sx={{ mb: 2 }}
+              placeholder="yourname@okicici"
+              helperText="Optional — helps us process refunds if needed"
+            />
+            <Button
+              fullWidth variant="contained" size="large" color="success"
+              disabled={loading}
+              onClick={handlePaid}
+            >
+              {loading ? <CircularProgress size={22} color="inherit" /> : "I've Paid — Notify Admin"}
+            </Button>
+          </Paper>
+        </Stack>
+      )}
+
+      {/* ── Step 1a (no collector): fallback ── */}
+      {step === 1 && !isFree && !collector && (
+        <Alert severity="warning" icon={<AccountBalanceIcon />}>
+          No payment collector has been assigned for this event yet. Contact an admin to complete your registration.
+        </Alert>
+      )}
+
+      {/* ── Step 2: Tracking ── */}
+      {step === 2 && transaction && (
+        <Paper variant="outlined" sx={{ p: 4, borderRadius: 2 }}>
+          <Box sx={{ textAlign: 'center', mb: 3 }}>
+            {transaction.status === 'verified'
+              ? <VerifiedIcon sx={{ fontSize: 64, color: 'success.main' }} />
+              : <HourglassTopIcon sx={{ fontSize: 64, color: 'warning.main' }} />}
+          </Box>
+
+          <Typography variant="h6" fontWeight={700} textAlign="center" mb={0.5}>
+            {transaction.status === 'verified' ? 'Payment Verified!' : 'Payment Pending Verification'}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" textAlign="center" mb={3}>
+            {transaction.status === 'verified'
+              ? 'Your registration is confirmed. You can view your ticket now.'
+              : 'An admin will verify your payment shortly. This page auto-updates.'}
+          </Typography>
+
+          <Divider sx={{ mb: 2 }} />
+
+          <Stack spacing={1.5}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body2" color="text.secondary">Transaction ID</Typography>
+              <CopyText value={transaction.txn_ref} mono />
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body2" color="text.secondary">Amount</Typography>
+              <Typography fontWeight={700}>{fmtAmount(transaction.amount)}</Typography>
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="body2" color="text.secondary">Status</Typography>
+              <StatusChip status={transaction.status} />
+            </Box>
+            {transaction.payment_utr && (
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="body2" color="text.secondary">UTR</Typography>
+                <CopyText value={transaction.payment_utr} mono />
+              </Box>
+            )}
           </Stack>
 
-          {/* ── Desktop: table ── */}
-          <Box sx={{ display: { xs: 'none', md: 'block' }, overflowX: 'auto' }}>
-            <Table sx={{ minWidth: 560 }}>
-              <TableHead>
-                <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                  <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>
-                    <TableSortLabel active={sortKey === 'event'} direction={sortKey === 'event' ? sortDir : 'asc'} onClick={() => toggleSort('event')}>Event</TableSortLabel>
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>
-                    <TableSortLabel active={sortKey === 'dateMs'} direction={sortKey === 'dateMs' ? sortDir : 'asc'} onClick={() => toggleSort('dateMs')}>Date</TableSortLabel>
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>Reference</TableCell>
-                  <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>Method</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 600, fontSize: 12 }}>
-                    <TableSortLabel active={sortKey === 'amount'} direction={sortKey === 'amount' ? sortDir : 'asc'} onClick={() => toggleSort('amount')}>Amount</TableSortLabel>
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>
-                    <TableSortLabel active={sortKey === 'status'} direction={sortKey === 'status' ? sortDir : 'asc'} onClick={() => toggleSort('status')}>Status</TableSortLabel>
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {paginated.map(p => {
-                  const s = STATUS_STYLE[p.status];
-                  return (
-                    <TableRow key={p.id} hover>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography fontSize={18}>{p.emoji}</Typography>
-                          <Typography fontSize={13} fontWeight={600}>{p.event}</Typography>
-                        </Box>
-                      </TableCell>
-                      <TableCell><Typography fontSize={13} color="text.secondary">{p.date}</Typography></TableCell>
-                      <TableCell><Typography fontSize={12} sx={{ fontFamily: 'monospace', color: '#64748b' }}>{p.ref}</Typography></TableCell>
-                      <TableCell><Typography fontSize={13} color="text.secondary">{p.method}</Typography></TableCell>
-                      <TableCell align="right">
-                        <Typography fontSize={13} fontWeight={700} color={p.status === 'refunded' ? '#f59e0b' : '#0f172a'}>
-                          {p.amount > 0 ? `₹${p.amount}` : 'Free'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip label={s.label} size="small" sx={{ bgcolor: s.bgcolor, color: s.color, fontWeight: 600, fontSize: 11 }} />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+          <Box sx={{ display: 'flex', gap: 1.5, mt: 3 }}>
+            {transaction.status === 'pending' && (
+              <Button
+                variant="outlined" startIcon={<RefreshIcon />}
+                onClick={async () => {
+                  const updated: Transaction = await apiFetch(`/api/payments/payments/${transaction.txn_ref}`, token);
+                  setTransaction(updated);
+                }}
+              >
+                Refresh
+              </Button>
+            )}
+            <Button
+              variant="contained" fullWidth
+              onClick={() => { window.location.href = transaction.status === 'verified' ? '/tickets' : '/registrations'; }}
+            >
+              {transaction.status === 'verified' ? 'View My Tickets' : 'View My Registrations'}
+            </Button>
           </Box>
-        </>
+        </Paper>
       )}
-      <TablePagination
-        component="div"
-        count={filtered.length}
-        page={page}
-        onPageChange={(_, p) => setPage(p)}
-        rowsPerPage={rpp}
-        onRowsPerPageChange={e => { setRpp(parseInt(e.target.value, 10)); setPage(0); }}
-        rowsPerPageOptions={[5, 10, 25]}
-        sx={{ borderTop: '1px solid', borderColor: 'divider' }}
-      />
-    </Paper>
+    </Container>
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── My Payments history ───────────────────────────────────────────────────────
 
-export function PaymentApp() {
-  const [tab, setTab] = useState(0);
+function MyPayments({ token }: { token: string }) {
+  const [txns, setTxns]       = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data: Transaction[] = await apiFetch('/api/payments/payments', token);
+      setTxns(data);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load');
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress /></Box>;
 
   return (
-    <Box component="main" sx={{ bgcolor: '#f8fafc', minHeight: 'calc(100vh - 64px)', py: { xs: 2, md: 4 } }}>
-      <Container maxWidth="md">
-
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-          {tab === 0 ? <PaymentIcon sx={{ color: '#6366f1', fontSize: { xs: 26, md: 30 } }} /> : <ReceiptLongIcon sx={{ color: '#6366f1', fontSize: { xs: 26, md: 30 } }} />}
-          <Box>
-            <Typography variant="h4" fontWeight={800} color="#0f172a" sx={{ fontSize: { xs: 24, md: 32 } }}>
-              {tab === 0 ? 'Checkout' : 'Payment History'}
-            </Typography>
-            <Typography color="text.secondary" fontSize={14}>Arjun Sharma · Flat C-301</Typography>
-          </Box>
+    <Container maxWidth="md" sx={{ py: 4 }}>
+      <Typography variant="h5" fontWeight={800} mb={3}>My Payments</Typography>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {txns.length === 0 && !error && (
+        <Box textAlign="center" py={8}>
+          <Typography variant="body1" color="text.secondary" mb={2}>No payments yet.</Typography>
+          <Button variant="contained" onClick={() => { window.location.href = '/events'; }}>Browse Events</Button>
         </Box>
-
-        <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: '1px solid #e2e8f0' }} variant="scrollable" scrollButtons="auto">
-          <Tab label="Checkout" sx={{ textTransform: 'none', fontWeight: 600 }} />
-          <Tab label="Payment History" sx={{ textTransform: 'none', fontWeight: 600 }} />
-        </Tabs>
-
-        {tab === 0 ? <CheckoutFlow /> : <PaymentHistory />}
-      </Container>
-    </Box>
+      )}
+      <Stack spacing={2}>
+        {txns.map(txn => (
+          <Paper key={txn.txn_ref} variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1 }}>
+              <Box>
+                <Typography fontWeight={700}>{txn.event_title}</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                  <Typography variant="caption" color="text.secondary">TXN</Typography>
+                  <CopyText value={txn.txn_ref} mono />
+                </Box>
+                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                  {fmtAmount(txn.amount)}
+                  {txn.payment_utr && <> · UTR: <strong>{txn.payment_utr}</strong></>}
+                </Typography>
+              </Box>
+              <StatusChip status={txn.status} />
+            </Box>
+          </Paper>
+        ))}
+      </Stack>
+    </Container>
   );
 }
+
+// ── Root ──────────────────────────────────────────────────────────────────────
+
+export interface PaymentAppProps { token?: string | null }
+
+export function PaymentApp({ token }: PaymentAppProps) {
+  const isCheckout = window.location.pathname.startsWith('/checkout');
+
+  if (!token) return (
+    <Container maxWidth="sm" sx={{ pt: 8, textAlign: 'center' }}>
+      <Typography variant="h6" color="text.secondary" mb={2}>Please log in to continue.</Typography>
+      <Button variant="contained" onClick={() => { window.location.href = '/'; }}>Go to Login</Button>
+    </Container>
+  );
+
+  if (isCheckout) return <CheckoutFlow token={token} />;
+  return <MyPayments token={token} />;
+}
+
+export default PaymentApp;

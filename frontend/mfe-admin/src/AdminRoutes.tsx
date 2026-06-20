@@ -1,10 +1,14 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
+import { PaymentApprovals } from './pages/PaymentApprovals';
 import { SponsorManagement } from './pages/SponsorManagement';
 import { SponsorshipRefunds } from './pages/SponsorshipRefunds';
 import { UserApproval } from './pages/UserApproval';
 import { BuildingStructure } from './pages/BuildingStructure';
 import { UnitManagement } from './pages/UnitManagement';
+import { CollectorRegistry } from './pages/CollectorRegistry';
+import { ReconciliationConsole } from './pages/ReconciliationConsole';
+import { RefundTasks } from './pages/RefundTasks';
 
 function ComingSoon() {
   return (
@@ -19,21 +23,37 @@ function ComingSoon() {
 interface AdminRoutesProps {
   token?: string | null;
   onLogin?: () => void;
-  // Routing decision is made by the shell's wrapper and passed as a prop,
-  // avoiding any dependency on React Router context across the federation boundary.
   page?: string;
+  role?: string;
 }
 
-export function AdminRoutes({ token = null, onLogin, page }: AdminRoutesProps) {
-  console.log('[AdminRoutes] render — page:', JSON.stringify(page), '| token present:', !!token);
-  if (!page || page === 'users') {
-    console.log('[AdminRoutes] → rendering UserApproval');
-    return <UserApproval token={token} onLogin={onLogin} />;
+const COMMITTEE_PAGES = new Set(['payments', 'collector-registry', 'reconciliation', 'pay-refunds']);
+
+export function AdminRoutes({ token = null, onLogin, page, role }: AdminRoutesProps) {
+  const isCommittee = role === 'committee_member';
+
+  // Committee members land on Payment Approvals by default
+  const effectivePage = (!page && isCommittee) ? 'payments' : page;
+
+  // Block committee members from admin-only pages
+  if (isCommittee && effectivePage && !COMMITTEE_PAGES.has(effectivePage)) {
+    return (
+      <Box component="main" sx={{ minHeight: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1.5, color: 'text.secondary' }}>
+        <Typography fontSize={48} lineHeight={1}>🔒</Typography>
+        <Typography variant="h5" color="text.primary">Access Denied</Typography>
+        <Typography variant="body2">This page is for administrators only.</Typography>
+      </Box>
+    );
   }
-  if (page === 'building') return <BuildingStructure token={token} />;
-  if (page === 'units')    return <UnitManagement token={token} />;
-  if (page === 'sponsors') return <SponsorManagement />;
-  if (page === 'refunds') return <SponsorshipRefunds />;
-  console.log('[AdminRoutes] → rendering ComingSoon (unmatched page)');
+
+  if (!effectivePage || effectivePage === 'users') return <UserApproval token={token} onLogin={onLogin} />;
+  if (effectivePage === 'building')          return <BuildingStructure token={token} />;
+  if (effectivePage === 'units')             return <UnitManagement token={token} />;
+  if (effectivePage === 'sponsors')          return <SponsorManagement />;
+  if (effectivePage === 'refunds')           return <SponsorshipRefunds />;
+  if (effectivePage === 'payments')          return <PaymentApprovals token={token} role={role} />;
+  if (effectivePage === 'collector-registry') return <CollectorRegistry token={token} />;
+  if (effectivePage === 'reconciliation')    return <ReconciliationConsole token={token} role={role} />;
+  if (effectivePage === 'pay-refunds')       return <RefundTasks token={token} />;
   return <ComingSoon />;
 }

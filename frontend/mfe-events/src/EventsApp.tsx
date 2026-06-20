@@ -15,6 +15,7 @@ import DirectionsIcon         from '@mui/icons-material/Directions';
 import OpenInNewIcon          from '@mui/icons-material/OpenInNew';
 import EditIcon               from '@mui/icons-material/EditOutlined';
 import SettingsIcon           from '@mui/icons-material/TuneOutlined';
+import ShoppingCartIcon       from '@mui/icons-material/ShoppingCart';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -119,11 +120,12 @@ function EventDetail({
   eventId: string; token: string | null; role: string | null;
   societyName: string; onBack: () => void;
 }) {
-  const [event,      setEvent]      = useState<EventItem | null>(null);
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState<string | null>(null);
-  const [qty,        setQty]        = useState(1);
-  const [ticketQtys, setTicketQtys] = useState<Record<string, number>>({});
+  const [event,          setEvent]          = useState<EventItem | null>(null);
+  const [loading,        setLoading]        = useState(true);
+  const [error,          setError]          = useState<string | null>(null);
+  const [qty,            setQty]            = useState(1);
+  const [ticketQtys,     setTicketQtys]     = useState<Record<string, number>>({});
+  const [checkoutSaving, setCheckoutSaving] = useState(false);
 
   const adjustQty = (id: string, delta: number, cap: number | null) => {
     setTicketQtys(prev => {
@@ -501,7 +503,33 @@ function EventDetail({
 
                   {/* ── CTA button ───────────────────────────────────────── */}
                   <Box component="button"
-                    disabled={!canProceed}
+                    disabled={!canProceed || checkoutSaving}
+                    onClick={async () => {
+                      if (!canProceed || checkoutSaving) return;
+                      if (!token) { window.location.href = '/'; return; }
+                      setCheckoutSaving(true);
+                      const tickets = hasTypes
+                        ? sortedTypes.filter(tt => (ticketQtys[tt.id] ?? 0) > 0).map(tt => ({
+                            id: tt.id, name: tt.name,
+                            qty: ticketQtys[tt.id], price: Number(tt.price), is_free: tt.is_free,
+                          }))
+                        : [{ id: null, name: 'General Entry', qty, price: Number(event.ticket_price), is_free: event.is_free }];
+                      try {
+                        await fetch('/api/registrations/registrations/cart', {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                          body: JSON.stringify({
+                            event_id:    event.id,
+                            event_title: event.title,
+                            event_venue: event.venue,
+                            event_start: event.start_time,
+                            currency:    event.price_currency,
+                            tickets,
+                          }),
+                        });
+                      } catch { /* navigate anyway */ }
+                      window.location.href = '/checkout';
+                    }}
                     sx={{
                       width: '100%', border: 'none', borderRadius: 1.5, py: 1.4,
                       fontSize: 14, fontWeight: 700,
@@ -511,15 +539,17 @@ function EventDetail({
                       transition: 'opacity .15s',
                       '&:hover': canProceed ? { opacity: 0.9 } : {},
                     }}>
-                    {event.is_sold_out
-                      ? 'Sold Out'
-                      : event.status !== 'published'
-                        ? 'Registrations Closed'
-                        : hasTypes
-                          ? (typedCount === 0 ? 'Select at least one ticket' : `Proceed to Checkout (${typedCount} ticket${typedCount > 1 ? 's' : ''})`)
-                          : event.is_free
-                            ? 'Register for Free'
-                            : 'Proceed to Checkout'}
+                    {checkoutSaving
+                      ? 'Saving…'
+                      : event.is_sold_out
+                        ? 'Sold Out'
+                        : event.status !== 'published'
+                          ? 'Registrations Closed'
+                          : hasTypes
+                            ? (typedCount === 0 ? 'Select at least one ticket' : `Proceed to Checkout (${typedCount} ticket${typedCount > 1 ? 's' : ''})`)
+                            : event.is_free
+                              ? 'Register for Free'
+                              : 'Proceed to Checkout'}
                   </Box>
 
                   {/* Edit shortcut for managers */}
@@ -579,6 +609,7 @@ export function EventsApp({
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState<string | null>(null);
   const [selectedId,  setSelectedId]  = useState<string | null>(null);
+  const [savedCart,   setSavedCart]   = useState<{ eventTitle: string; eventId: string } | null>(null);
 
   const [search,      setSearch]      = useState('');
   const [debouncedQ,  setDebouncedQ]  = useState('');
@@ -602,6 +633,14 @@ export function EventsApp({
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then((cats: Category[]) => setCategories(cats))
       .catch(() => {});
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) { setSavedCart(null); return; }
+    fetch('/api/registrations/registrations/cart', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setSavedCart(d ? { eventId: d.event_id, eventTitle: d.event_title } : null))
+      .catch(() => setSavedCart(null));
   }, [token]);
 
   const fetchEvents = useCallback(() => {
@@ -644,6 +683,29 @@ export function EventsApp({
   return (
     <Box component="main" sx={{ bgcolor: '#f8fafc', minHeight: 'calc(100vh - 64px)', py: { xs: 2, md: 4 } }}>
       <Container maxWidth="lg">
+
+        {savedCart && (
+          <Alert
+            severity="info"
+            icon={<ShoppingCartIcon fontSize="small" />}
+            sx={{ mb: 2 }}
+            action={
+              <Stack direction="row" spacing={1}>
+                <Button size="small" variant="contained" onClick={() => { window.location.href = '/checkout'; }}>
+                  Resume Checkout
+                </Button>
+                <Button size="small" color="inherit" onClick={() => {
+                  setSavedCart(null);
+                  if (token) fetch('/api/registrations/registrations/cart', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+                }}>
+                  Clear
+                </Button>
+              </Stack>
+            }
+          >
+            You have a saved cart for <strong>{savedCart.eventTitle}</strong>
+          </Alert>
+        )}
 
         <Box sx={{ mb: 3, display: 'flex', alignItems: 'flex-end', gap: 2 }}>
           <Box sx={{ flex: 1 }}>

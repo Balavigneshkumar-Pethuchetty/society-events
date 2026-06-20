@@ -1,18 +1,22 @@
 import React from 'react';
-import { Box, Drawer, IconButton, Typography } from '@mui/material';
+import { Box, Divider, Drawer, IconButton, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 
-const SIDEBAR: { label: string; path: string }[] = [
-  { label: 'Dashboard',          path: '/admin' },
-  { label: 'Users',              path: '/admin/users' },
-  { label: 'Building',           path: '/admin/building' },
-  { label: 'Units',              path: '/admin/units' },
-  { label: 'Events',             path: '/admin/events' },
-  { label: 'Sponsors',           path: '/admin/sponsors' },
-  { label: 'Categories',         path: '/admin/categories' },
-  { label: 'Payments & Refunds', path: '/admin/refunds' },
-  { label: 'Reports',            path: '/admin/reports' },
-  { label: 'Settings',           path: '/admin/settings' },
+const SIDEBAR: { label: string; path: string; section?: string; adminOnly?: boolean }[] = [
+  { label: 'Dashboard',            path: '/admin',                      adminOnly: true },
+  { label: 'Users',                path: '/admin/users',                adminOnly: true },
+  { label: 'Building',             path: '/admin/building',             adminOnly: true },
+  { label: 'Units',                path: '/admin/units',                adminOnly: true },
+  { label: 'Events',               path: '/admin/events',               adminOnly: true },
+  { label: 'Sponsors',             path: '/admin/sponsors',             adminOnly: true },
+  { label: 'Categories',           path: '/admin/categories',           adminOnly: true },
+  { label: 'Payment Approvals',    path: '/admin/payments',            section: 'Payments' },
+  { label: 'Collector Registry',   path: '/admin/collector-registry' },
+  { label: 'Payment Requests',     path: '/admin/reconciliation' },
+  { label: 'Refund Tasks',         path: '/admin/pay-refunds' },
+  { label: 'Sponsorship Refunds',  path: '/admin/refunds',             section: 'Sponsors', adminOnly: true },
+  { label: 'Reports',              path: '/admin/reports',              adminOnly: true },
+  { label: 'Settings',             path: '/admin/settings',             adminOnly: true },
 ];
 
 function navigate(path: string) {
@@ -20,25 +24,36 @@ function navigate(path: string) {
   window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
 }
 
-function SidebarContent({ active, onNavigate }: { active: string; onNavigate?: () => void }) {
+function SidebarContent({ active, onNavigate, role }: { active: string; onNavigate?: () => void; role?: string }) {
+  const isCommittee = role === 'committee_member';
+  const visible = SIDEBAR.filter(item => !(isCommittee && item.adminOnly));
   return (
     <Box sx={{ pt: 1 }}>
-      {SIDEBAR.map(({ label, path }) => (
-        <Box
-          key={label}
-          onClick={() => { navigate(path); onNavigate?.(); }}
-          sx={{
-            px: 2.5, py: 1.25, fontSize: 14, cursor: 'pointer',
-            color: label === active ? '#6366f1' : '#475569',
-            fontWeight: label === active ? 700 : 400,
-            bgcolor: label === active ? '#ede9fe' : 'transparent',
-            borderRight: label === active ? '3px solid #6366f1' : '3px solid transparent',
-            transition: 'all .15s',
-            '&:hover': { bgcolor: label === active ? '#ede9fe' : '#f1f5f9', color: label === active ? '#6366f1' : '#0f172a' },
-          }}
-        >
-          {label}
-        </Box>
+      {visible.map(({ label, path, section }) => (
+        <React.Fragment key={label}>
+          {section && (
+            <Box sx={{ px: 2.5, pt: 1.5, pb: 0.5 }}>
+              <Typography fontSize={10} fontWeight={700} color="#94a3b8" textTransform="uppercase" letterSpacing={1}>
+                {section}
+              </Typography>
+              <Divider sx={{ mt: 0.5 }} />
+            </Box>
+          )}
+          <Box
+            onClick={() => { navigate(path); onNavigate?.(); }}
+            sx={{
+              px: 2.5, py: 1.25, fontSize: 14, cursor: 'pointer',
+              color: label === active ? '#6366f1' : '#475569',
+              fontWeight: label === active ? 700 : 400,
+              bgcolor: label === active ? '#ede9fe' : 'transparent',
+              borderRight: label === active ? '3px solid #6366f1' : '3px solid transparent',
+              transition: 'all .15s',
+              '&:hover': { bgcolor: label === active ? '#ede9fe' : '#f1f5f9', color: label === active ? '#6366f1' : '#0f172a' },
+            }}
+          >
+            {label}
+          </Box>
+        </React.Fragment>
       ))}
     </Box>
   );
@@ -48,9 +63,10 @@ interface AdminSidebarProps {
   active: string;
   mobileOpen: boolean;
   onMobileClose: () => void;
+  role?: string;
 }
 
-export function AdminSidebar({ active, mobileOpen, onMobileClose }: AdminSidebarProps) {
+export function AdminSidebar({ active, mobileOpen, onMobileClose, role }: AdminSidebarProps) {
   return (
     <>
       {/* Mobile: slide-in drawer */}
@@ -68,7 +84,7 @@ export function AdminSidebar({ active, mobileOpen, onMobileClose }: AdminSidebar
             <CloseIcon fontSize="small" />
           </IconButton>
         </Box>
-        <SidebarContent active={active} onNavigate={onMobileClose} />
+        <SidebarContent active={active} onNavigate={onMobileClose} role={role} />
       </Drawer>
 
       {/* Desktop: permanent sidebar */}
@@ -83,7 +99,7 @@ export function AdminSidebar({ active, mobileOpen, onMobileClose }: AdminSidebar
           minHeight: 'calc(100vh - 64px)',
         }}
       >
-        <SidebarContent active={active} />
+        <SidebarContent active={active} role={role} />
       </Box>
     </>
   );

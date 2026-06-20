@@ -1,0 +1,156 @@
+import secrets
+from urllib.parse import quote_plus
+
+from fastapi import HTTPException
+
+from app.adapters.base import PaymentProcessor
+from app.database import get_pool
+
+
+class ManualUpiAdapter(PaymentProcessor):
+    """Manual UPI adapter: builds a UPI-intent URI, creates PENDING records,
+    and verifies by matching a UTR entered by the operator (FR-06) or auto-matched
+    from the inbox (FR-05)."""
+
+    async def initiate_payment(self, order: dict) -> dict:
+        event_id       = order["event_id"]
+        registration_id = order.get("registration_id")
+        user_id        = order["user_id"]
+        payer_upi      = order["payer_upi"]
+        idempotency_key = order.get("idempotency_key", secrets.token_hex(16))
+
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            # Resolve collector from committee_registry
+            collector = await conn.fetchrow(
+                """SELECT cr.upi_id, u.name AS member_name,
+                          e.title, e.ticket_price, e.price_currency
+                   FROM committee_registry cr
+                   JOIN users u  ON u.id  = cr.member_id
+                   JOIN event e  ON e.id  = cr.event_id
+                   WHERE cr.event_id = $1::uuid""",
+                event_id,
+            )
+            if not collector:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No collector assigned for this event. Contact an admin.",
+                )
+
+            # If registration supplied, use its total_amount
+            if registration_id:
+                reg = await conn.fetchrow(
+                    "SELECT total_amount FROM registration WHERE id = $1::uuid",
+                    registration_id,
+                )
+                amount = float(reg["total_amount"]) if reg else float(collector["ticket_price"] or 0)
+            else:
+                amount = float(collector["ticket_price"] or 0)
+
+            payee_upi  = collector["upi_id"]
+            upi_name   = collector["member_name"]
+            event_title = collector["title"]
+            currency   = collector.get("price_currency", "INR")
+
+            # Idempotency: return existing pending txn if key matches (skip cancelled)
+            existing = await conn.fetchrow(
+                "SELECT id::text, txn_ref, status FROM payment_transaction WHERE idempotency_key = $1",
+                idempotency_key,
+            )
+            if existing and existing["status"] == "pending":
+                upi_intent_uri = _build_upi_uri(payee_upi, upi_name, amount, event_title, existing["txn_ref"])
+                return {"txn_ref": existing["txn_ref"], "payee_upi": payee_upi, "amount": amount,
+                        "upi_intent_uri": upi_intent_uri, "status": "pending"}
+
+            txn_ref = "TXN" + secrets.token_hex(8).upper()
+
+            txn_id = await conn.fetchval(
+                """INSERT INTO payment_transaction
+                   (txn_ref, event_id, registration_id, user_id, amount, currency,
+                    payee_upi, payer_upi, idempotency_key)
+                   VALUES ($1, $2::uuid, $3, $4::uuid, $5, $6, $7, $8, $9)
+                   RETURNING id::text""",
+                txn_ref, event_id,
+                registration_id if registration_id else None,
+                user_id, amount, currency, payee_upi, payer_upi, idempotency_key,
+            )
+
+            await conn.execute(
+                """INSERT INTO payment_audit_log (txn_id, from_status, to_status, updated_by, note)
+                   VALUES ($1::uuid, NULL, 'pending', $2, 'Payment initiated')""",
+                txn_id, user_id,
+            )
+
+        upi_intent_uri = _build_upi_uri(payee_upi, upi_name, amount, event_title, txn_ref)
+        return {
+            "txn_ref": txn_ref, "payee_upi": payee_upi,
+            "amount": amount, "upi_intent_uri": upi_intent_uri, "status": "pending",
+        }
+
+    async def verify_payment(self, txn_ref: str, utr: str) -> dict:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT id::text, status, registration_id::text FROM payment_transaction WHERE txn_ref = $1",
+                txn_ref,
+            )
+            if not row:
+                raise HTTPException(status_code=404, detail="Transaction not found")
+            if row["status"] == "verified":
+                return {"status": "verified", "utr": utr}
+            if row["status"] not in ("pending",):
+                raise HTTPException(status_code=400, detail=f"Cannot verify transaction in status: {row['status']}")
+
+            # Idempotency: block if UTR already used on another txn
+            clash = await conn.fetchval(
+                "SELECT id FROM payment_transaction WHERE payment_utr = $1 AND txn_ref != $2",
+                utr, txn_ref,
+            )
+            if clash:
+                raise HTTPException(status_code=409, detail="UTR already used on another transaction")
+
+            await conn.execute(
+                "UPDATE payment_transaction SET status='verified', payment_utr=$1, updated_at=now() WHERE txn_ref=$2",
+                utr, txn_ref,
+            )
+            await conn.execute(
+                """INSERT INTO payment_audit_log (txn_id, from_status, to_status, updated_by, note)
+                   VALUES ($1::uuid, 'pending', 'verified', 'admin_user', $2)""",
+                row["id"], f"Manual UTR entry: {utr}",
+            )
+            if row["registration_id"]:
+                await conn.execute(
+                    "UPDATE registration SET status='confirmed' WHERE id=$1::uuid",
+                    row["registration_id"],
+                )
+        return {"status": "verified", "utr": utr}
+
+    async def process_refund(self, txn_ref: str, refund_utr: str) -> dict:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT id::text, status FROM payment_transaction WHERE txn_ref = $1", txn_ref
+            )
+            if not row:
+                raise HTTPException(status_code=404, detail="Transaction not found")
+            if row["status"] not in ("refund_requested",):
+                raise HTTPException(status_code=400, detail=f"Cannot refund transaction in status: {row['status']}")
+
+            await conn.execute(
+                "UPDATE payment_transaction SET status='refunded', refund_utr=$1, updated_at=now() WHERE txn_ref=$2",
+                refund_utr, txn_ref,
+            )
+            await conn.execute(
+                """INSERT INTO payment_audit_log (txn_id, from_status, to_status, updated_by, note)
+                   VALUES ($1::uuid, 'refund_requested', 'refunded', 'committee_member', $2)""",
+                row["id"], f"Refund UTR: {refund_utr}",
+            )
+        return {"status": "refunded", "refund_utr": refund_utr}
+
+
+def _build_upi_uri(upi_id: str, name: str, amount: float, note: str, txn_ref: str) -> str:
+    return (
+        f"upi://pay?pa={quote_plus(upi_id)}&pn={quote_plus(name)}"
+        f"&am={amount:.2f}&cu=INR"
+        f"&tn={quote_plus(note[:50])}&tr={txn_ref}"
+    )

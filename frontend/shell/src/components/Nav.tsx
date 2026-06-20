@@ -25,9 +25,10 @@ const CATEGORIES = [
 
 // Base links every authenticated role sees
 const BASE_LINKS = [
-  { label: 'Home',       to: '/',        end: true },
-  { label: 'Events',     to: '/events',  end: false },
-  { label: 'My Tickets', to: '/tickets', end: false },
+  { label: 'Home',              to: '/',               end: true },
+  { label: 'Events',            to: '/events',         end: false },
+  { label: 'My Tickets',        to: '/tickets',        end: false },
+  { label: 'My Registrations',  to: '/registrations',  end: false },
 ];
 
 const navBtnSx = {
@@ -62,7 +63,7 @@ export function Nav() {
         ...(role === 'committee_member' || role === 'admin'
           ? [{ label: 'Manage', to: '/manage', end: false }]
           : []),
-        ...(role === 'admin'
+        ...(role === 'admin' || role === 'committee_member'
           ? [{ label: 'Admin', to: '/admin', end: false }]
           : []),
       ];

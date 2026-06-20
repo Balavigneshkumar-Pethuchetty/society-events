@@ -20,6 +20,9 @@ export default defineConfig(({ command, mode }) => ({
         mfe_payment: command === 'serve' && mode === 'development'
           ? 'http://localhost:4003/assets/remoteEntry.js'
           : '/mfe-payment/assets/remoteEntry.js',
+        mfe_tickets: command === 'serve' && mode === 'development'
+          ? 'http://localhost:4005/assets/remoteEntry.js'
+          : '/mfe-tickets/assets/remoteEntry.js',
       },
       // Cast to any to satisfy type differences between plugin SharedConfig and our desired options
       shared: {

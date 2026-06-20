@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SocietyProvider, useSociety } from './contexts/SocietyContext';
 import { UserServiceProvider } from './contexts/UserServiceContext';
 import { Nav } from './components/Nav';
+import { Footer } from './components/Footer';
 import { Home } from './pages/Home';
 import { Landing } from './pages/Landing';
 import { ForgotPassword } from './pages/ForgotPassword';
@@ -22,6 +23,7 @@ type RemoteModule = Record<string, unknown> & {
 interface AdminRoutesProps {
   token?: string | null;
   page?: string;
+  role?: string;
 }
 
 interface ManageRoutesProps {
@@ -38,6 +40,18 @@ interface EventsAppProps {
 
 interface SponsorAppProps {
   firstName?: string;
+}
+
+interface BookingAppProps {
+  token?: string | null;
+}
+
+interface PaymentAppProps {
+  token?: string | null;
+}
+
+interface TicketsAppProps {
+  token?: string | null;
 }
 
 // ── MFE unavailable fallback ──────────────────────────────────────────────────
@@ -121,14 +135,20 @@ const RemoteEventsApp = React.lazy(() =>
 
 const RemoteBookingApp = React.lazy(() =>
   import('mfe_booking/BookingApp')
-    .then((m) => ({ default: getRemoteComponent<Record<string, never>>(m, 'BookingApp') }))
+    .then((m) => ({ default: getRemoteComponent<BookingAppProps>(m, 'BookingApp') }))
     .catch(() => ({ default: () => <MfeUnavailable name="Booking" /> }))
 );
 
 const RemotePaymentApp = React.lazy(() =>
   import('mfe_payment/PaymentApp')
-    .then((m) => ({ default: getRemoteComponent<Record<string, never>>(m, 'PaymentApp') }))
+    .then((m) => ({ default: getRemoteComponent<PaymentAppProps>(m, 'PaymentApp') }))
     .catch(() => ({ default: () => <MfeUnavailable name="Payments" /> }))
+);
+
+const RemoteTicketsApp = React.lazy(() =>
+  import('mfe_tickets/TicketsApp')
+    .then((m) => ({ default: getRemoteComponent<TicketsAppProps>(m, 'TicketsApp') }))
+    .catch(() => ({ default: () => <MfeUnavailable name="Tickets" /> }))
 );
 
 // ── Shared UI pieces ──────────────────────────────────────────────────────────
@@ -216,6 +236,41 @@ function Placeholder({ label }: { label: string }) {
   );
 }
 
+// ── Role guard ────────────────────────────────────────────────────────────────
+function ProtectedRoute({
+  allowedRoles,
+  children,
+}: {
+  allowedRoles: string[];
+  children: React.ReactNode;
+}) {
+  const { user } = useAuth();
+  const role = user?.primaryRole ?? '';
+  if (!allowedRoles.includes(role)) {
+    return (
+      <Box
+        component="main"
+        sx={{
+          minHeight: 'calc(100vh - 64px)',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          gap: 2, px: 3,
+        }}
+      >
+        <Typography fontSize={48} lineHeight={1}>🔒</Typography>
+        <Typography variant="h5" fontWeight={700}>Access Denied</Typography>
+        <Alert severity="error" sx={{ maxWidth: 420 }}>
+          You don't have permission to view this page.
+        </Alert>
+        <Button variant="outlined" onClick={() => { window.location.href = '/'; }}>
+          Go to Home
+        </Button>
+      </Box>
+    );
+  }
+  return <>{children}</>;
+}
+
 // ── Wrappers ──────────────────────────────────────────────────────────────────
 function SponsorWrapper() {
   const { user } = useAuth();
@@ -241,15 +296,14 @@ function ManageWrapper() {
 }
 
 function AdminWrapper() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { pathname } = useLocation();
   const segments = pathname.split('/').filter(Boolean);
   const adminIndex = segments.lastIndexOf('admin');
   const page = adminIndex >= 0 ? segments[adminIndex + 1] : undefined;
-  console.log('[AdminWrapper] pathname:', pathname, '| segments:', segments, '| adminIndex:', adminIndex, '| page:', JSON.stringify(page));
   return (
     <React.Suspense fallback={<MfeFallback label="Admin Panel" />}>
-      <RemoteAdminRoutes token={token} page={page} />
+      <RemoteAdminRoutes token={token} page={page} role={user?.primaryRole} />
     </React.Suspense>
   );
 }
@@ -272,7 +326,13 @@ function AppShell() {
           <Route path="/forgot-password"  element={<ForgotPassword />} />
           <Route path="/mobile-login"     element={<MobileLogin />} />
           <Route path="/phone-register"   element={<PhoneRegister />} />
-          <Route path="*" element={<><Nav /><Landing /></>} />
+          <Route path="*" element={
+            <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+              <Nav />
+              <Box sx={{ flex: 1 }}><Landing /></Box>
+              <Footer />
+            </Box>
+          } />
         </Routes>
       </BrowserRouter>
     );
@@ -281,51 +341,73 @@ function AppShell() {
   if (isPending) {
     return (
       <BrowserRouter>
-        <Nav />
-        <PendingApproval />
+        <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+          <Nav />
+          <Box sx={{ flex: 1 }}><PendingApproval /></Box>
+          <Footer />
+        </Box>
       </BrowserRouter>
     );
   }
 
   return (
     <BrowserRouter>
-      <Nav />
-      <Routes>
-        <Route path="/"        element={<Home />} />
-        <Route path="/profile" element={<Profile />} />
+      <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+        <Nav />
+        <Box sx={{ flex: 1 }}>
+          <Routes>
+            <Route path="/"        element={<Home />} />
+            <Route path="/profile" element={<Profile />} />
 
-        <Route path="/events/*" element={
-          <React.Suspense fallback={<MfeFallback label="Events" />}>
-            <RemoteEventsApp societyName={societyName} city={city} token={token} />
-          </React.Suspense>
-        } />
+            <Route path="/events/*" element={
+              <React.Suspense fallback={<MfeFallback label="Events" />}>
+                <RemoteEventsApp societyName={societyName} city={city} token={token} />
+              </React.Suspense>
+            } />
 
-        <Route path="/tickets/*" element={
-          <React.Suspense fallback={<MfeFallback label="My Tickets" />}>
-            <RemoteBookingApp />
-          </React.Suspense>
-        } />
+            <Route path="/tickets/*" element={
+              <React.Suspense fallback={<MfeFallback label="My Tickets" />}>
+                <RemoteTicketsApp token={token} />
+              </React.Suspense>
+            } />
 
-        <Route path="/checkout/*" element={
-          <React.Suspense fallback={<MfeFallback label="Checkout" />}>
-            <RemotePaymentApp />
-          </React.Suspense>
-        } />
+            <Route path="/registrations/*" element={
+              <React.Suspense fallback={<MfeFallback label="My Registrations" />}>
+                <RemoteBookingApp token={token} />
+              </React.Suspense>
+            } />
 
-        <Route path="/payments/*" element={
-          <React.Suspense fallback={<MfeFallback label="Payments" />}>
-            <RemotePaymentApp />
-          </React.Suspense>
-        } />
+            <Route path="/checkout/*" element={
+              <React.Suspense fallback={<MfeFallback label="Checkout" />}>
+                <RemotePaymentApp token={token} />
+              </React.Suspense>
+            } />
 
-        <Route path="/manage/*" element={<ManageWrapper />} />
-        <Route path="/admin/*"  element={<AdminWrapper />} />
+            <Route path="/payments/*" element={
+              <React.Suspense fallback={<MfeFallback label="Payments" />}>
+                <RemotePaymentApp token={token} />
+              </React.Suspense>
+            } />
 
-        <Route path="/sponsor"    element={<SponsorWrapper />} />
-        <Route path="/scanner"    element={<Placeholder label="QR Scanner MFE — Security Guard" />} />
-        <Route path="/entry-log"  element={<Placeholder label="Entry Log MFE — Security Guard" />} />
-        <Route path="*"           element={<Placeholder label="404 — Page not found" />} />
-      </Routes>
+            <Route path="/manage/*" element={
+              <ProtectedRoute allowedRoles={['admin', 'committee_member']}>
+                <ManageWrapper />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/*" element={
+              <ProtectedRoute allowedRoles={['admin', 'committee_member']}>
+                <AdminWrapper />
+              </ProtectedRoute>
+            } />
+
+            <Route path="/sponsor"    element={<SponsorWrapper />} />
+            <Route path="/scanner"    element={<Placeholder label="QR Scanner MFE — Security Guard" />} />
+            <Route path="/entry-log"  element={<Placeholder label="Entry Log MFE — Security Guard" />} />
+            <Route path="*"           element={<Placeholder label="404 — Page not found" />} />
+          </Routes>
+        </Box>
+        <Footer />
+      </Box>
     </BrowserRouter>
   );
 }

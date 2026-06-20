@@ -6,7 +6,19 @@ RUN npm ci
 COPY . .
 ARG VITE_MODE=production
 ARG VITE_APP_ENV=prod
-RUN if [ "$VITE_MODE" = "development" ]; then VITE_APP_ENV=$VITE_APP_ENV npm run build:dev; else VITE_APP_ENV=$VITE_APP_ENV npm run build; fi
+ARG VITE_GOOGLE_LOGIN=
+ARG VITE_MOBILE_LOGIN=
+RUN if [ "$VITE_MODE" = "development" ]; then \
+      VITE_APP_ENV=$VITE_APP_ENV \
+      VITE_GOOGLE_LOGIN=$VITE_GOOGLE_LOGIN \
+      VITE_MOBILE_LOGIN=$VITE_MOBILE_LOGIN \
+      npm run build:dev; \
+    else \
+      VITE_APP_ENV=$VITE_APP_ENV \
+      VITE_GOOGLE_LOGIN=$VITE_GOOGLE_LOGIN \
+      VITE_MOBILE_LOGIN=$VITE_MOBILE_LOGIN \
+      npm run build; \
+    fi
 
 # ── Runtime (nginx serves the SPA) ───────────────────────────────────────────
 FROM nginx:alpine AS runtime

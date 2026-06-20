@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     splunk_hec_url: str = "http://splunk:8088/services/collector/event"
     splunk_hec_token: str = ""
 
+
     @property
     def database_url(self) -> str:
         return (
