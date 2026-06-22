@@ -99,6 +99,33 @@ class ScanResult(BaseModel):
     unmatched: int
 
 
+# ── Reconciliation settings ───────────────────────────────────────────────────
+
+class ReconSettingsIn(BaseModel):
+    imap_host:        str  = ""
+    imap_port:        int  = 993
+    imap_user:        str  = ""
+    imap_password:    str  = ""    # empty string = keep existing password
+    imap_mailbox:     str  = "INBOX"
+    poll_interval_s:  int  = 300
+    use_ai_parser:    bool = False
+    ollama_host:      str  = "http://localhost:11434"
+    ollama_model:     str  = "llama3"
+
+
+class ReconSettingsOut(BaseModel):
+    imap_host:        str
+    imap_port:        int
+    imap_user:        str
+    imap_password_set: bool   # True when a password is saved
+    imap_mailbox:     str
+    poll_interval_s:  int
+    use_ai_parser:    bool
+    ollama_host:      str
+    ollama_model:     str
+    updated_at:       Optional[datetime]
+
+
 # ── Audit ─────────────────────────────────────────────────────────────────────
 
 class AuditEntry(BaseModel):

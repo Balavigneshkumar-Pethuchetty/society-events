@@ -23,6 +23,17 @@ class TicketOut(BaseModel):
     user_email: Optional[str] = None
 
 
+class EventTicketItem(BaseModel):
+    ticket_id: str
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+    user_phone: Optional[str] = None
+    ticket_count: int
+    status: str   # active | used
+    scanned_at: Optional[datetime] = None
+    unit_label: Optional[str] = None   # e.g. "Block A – 101" or structure node name
+
+
 class ScanBody(BaseModel):
     token: str = Field(..., min_length=1)
 

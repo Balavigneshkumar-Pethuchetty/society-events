@@ -154,7 +154,7 @@ INSERT INTO apartment (id, society_id, block, unit_number, type) VALUES
 --   Ananya (resident)        → B-W1-F2-Flat 201   (d…011)   active
 --   Kiran  (resident)        → B-W2-F1-Flat 101   (d…013)   active
 --   Kavya  (sponsor)         → NULL                          active
---   Ramesh (security_guard)  → NULL                          active
+--   Ramu   (security_guard)  → NULL                          active
 --   Lakshmi (resident)       → NULL (pending approval)       is_active=FALSE
 --   Ravi   (resident)        → NULL (pending approval)       is_active=FALSE
 -- ---------------------------------------------------------------------------
@@ -221,8 +221,8 @@ INSERT INTO users (id, name, email, phone, role, keycloak_sub, identity_provider
 
     -- ── Active: security guard — no flat ──────────────────────────────────
     ('31100000-0000-0000-0000-000000000012',
-     'Ramesh Kumar', 'ramesh.kumar@pvh-blr.in', '+91-95432-10101',
-     'security_guard', 'a1000000-0000-0000-0000-000000000012', 'keycloak',
+     'Ramu Kumar', 'ramu.guard@pvh-blr.in', '+91-95432-10101',
+     'security_guard', 'a1000000-0000-0000-0000-000000000009', 'keycloak',
      TRUE, NULL),   -- security staff, no resident unit
 
     -- ── Pending approval: is_active=FALSE, no flat yet ────────────────────

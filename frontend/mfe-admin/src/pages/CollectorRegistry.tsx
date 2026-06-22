@@ -1,12 +1,22 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, Box, Button, CircularProgress, Container,
-  Dialog, DialogActions, DialogContent, DialogTitle,
-  IconButton, MenuItem, Paper, Stack, TextField, Typography,
+  Alert, Box, Button, Chip, CircularProgress, Collapse, Container,
+  Dialog, DialogActions, DialogContent, DialogTitle, Divider,
+  FormControlLabel, IconButton, InputAdornment, MenuItem,
+  Paper, Stack, Switch, TextField, Tooltip, Typography,
 } from '@mui/material';
-import AddIcon    from '@mui/icons-material/Add';
-import CloseIcon  from '@mui/icons-material/Close';
-import EditIcon   from '@mui/icons-material/Edit';
+import AddIcon          from '@mui/icons-material/Add';
+import CheckCircleIcon  from '@mui/icons-material/CheckCircle';
+import CloseIcon        from '@mui/icons-material/Close';
+import EditIcon         from '@mui/icons-material/Edit';
+import EmailIcon        from '@mui/icons-material/Email';
+import ExpandMoreIcon   from '@mui/icons-material/ExpandMore';
+import PsychologyIcon   from '@mui/icons-material/Psychology';
+import RefreshIcon      from '@mui/icons-material/Refresh';
+import SettingsIcon     from '@mui/icons-material/Settings';
+import SyncIcon         from '@mui/icons-material/Sync';
+import VisibilityIcon       from '@mui/icons-material/Visibility';
+import VisibilityOffIcon    from '@mui/icons-material/VisibilityOff';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -137,6 +147,344 @@ function AssignDialog({
   );
 }
 
+// ── Reconciliation settings types ────────────────────────────────────────────
+
+interface ReconSettings {
+  imap_host: string;
+  imap_port: number;
+  imap_user: string;
+  imap_password_set: boolean;
+  imap_mailbox: string;
+  poll_interval_s: number;
+  use_ai_parser: boolean;
+  ollama_host: string;
+  ollama_model: string;
+  updated_at: string | null;
+}
+
+// ── Reconciliation Settings Panel ─────────────────────────────────────────────
+
+function ReconSettingsPanel({ token }: { token: string }) {
+  const [open, setOpen]         = useState(false);
+  const [cfg,  setCfg]          = useState<ReconSettings | null>(null);
+  const [loading, setLoading]   = useState(false);
+  const [saving,  setSaving]    = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [testing,  setTesting]  = useState<'imap' | 'ollama' | null>(null);
+  const [showPw,   setShowPw]   = useState(false);
+  const [password, setPassword] = useState('');   // local field; empty = keep existing
+  const [msg, setMsg]           = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [scanResult, setScanResult] = useState<{ emails_processed: number; matched: number; unmatched: number } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch('/api/payments/recon-settings', token);
+      setCfg(data);
+    } catch (e: unknown) {
+      setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Failed to load settings' });
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { if (open) load(); }, [open, load]);
+
+  function patch<K extends keyof ReconSettings>(key: K, value: ReconSettings[K]) {
+    setCfg((prev) => prev ? { ...prev, [key]: value } : prev);
+  }
+
+  async function save() {
+    if (!cfg) return;
+    setSaving(true); setMsg(null);
+    try {
+      const body: Record<string, unknown> = {
+        imap_host: cfg.imap_host, imap_port: cfg.imap_port,
+        imap_user: cfg.imap_user, imap_password: password,
+        imap_mailbox: cfg.imap_mailbox, poll_interval_s: cfg.poll_interval_s,
+        use_ai_parser: cfg.use_ai_parser,
+        ollama_host: cfg.ollama_host, ollama_model: cfg.ollama_model,
+      };
+      const updated = await apiFetch('/api/payments/recon-settings', token, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      setCfg(updated);
+      setPassword('');
+      setMsg({ type: 'success', text: 'Settings saved.' });
+    } catch (e: unknown) {
+      setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Save failed' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function testImap() {
+    setTesting('imap'); setMsg(null);
+    try {
+      const r = await apiFetch('/api/payments/recon-settings/test-imap', token, { method: 'POST' });
+      setMsg({ type: 'success', text: `Connected! Mailbox "${r.mailbox}" has ${r.message_count} messages.` });
+    } catch (e: unknown) {
+      setMsg({ type: 'error', text: e instanceof Error ? e.message : 'IMAP test failed' });
+    } finally {
+      setTesting(null);
+    }
+  }
+
+  async function testOllama() {
+    setTesting('ollama'); setMsg(null);
+    try {
+      const r = await apiFetch('/api/payments/recon-settings/test-ollama', token, { method: 'POST' });
+      const modelOk = r.model_available
+        ? `Model "${r.configured_model}" is ready.`
+        : `Model "${r.configured_model}" not found. Available: ${r.available_models.join(', ') || 'none'}.`;
+      setMsg({ type: r.model_available ? 'success' : 'info', text: `Ollama connected. ${modelOk}` });
+    } catch (e: unknown) {
+      setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Ollama test failed' });
+    } finally {
+      setTesting(null);
+    }
+  }
+
+  async function scanNow() {
+    setScanning(true); setMsg(null); setScanResult(null);
+    try {
+      const r = await apiFetch('/api/payments/reconciliation/scan', token, { method: 'POST' });
+      setScanResult(r);
+      setMsg({ type: 'success', text: `Scan complete: ${r.matched} matched, ${r.unmatched} unmatched from ${r.emails_processed} emails.` });
+    } catch (e: unknown) {
+      setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Scan failed' });
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  return (
+    <Box>
+      <Button
+        variant="outlined"
+        startIcon={<SettingsIcon />}
+        endIcon={<ExpandMoreIcon sx={{ transform: open ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />}
+        onClick={() => setOpen((v) => !v)}
+        sx={{ mb: 1 }}
+      >
+        Reconciliation Settings
+      </Button>
+
+      <Collapse in={open}>
+        <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, mt: 1 }}>
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+          ) : !cfg ? null : (
+            <Stack spacing={3}>
+
+              {/* Status message */}
+              {msg && (
+                <Alert severity={msg.type} onClose={() => setMsg(null)}>{msg.text}</Alert>
+              )}
+
+              {/* ── IMAP section ── */}
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                  <EmailIcon color="primary" />
+                  <Typography fontWeight={700}>IMAP / Email Account</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    (the inbox that receives bank credit alerts)
+                  </Typography>
+                </Box>
+                <Stack spacing={2}>
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <TextField
+                      label="IMAP Host"
+                      value={cfg.imap_host}
+                      onChange={(e) => patch('imap_host', e.target.value)}
+                      size="small"
+                      sx={{ flex: 3 }}
+                      placeholder="imap.gmail.com"
+                    />
+                    <TextField
+                      label="Port"
+                      value={cfg.imap_port}
+                      onChange={(e) => patch('imap_port', Number(e.target.value))}
+                      size="small"
+                      type="number"
+                      sx={{ flex: 1 }}
+                    />
+                  </Box>
+                  <TextField
+                    label="Email address"
+                    value={cfg.imap_user}
+                    onChange={(e) => patch('imap_user', e.target.value)}
+                    size="small"
+                    fullWidth
+                    placeholder="treasurer@pvh-blr.in"
+                  />
+                  <TextField
+                    label={cfg.imap_password_set ? 'Password (leave blank to keep current)' : 'Password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    size="small"
+                    fullWidth
+                    type={showPw ? 'text' : 'password'}
+                    placeholder={cfg.imap_password_set ? '••••••••' : 'App password or IMAP password'}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton size="small" onClick={() => setShowPw((v) => !v)}>
+                            {showPw ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <TextField
+                      label="Mailbox / Folder"
+                      value={cfg.imap_mailbox}
+                      onChange={(e) => patch('imap_mailbox', e.target.value)}
+                      size="small"
+                      sx={{ flex: 2 }}
+                      placeholder="INBOX"
+                    />
+                    <TextField
+                      label="Poll interval (seconds)"
+                      value={cfg.poll_interval_s}
+                      onChange={(e) => patch('poll_interval_s', Number(e.target.value))}
+                      size="small"
+                      type="number"
+                      sx={{ flex: 2 }}
+                      helperText="300 = every 5 min"
+                    />
+                  </Box>
+                  <Box>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={testImap}
+                      disabled={testing === 'imap' || !cfg.imap_host || !cfg.imap_user}
+                      startIcon={testing === 'imap' ? <CircularProgress size={14} /> : <CheckCircleIcon />}
+                    >
+                      Test IMAP Connection
+                    </Button>
+                  </Box>
+                </Stack>
+              </Box>
+
+              <Divider />
+
+              {/* ── Ollama AI parser section ── */}
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <PsychologyIcon color="secondary" />
+                  <Typography fontWeight={700}>AI Parser (Ollama)</Typography>
+                  <Chip label="Optional" size="small" sx={{ fontSize: 11 }} />
+                </Box>
+                <Typography variant="caption" color="text.secondary" display="block" mb={2}>
+                  When enabled, a local Ollama LLM reads the email and extracts UTR, amount, and sender VPA
+                  for more accurate matching. Falls back to regex if Ollama is unreachable.
+                </Typography>
+                <Stack spacing={2}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={cfg.use_ai_parser}
+                        onChange={(e) => patch('use_ai_parser', e.target.checked)}
+                        color="secondary"
+                      />
+                    }
+                    label="Use Ollama AI to parse bank emails"
+                  />
+                  <Collapse in={cfg.use_ai_parser}>
+                    <Stack spacing={2} sx={{ mt: 1 }}>
+                      <TextField
+                        label="Ollama Host URL"
+                        value={cfg.ollama_host}
+                        onChange={(e) => patch('ollama_host', e.target.value)}
+                        size="small"
+                        fullWidth
+                        placeholder="http://localhost:11434"
+                      />
+                      <TextField
+                        label="Model"
+                        value={cfg.ollama_model}
+                        onChange={(e) => patch('ollama_model', e.target.value)}
+                        size="small"
+                        fullWidth
+                        placeholder="llama3"
+                        helperText="Run: ollama pull llama3"
+                      />
+                      <Box>
+                        <Button
+                          variant="outlined"
+                          color="secondary"
+                          size="small"
+                          onClick={testOllama}
+                          disabled={testing === 'ollama' || !cfg.ollama_host}
+                          startIcon={testing === 'ollama' ? <CircularProgress size={14} color="inherit" /> : <CheckCircleIcon />}
+                        >
+                          Test Ollama Connection
+                        </Button>
+                      </Box>
+                    </Stack>
+                  </Collapse>
+                </Stack>
+              </Box>
+
+              <Divider />
+
+              {/* ── Actions ── */}
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                <Button
+                  variant="contained"
+                  onClick={save}
+                  disabled={saving}
+                  startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
+                >
+                  {saving ? 'Saving…' : 'Save Settings'}
+                </Button>
+
+                <Tooltip title="Fetch unread bank emails now and match to pending payments">
+                  <span>
+                    <Button
+                      variant="outlined"
+                      color="success"
+                      onClick={scanNow}
+                      disabled={scanning || !cfg.imap_host || !cfg.imap_user}
+                      startIcon={scanning ? <CircularProgress size={14} color="inherit" /> : <SyncIcon />}
+                    >
+                      {scanning ? 'Scanning…' : 'Scan Inbox Now'}
+                    </Button>
+                  </span>
+                </Tooltip>
+
+                <Button size="small" startIcon={<RefreshIcon />} onClick={load} disabled={loading}>
+                  Reload
+                </Button>
+
+                {cfg.updated_at && (
+                  <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                    Last saved {new Date(cfg.updated_at).toLocaleString('en-IN')}
+                  </Typography>
+                )}
+              </Box>
+
+              {scanResult && (
+                <Alert severity="info" icon={<SyncIcon />}>
+                  Scan: <strong>{scanResult.emails_processed}</strong> emails read ·{' '}
+                  <strong>{scanResult.matched}</strong> payments auto-matched ·{' '}
+                  <strong>{scanResult.unmatched}</strong> unmatched
+                </Alert>
+              )}
+
+            </Stack>
+          )}
+        </Paper>
+      </Collapse>
+    </Box>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export function CollectorRegistry({ token }: { token?: string | null }) {
@@ -183,6 +531,10 @@ export function CollectorRegistry({ token }: { token?: string | null }) {
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+      <ReconSettingsPanel token={token} />
+
+      <Divider sx={{ my: 3 }} />
 
       {loading
         ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}><CircularProgress /></Box>

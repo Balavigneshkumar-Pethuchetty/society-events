@@ -9,7 +9,7 @@ from fastapi.responses import Response as FastAPIResponse
 
 from app.auth import get_current_claims, require_role
 from app.database import get_pool
-from app.models import ScanBody, ScanOut, TicketOut
+from app.models import EventTicketItem, ScanBody, ScanOut, TicketOut
 
 router = APIRouter()
 
@@ -119,6 +119,108 @@ async def get_my_tickets(claims: dict = Depends(get_current_claims)):
             user_id,
         )
     return [_build_out(r) for r in rows]
+
+
+# ── Shared roster query ───────────────────────────────────────────────────────
+
+_ROSTER_QUERY = """
+    SELECT t.id::text AS ticket_id,
+           u.name     AS user_name,
+           u.email    AS user_email,
+           u.phone    AS user_phone,
+           r.ticket_count,
+           t.status,
+           t.scanned_at,
+           COALESCE(
+               (SELECT sn.name
+                FROM user_units uu
+                JOIN structure_nodes sn ON sn.id = uu.node_id
+                WHERE uu.user_id = u.id
+                LIMIT 1),
+               (SELECT a.block || ' – ' || a.unit_number
+                FROM user_apartments ua
+                JOIN apartment a ON a.id = ua.apartment_id
+                WHERE ua.user_id = u.id
+                LIMIT 1)
+           ) AS unit_label
+    FROM ticket t
+    JOIN registration r ON r.id  = t.reg_id
+    JOIN users u        ON u.id  = t.user_id
+    WHERE t.event_id = $1::uuid
+      AND t.status  != 'cancelled'
+    ORDER BY u.name
+"""
+
+
+# ── GET /tickets/event/{event_id} — all tickets for an event (guard / admin) ──
+
+@router.get("/event/{event_id}", response_model=list[EventTicketItem], summary="List all tickets for an event")
+async def list_event_tickets(
+    event_id: str,
+    claims: dict = Depends(require_role("admin", "committee_member", "security_guard")),
+):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(_ROSTER_QUERY, event_id)
+    return [dict(r) for r in rows]
+
+
+# ── POST /tickets/{ticket_id}/enter — mark entry by ticket ID (guard / admin) ─
+
+@router.post("/{ticket_id}/enter", response_model=ScanOut, summary="Mark gate entry by ticket ID")
+async def enter_by_ticket_id(
+    ticket_id: str,
+    claims: dict = Depends(require_role("admin", "committee_member", "security_guard")),
+):
+    sub = claims.get("sub", "")
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        scanner_id = await _get_db_user_id(conn, sub)
+        row = await conn.fetchrow(
+            """
+            SELECT t.id::text, t.reg_id::text, t.event_id::text, t.status,
+                   t.scanned_at, r.ticket_count,
+                   e.title        AS event_title,
+                   e.start_time   AS event_start_time,
+                   e.venue        AS event_venue,
+                   u.name         AS user_name
+            FROM ticket t
+            JOIN registration r ON r.id = t.reg_id
+            JOIN event e        ON e.id = t.event_id
+            JOIN users u        ON u.id = t.user_id
+            WHERE t.id = $1::uuid
+            """,
+            ticket_id,
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Ticket not found")
+
+        already_scanned = row["status"] == "used"
+
+        if not already_scanned:
+            now = datetime.now(timezone.utc)
+            await conn.execute(
+                "UPDATE ticket SET status = 'used', scanned_at = $1, scanned_by = $2::uuid WHERE id = $3::uuid",
+                now, scanner_id, ticket_id,
+            )
+            await conn.execute(
+                "UPDATE registration SET status = 'attended' WHERE id = $1::uuid",
+                row["reg_id"],
+            )
+
+    return ScanOut(
+        ticket_id=row["id"],
+        reg_id=row["reg_id"],
+        event_id=row["event_id"],
+        event_title=row["event_title"],
+        event_start_time=row["event_start_time"],
+        event_venue=row["event_venue"],
+        ticket_count=row["ticket_count"],
+        status="used",
+        scanned_at=row["scanned_at"] if already_scanned else datetime.now(timezone.utc),
+        user_name=row.get("user_name"),
+        already_scanned=already_scanned,
+    )
 
 
 # ── GET /tickets/{id} ─────────────────────────────────────────────────────────

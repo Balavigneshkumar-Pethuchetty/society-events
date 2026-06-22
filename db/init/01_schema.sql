@@ -687,3 +687,20 @@ CREATE TABLE IF NOT EXISTS unit_assignment_requests (
 CREATE INDEX IF NOT EXISTS idx_unit_requests_user   ON unit_assignment_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_unit_requests_node   ON unit_assignment_requests(node_id);
 CREATE INDEX IF NOT EXISTS idx_unit_requests_status ON unit_assignment_requests(status);
+
+-- ── Payment reconciliation settings (single-row config) ───────────────────────
+CREATE TABLE IF NOT EXISTS payment_reconciliation_settings (
+    id               SMALLINT PRIMARY KEY DEFAULT 1,
+    imap_host        VARCHAR(255) NOT NULL DEFAULT '',
+    imap_port        INT          NOT NULL DEFAULT 993,
+    imap_user        VARCHAR(255) NOT NULL DEFAULT '',
+    imap_password    TEXT         NOT NULL DEFAULT '',
+    imap_mailbox     VARCHAR(100) NOT NULL DEFAULT 'INBOX',
+    poll_interval_s  INT          NOT NULL DEFAULT 300,
+    use_ai_parser    BOOLEAN      NOT NULL DEFAULT FALSE,
+    ollama_host      VARCHAR(255) NOT NULL DEFAULT 'http://localhost:11434',
+    ollama_model     VARCHAR(100) NOT NULL DEFAULT 'llama3',
+    updated_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT single_settings_row CHECK (id = 1)
+);
+INSERT INTO payment_reconciliation_settings (id) VALUES (1) ON CONFLICT DO NOTHING;

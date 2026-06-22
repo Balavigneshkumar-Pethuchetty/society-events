@@ -11,7 +11,7 @@ from app.config import settings
 from app.database import close_pool, get_pool, wait_for_db
 from app.middleware.splunk import SplunkLoggingMiddleware
 from app.reconciliation import inbox as reconciliation_inbox
-from app.routes import audit, payments, reconciliation, refunds, registry
+from app.routes import audit, payments, reconciliation, refunds, registry, settings as recon_settings
 
 _OPENAPI_URL     = "openapi.json"
 _OAUTH2_REDIRECT = "/docs/oauth2-redirect"
@@ -73,6 +73,7 @@ app.include_router(refunds.router,         prefix="/refunds",         tags=["ref
 app.include_router(reconciliation.router,  prefix="/reconciliation",  tags=["reconciliation"])
 app.include_router(registry.router,        prefix="/registry",        tags=["registry"])
 app.include_router(audit.router,           prefix="/audit",           tags=["audit"])
+app.include_router(recon_settings.router,  prefix="/recon-settings",  tags=["reconciliation-settings"])
 
 
 @app.get("/health", tags=["ops"])

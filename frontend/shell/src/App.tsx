@@ -14,6 +14,8 @@ import { MobileLogin } from './pages/MobileLogin';
 import { PhoneRegister } from './pages/PhoneRegister';
 import { PendingApproval } from './pages/PendingApproval';
 import { Profile } from './pages/Profile';
+import { SecurityScanner } from './pages/SecurityScanner';
+import { EntryLog } from './pages/EntryLog';
 import { theme } from './theme';
 
 type RemoteModule = Record<string, unknown> & {
@@ -401,8 +403,8 @@ function AppShell() {
             } />
 
             <Route path="/sponsor"    element={<SponsorWrapper />} />
-            <Route path="/scanner"    element={<Placeholder label="QR Scanner MFE — Security Guard" />} />
-            <Route path="/entry-log"  element={<Placeholder label="Entry Log MFE — Security Guard" />} />
+            <Route path="/scanner"    element={<SecurityScanner />} />
+            <Route path="/entry-log"  element={<EntryLog />} />
             <Route path="*"           element={<Placeholder label="404 — Page not found" />} />
           </Routes>
         </Box>
