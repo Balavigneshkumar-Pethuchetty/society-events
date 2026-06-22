@@ -45,7 +45,7 @@ def _load_dotenv(path: str = ".env") -> None:
 _load_dotenv()
 
 # ── Config ────────────────────────────────────────────────────────────────────
-KEYCLOAK_URL     = os.getenv("KEYCLOAK_URL", "http://localhost:" + os.getenv("KEYCLOAK_PORT", "8081"))
+KEYCLOAK_URL     = os.getenv("KEYCLOAK_URL", "https://auth.gm-global-techies-town.club")
 ADMIN_USER       = os.getenv("KEYCLOAK_ADMIN_USER",     "admin")
 ADMIN_PASSWORD   = os.getenv("KEYCLOAK_ADMIN_PASSWORD", "")
 REALM            = os.getenv("KEYCLOAK_REALM",           "society-events")

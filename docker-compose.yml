@@ -11,14 +11,10 @@ services:
       NGINX_PORT:           ${NGINX_PORT}
       NGINX_ADMIN_USER:     ${NGINX_ADMIN_USER:-admin}
       NGINX_ADMIN_PASSWORD: ${NGINX_ADMIN_PASSWORD}
-      KEYCLOAK_PORT:        ${KEYCLOAK_PORT}
     ports:
       - "0.0.0.0:${NGINX_PORT}:${NGINX_PORT}"
     volumes:
       - nginx_logs:/var/log/nginx
-    depends_on:
-      keycloak:
-        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:${NGINX_PORT}/nginx-health || exit 1"]
       interval: 15s
@@ -37,7 +33,6 @@ services:
       POSTGRES_USER:     ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB:       ${POSTGRES_DB:-society_events}
-      KEYCLOAK_DB:       ${KEYCLOAK_DB:-keycloak}
     ports:
       - "127.0.0.1:${POSTGRES_PORT}:${POSTGRES_PORT}"
     volumes:
@@ -52,50 +47,6 @@ services:
     networks:
       - society_net
 
-  # ─── Keycloak (OAuth 2.0 / OIDC) ─────────────────────────────────────────
-  keycloak:
-    image: quay.io/keycloak/keycloak:25.0
-    container_name: society_keycloak
-    restart: always
-    # --features=token-exchange enables RFC 8693 token exchange required for OTP login
-    command: start-dev --import-realm --features=token-exchange --spi-theme-cache-themes=false --spi-theme-cache-templates=false
-    environment:
-      KC_DB:                   postgres
-      KC_DB_URL:               jdbc:postgresql://postgres:${POSTGRES_PORT}/${KEYCLOAK_DB:-keycloak}
-      KC_DB_USERNAME:          ${POSTGRES_USER}
-      KC_DB_PASSWORD:          ${POSTGRES_PASSWORD}
-      KEYCLOAK_ADMIN:          ${KEYCLOAK_ADMIN_USER:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-      KC_PROXY_HEADERS:        xforwarded     # trust X-Forwarded-* from nginx
-      KC_HOSTNAME_STRICT:      "false"        # dynamic; email links use X-Forwarded-* headers
-      KC_HOSTNAME_STRICT_HTTPS: "false"       # nginx handles TLS; Keycloak runs plain HTTP
-      KC_HTTP_ENABLED:         "true"
-      KC_HEALTH_ENABLED:       "true"
-      KC_LOG_LEVEL:            INFO
-      KC_HTTP_PORT:            ${KEYCLOAK_PORT}
-      GOOGLE_CLIENT_ID:        ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET:    ${GOOGLE_CLIENT_SECRET:-}
-      GMAIL_SMTP_USER:         ${GMAIL_SMTP_USER:-}
-      GMAIL_APP_PASSWORD:      ${GMAIL_APP_PASSWORD:-}
-      KEYCLOAK_API_CLIENT_SECRET: ${KEYCLOAK_API_CLIENT_SECRET}
-    ports:
-      - "127.0.0.1:${KEYCLOAK_PORT}:${KEYCLOAK_PORT}"
-    volumes:
-      - ./keycloak:/opt/keycloak/data/import:ro
-      - ./keycloak/themes:/opt/keycloak/themes:ro
-    # No host port — accessed through nginx at /auth/
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "bash -lc 'exec 3<>/dev/tcp/localhost/9000; printf \"GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; grep -q \"200 OK\" <&3'"]
-      interval: 20s
-      timeout: 10s
-      retries: 15
-      start_period: 90s
-    networks:
-      - society_net
-
   # ─── pgAdmin 4 (Database GUI) — served at /pgadmin/ ──────────────────────
   pgadmin:
     image: dpage/pgadmin4:8
@@ -107,8 +58,7 @@ services:
       PGADMIN_CONFIG_SERVER_MODE:              "False"
       PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
       PGADMIN_CONFIG_WTF_CSRF_ENABLED:         "False"
-      PGADMIN_CONFIG_LOGIN_BANNER:             "'Society Events — Local Dev'"
-      SCRIPT_NAME:                             /pgadmin   # pgAdmin subpath prefix
+      PGADMIN_CONFIG_LOGIN_BANNER:             "'Society Events — DB Admin'"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
       - ./db/pgadmin/servers.json:/pgadmin4/servers.json:ro
@@ -117,7 +67,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/pgadmin/misc/ping | grep -q PING"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost/misc/ping | grep -q PING"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -161,7 +111,7 @@ services:
       DB_NAME:           ${POSTGRES_DB:-society_events}
       DB_USER:           ${POSTGRES_USER}
       DB_PASSWORD:       ${POSTGRES_PASSWORD}
-      KEYCLOAK_URL:              http://keycloak:${KEYCLOAK_PORT}
+      KEYCLOAK_URL:              ${KEYCLOAK_URL:-https://auth.gm-global-techies-town.club}
       KEYCLOAK_REALM:            society-events
       KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL}
       APP_PUBLIC_URL:            ${APP_PUBLIC_URL}
@@ -172,13 +122,11 @@ services:
       SOCIETY_NAME:              ${SOCIETY_NAME:-GM Global Techies Town}
       SOCIETY_SHORT_NAME:        ${SOCIETY_SHORT_NAME:-GMGT}
       SOCIETY_CITY:              ${SOCIETY_CITY:-Bengaluru}
-      SPLUNK_HEC_URL:            http://splunk:8088/services/collector/event
+      SPLUNK_HEC_URL:            http://host.containers.internal:8088/services/collector/event
       SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
-      keycloak:
-        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3001/health || exit 1"]
       interval: 15s
@@ -198,7 +146,7 @@ services:
     environment:
       REDIS_URL:                  redis://redis:${REDIS_PORT}
       REDIS_PASSWORD:             ${REDIS_PASSWORD}
-      KEYCLOAK_URL:               http://keycloak:${KEYCLOAK_PORT}
+      KEYCLOAK_URL:               ${KEYCLOAK_URL:-https://auth.gm-global-techies-town.club}
       KEYCLOAK_REALM:             society-events
       KEYCLOAK_ADMIN_USER:        ${KEYCLOAK_ADMIN_USER:-admin}
       KEYCLOAK_ADMIN_PASSWORD:    ${KEYCLOAK_ADMIN_PASSWORD}
@@ -222,8 +170,6 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      keycloak:
-        condition: service_started
       user-service:
         condition: service_healthy
     healthcheck:
@@ -248,12 +194,12 @@ services:
       DB_NAME:           ${POSTGRES_DB:-society_events}
       DB_USER:           ${POSTGRES_USER}
       DB_PASSWORD:       ${POSTGRES_PASSWORD}
-      KEYCLOAK_URL:              http://keycloak:${KEYCLOAK_PORT}
+      KEYCLOAK_URL:              ${KEYCLOAK_URL:-https://auth.gm-global-techies-town.club}
       KEYCLOAK_REALM:            society-events
       KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL}
       INTERNAL_API_KEY:          ${INTERNAL_API_KEY}
       SOCIETY_ID:                11100000-0000-0000-0000-000000000001
-      SPLUNK_HEC_URL:            http://splunk:8088/services/collector/event
+      SPLUNK_HEC_URL:            http://host.containers.internal:8088/services/collector/event
       SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
       SOCIETY_UPI_ID:            ${SOCIETY_UPI_ID:-}
       SOCIETY_UPI_NAME:          ${SOCIETY_UPI_NAME:-}
@@ -264,8 +210,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      keycloak:
-        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3002/health || exit 1"]
       interval: 15s
@@ -288,12 +232,12 @@ services:
       DB_NAME:           ${POSTGRES_DB:-society_events}
       DB_USER:           ${POSTGRES_USER}
       DB_PASSWORD:       ${POSTGRES_PASSWORD}
-      KEYCLOAK_URL:              http://keycloak:${KEYCLOAK_PORT}
+      KEYCLOAK_URL:              ${KEYCLOAK_URL:-https://auth.gm-global-techies-town.club}
       KEYCLOAK_REALM:            society-events
       KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL}
       INTERNAL_API_KEY:          ${INTERNAL_API_KEY}
       SOCIETY_ID:                11100000-0000-0000-0000-000000000001
-      SPLUNK_HEC_URL:            http://splunk:8088/services/collector/event
+      SPLUNK_HEC_URL:            http://host.containers.internal:8088/services/collector/event
       SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
       SOCIETY_UPI_ID:            ${SOCIETY_UPI_ID:-}
       SOCIETY_UPI_NAME:          ${SOCIETY_UPI_NAME:-}
@@ -306,8 +250,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      keycloak:
-        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3005/health || exit 1"]
       interval: 15s
@@ -330,18 +272,16 @@ services:
       DB_NAME:           ${POSTGRES_DB:-society_events}
       DB_USER:           ${POSTGRES_USER}
       DB_PASSWORD:       ${POSTGRES_PASSWORD}
-      KEYCLOAK_URL:              http://keycloak:${KEYCLOAK_PORT}
+      KEYCLOAK_URL:              ${KEYCLOAK_URL:-https://auth.gm-global-techies-town.club}
       KEYCLOAK_REALM:            society-events
       KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL}
       INTERNAL_API_KEY:          ${INTERNAL_API_KEY}
       SOCIETY_ID:                11100000-0000-0000-0000-000000000001
-      SPLUNK_HEC_URL:            http://splunk:8088/services/collector/event
+      SPLUNK_HEC_URL:            http://host.containers.internal:8088/services/collector/event
       SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
-      keycloak:
-        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3006/health || exit 1"]
       interval: 15s
@@ -364,7 +304,7 @@ services:
       DB_NAME:           ${POSTGRES_DB:-society_events}
       DB_USER:           ${POSTGRES_USER}
       DB_PASSWORD:       ${POSTGRES_PASSWORD}
-      KEYCLOAK_URL:              http://keycloak:${KEYCLOAK_PORT}
+      KEYCLOAK_URL:              ${KEYCLOAK_URL:-https://auth.gm-global-techies-town.club}
       KEYCLOAK_REALM:            society-events
       KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL}
       INTERNAL_API_KEY:          ${INTERNAL_API_KEY}
@@ -376,13 +316,11 @@ services:
       IMAP_PASSWORD:             ${IMAP_PASSWORD:-}
       IMAP_MAILBOX:              ${IMAP_MAILBOX:-INBOX}
       RECONCILIATION_INTERVAL_SECONDS: ${RECONCILIATION_INTERVAL_SECONDS:-300}
-      SPLUNK_HEC_URL:            http://splunk:8088/services/collector/event
+      SPLUNK_HEC_URL:            http://host.containers.internal:8088/services/collector/event
       SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
-      keycloak:
-        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3007/health || exit 1"]
       interval: 15s

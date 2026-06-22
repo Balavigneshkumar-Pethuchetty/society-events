@@ -9,9 +9,9 @@ class Settings(BaseSettings):
     db_user: str
     db_password: str
 
-    keycloak_url: str = "http://keycloak:8080"
+    keycloak_url: str = "https://auth.gm-global-techies-town.club"
     keycloak_realm: str = "society-events"
-    keycloak_public_url: str = "http://localhost:8080"
+    keycloak_public_url: str = "https://auth.gm-global-techies-town.club"
     internal_api_key: str
     society_id: str = "11100000-0000-0000-0000-000000000001"
 

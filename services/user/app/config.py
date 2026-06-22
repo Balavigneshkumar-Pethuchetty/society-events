@@ -10,11 +10,10 @@ class Settings(BaseSettings):
     db_user: str
     db_password: str
 
-    keycloak_url: str = "http://keycloak:8080"
+    keycloak_url: str = "https://auth.gm-global-techies-town.club"
     keycloak_realm: str = "society-events"
     # Externally reachable Keycloak URL (browser-side). Used for Swagger UI OAuth2 URLs.
-    # Defaults to port 8080 to match the default NGINX_PORT; override in .env if needed.
-    keycloak_public_url: str = "http://localhost:8081"
+    keycloak_public_url: str = "https://auth.gm-global-techies-town.club"
     # App's public URL — where users land after completing Keycloak actions (e.g. password reset)
     app_public_url: str = "http://localhost:8080"
     # Keycloak master-realm admin credentials for role assignment via Admin REST API

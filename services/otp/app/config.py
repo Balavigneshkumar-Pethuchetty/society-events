@@ -6,8 +6,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379"
     redis_password: str = ""
 
-    # Keycloak (internal URL)
-    keycloak_url: str = "http://keycloak:8081"
+    # Keycloak (centralized auth service)
+    keycloak_url: str = "https://auth.gm-global-techies-town.club"
     keycloak_realm: str = "society-events"
     keycloak_admin_user: str = "admin"
     keycloak_admin_password: str

@@ -16,29 +16,28 @@
         shell-db shell-redis sync-users setup-google-idp \
         setup-otp setup-otp-keycloak otp-secret logs-otp restart-otp-service \
         frontend frontend-install frontend-docker \
-        restart-nginx restart-keycloak restart-postgres restart-redis \
-        restart-pgadmin restart-user-service restart-event-service restart-cloudflared \
+        restart-nginx restart-postgres restart-redis \
+        restart-pgadmin restart-user-service restart-event-service \
         restart-otp-service \
         restart-mfe-admin restart-mfe-events restart-mfe-booking restart-mfe-payment \
-        restart-splunk restart-fluent-bit \
-        logs-nginx logs-kc logs-db logs-user logs-events logs-otp \
-        logs-cloudflared logs-mfe-admin logs-mfe-events logs-mfe-booking logs-mfe-payment \
+        logs-nginx logs-db logs-user logs-events logs-otp \
+        logs-mfe-admin logs-mfe-events logs-mfe-booking logs-mfe-payment \
         logs-splunk logs-fluent-bit \
-        _check-monitoring monitoring-up monitoring-down \
-        splunk-up splunk-down fluent-bit-up fluent-bit-down
+        splunk-up splunk-down
 
 ## ── Environment ─────────────────────────────────────────────────────────────
-# ENV=prod   → docker-compose.yml + docker-compose.monitoring.yml + docker-compose.prod.yml
-# ENV=stage  → docker-compose.yml + docker-compose.monitoring.yml
-# ENV=dev    → docker-compose.yml  (no Splunk, no Cloudflared)
-# ENV=test   → docker-compose.yml  (no Splunk, no Cloudflared)
+# ENV=prod   → docker-compose.yml + docker-compose.prod.yml
+# ENV=stage  → docker-compose.yml
+# ENV=dev    → docker-compose.yml
+# ENV=test   → docker-compose.yml
+#
+# Splunk + Fluent Bit are centralized in ~/splunk-service (independent stack).
+# Start with: make splunk-up  |  Stop with: make splunk-down
 ENV              ?= prod
 ENV_FILE         := $(if $(filter prod,$(ENV)),.env,.env.$(ENV))
 
 ifeq ($(ENV),prod)
-  COMPOSE_FILES := -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.prod.yml
-else ifeq ($(ENV),stage)
-  COMPOSE_FILES := -f docker-compose.yml -f docker-compose.monitoring.yml
+  COMPOSE_FILES := -f docker-compose.yml -f docker-compose.prod.yml
 else
   COMPOSE_FILES := -f docker-compose.yml
 endif
@@ -77,10 +76,8 @@ free-ports: ## Kill stale rootlessport processes that hold project ports (Podman
 	@_released=0; \
 	for port in \
 	    $$(grep -m1 '^NGINX_PORT='    $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo 8080) \
-	    $$(grep -m1 '^KEYCLOAK_PORT=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo 8081) \
 	    $$(grep -m1 '^POSTGRES_PORT=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo 5432) \
-	    $$(grep -m1 '^REDIS_PORT='    $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo 6379) \
-	    $$(grep -m1 '^SPLUNK_PORT='   $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo 8000); do \
+	    $$(grep -m1 '^REDIS_PORT='    $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]' || echo 6379); do \
 	  pid=$$(ss -Htlnp | grep ":$$port[[:space:]]" | grep -o 'pid=[0-9]*' | cut -d= -f2 | head -1); \
 	  if [ -n "$$pid" ]; then \
 	    echo "  [free-ports] releasing port $$port (pid $$pid)"; \
@@ -93,7 +90,7 @@ free-ports: ## Kill stale rootlessport processes that hold project ports (Podman
 validate-ports: check-env ## Validate that host ports in the active env file do not conflict
 	@_f=$(ENV_FILE); \
 	_get() { grep -m1 "^$$1=" "$$_f" 2>/dev/null | cut -d= -f2- | tr -d '"[:space:]' || echo "$$2"; }; \
-	ports="NGINX_PORT:$$(_get NGINX_PORT 8080) KEYCLOAK_PORT:$$(_get KEYCLOAK_PORT 8081) POSTGRES_PORT:$$(_get POSTGRES_PORT 5432) REDIS_PORT:$$(_get REDIS_PORT 6379) SPLUNK_PORT:$$(_get SPLUNK_PORT 8000)"; \
+	ports="NGINX_PORT:$$(_get NGINX_PORT 8080) POSTGRES_PORT:$$(_get POSTGRES_PORT 5432) REDIS_PORT:$$(_get REDIS_PORT 6379)"; \
 	seen=""; has_conflict=0; \
 	for item in $$ports; do \
 	  name=$${item%%:*}; port=$${item#*:}; \
@@ -114,26 +111,22 @@ up: validate-ports ## Start all services (detached). ENV=dev|test|stage|prod
 	@$(MAKE) -s free-ports ENV=$(ENV)
 	$(COMPOSE) --profile frontend up -d --build
 	@echo "  Activating host port bindings…"
-	@$(COMPOSE) restart nginx keycloak 2>/dev/null || true
-	@echo "  Starting Cloudflare tunnel…"
-	@docker compose --env-file $(ENV_FILE) -f docker-compose.yml -f docker-compose.prod.yml up -d cloudflared 2>/dev/null || true
+	@$(COMPOSE) restart nginx 2>/dev/null || true
 	@echo ""
-	@_splunk_pw=$$(grep -m1 '^SPLUNK_PASSWORD=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]'); \
-	_pub=$$(grep -m1 '^KEYCLOAK_PUBLIC_URL=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
-	 _port=$$(grep -m1 '^NGINX_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo 8080); \
-	 _kc_port=$$(grep -m1 '^KEYCLOAK_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo 8081); \
-	 if echo "$$_pub" | grep -qv "localhost\|127\.0\.0\.1"; then \
-	   _site="$$_pub"; \
-	   _kc_admin="http://localhost:$$_kc_port/admin/"; \
+	@_port=$$(grep -m1 '^NGINX_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo 8080); \
+	 _local="http://localhost:$$_port"; \
+	 if [ "$(ENV)" = "prod" ] || [ "$(ENV)" = "stage" ]; then \
+	   _site="https://gm-global-techies-town.club"; \
+	   _pgadmin="https://pgadmin.gm-global-techies-town.club"; \
 	 else \
-	   _site="http://localhost:$$_port"; \
-	   _kc_admin="http://localhost:$$_kc_port/admin/"; \
+	   _site="$$_local"; \
+	   _pgadmin="$$_local/pgadmin/"; \
 	 fi; \
 	 echo ""; \
 	 echo "  $(CYAN)[$(ENV)] Services starting…$(RESET)"; \
-	 echo "  Env file  → $(ENV_FILE)"; \
-	 echo "  Frontend  → $$_site/"; \
-	 echo "  Keycloak  → $$_kc_admin (direct — bypasses nginx)"; \
+	 echo "  Env file     → $(ENV_FILE)"; \
+	 echo "  Local        → $$_local/"; \
+	 echo "  Keycloak     → https://auth.gm-global-techies-town.club/admin/"; \
 	 echo ""; \
 	 echo "  $(CYAN)Browser pages$(RESET)"; \
 	 echo "  App home         → $$_site/"; \
@@ -150,18 +143,18 @@ up: validate-ports ## Start all services (detached). ENV=dev|test|stage|prod
 	 echo "  Entry log        → $$_site/entry-log"; \
 	 echo ""; \
 	 echo "  $(CYAN)Admin / docs$(RESET)"; \
-	 echo "  Keycloak admin   → $$_kc_admin"; \
-	 echo "  pgAdmin          → $$_site/pgadmin/"; \
-	 if [ -n "$$_splunk_pw" ]; then echo "  Splunk           → $$_site/splunk/"; fi; \
-	 echo "  User API docs    → $$_site/api/users/docs"; \
-	 echo "  Event API docs   → $$_site/api/events/docs"; \
-	 echo "  OTP Bridge docs  → $$_site/api/otp/docs"; \
+	 echo "  Keycloak admin   → https://auth.gm-global-techies-town.club/admin/"; \
+	 echo "  pgAdmin          → $$_pgadmin"; \
+	 echo "  Splunk           → https://splunk.gm-global-techies-town.club  (start: make splunk-up)"; \
+	 echo "  User API docs    → $$_local/api/users/docs"; \
+	 echo "  Event API docs   → $$_local/api/events/docs"; \
+	 echo "  OTP Bridge docs  → $$_local/api/otp/docs"; \
 	 echo ""; \
 	 echo "  $(CYAN)MFE preview roots$(RESET)"; \
-	 echo "  Admin MFE        → $$_site/mfe-admin/"; \
-	 echo "  Events MFE       → $$_site/mfe-events/"; \
-	 echo "  Booking MFE      → $$_site/mfe-booking/"; \
-	 echo "  Payment MFE      → $$_site/mfe-payment/"; \
+	 echo "  Admin MFE        → $$_local/mfe-admin/"; \
+	 echo "  Events MFE       → $$_local/mfe-events/"; \
+	 echo "  Booking MFE      → $$_local/mfe-booking/"; \
+	 echo "  Payment MFE      → $$_local/mfe-payment/"; \
 	 echo "  Run 'make logs ENV=$(ENV)' to follow logs."; \
 	 echo ""
 
@@ -171,29 +164,28 @@ down: ## Stop and remove all containers for the active environment
 
 fix-ports: ## Re-bind host ports when localhost stops responding (WSL2/Podman rootlessport dies)
 	@echo "Restarting port forwarders…"
-	@$(COMPOSE) restart nginx keycloak 2>/dev/null || true
+	@$(COMPOSE) restart nginx 2>/dev/null || true
 	@echo "  Port 8080: $$(ss -tlnp | grep -c ':8080' && echo ok || echo FAILED)"
-	@echo "  Port 8081: $$(ss -tlnp | grep -c ':8081' && echo ok || echo FAILED)"
 
 setup-email: ## Configure Keycloak SMTP (Gmail) — set GMAIL_SMTP_USER + GMAIL_APP_PASSWORD in env file first
 	@_user=$$(grep -m1 '^GMAIL_SMTP_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
 	_pass=$$(grep -m1 '^GMAIL_APP_PASSWORD=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
 	_kc_user=$$(grep -m1 '^KEYCLOAK_ADMIN_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo admin); \
 	_kc_pass=$$(grep -m1 '^KEYCLOAK_ADMIN_PASSWORD=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
-	_kc_port=$$(grep -m1 '^KEYCLOAK_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo 8081); \
+	_kc_url=$$(grep -m1 '^KEYCLOAK_URL=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo https://auth.gm-global-techies-town.club); \
 	_realm=$$(grep -m1 '^KEYCLOAK_REALM=' $(ENV_FILE) 2>/dev/null | cut -d= -f2 | tr -d '"[:space:]'); \
 	[ -z "$$_realm" ] && _realm=society-events; \
 	if [ -z "$$_user" ] || [ -z "$$_pass" ]; then \
 	  echo "$(CYAN)ERROR: Set GMAIL_SMTP_USER and GMAIL_APP_PASSWORD in $(ENV_FILE) first$(RESET)"; \
 	  exit 1; \
 	fi; \
-	echo "  Obtaining Keycloak admin token…"; \
-	_token=$$(curl -s -X POST "http://localhost:$$_kc_port/realms/master/protocol/openid-connect/token" \
+	echo "  Obtaining Keycloak admin token from $$_kc_url…"; \
+	_token=$$(curl -s -X POST "$$_kc_url/realms/master/protocol/openid-connect/token" \
 	  -d "client_id=admin-cli&grant_type=password&username=$$_kc_user&password=$$_kc_pass" \
 	  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null); \
 	if [ -z "$$_token" ]; then echo "$(CYAN)ERROR: Could not get Keycloak admin token$(RESET)"; exit 1; fi; \
 	echo "  Configuring SMTP for realm $$_realm…"; \
-	curl -s -X PUT "http://localhost:$$_kc_port/admin/realms/$$_realm" \
+	curl -s -X PUT "$$_kc_url/admin/realms/$$_realm" \
 	  -H "Authorization: Bearer $$_token" \
 	  -H "Content-Type: application/json" \
 	  -d "{\"smtpServer\":{\"host\":\"smtp.gmail.com\",\"port\":\"587\",\"from\":\"$$_user\",\"fromDisplayName\":\"GM Global Techies Town\",\"auth\":\"true\",\"ssl\":\"false\",\"starttls\":\"true\",\"user\":\"$$_user\",\"password\":\"$$_pass\"}}" \
@@ -205,17 +197,17 @@ test-email: ## Send a test reset email to GMAIL_SMTP_USER (verifies SMTP works)
 	@_user=$$(grep -m1 '^GMAIL_SMTP_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
 	_kc_user=$$(grep -m1 '^KEYCLOAK_ADMIN_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo admin); \
 	_kc_pass=$$(grep -m1 '^KEYCLOAK_ADMIN_PASSWORD=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
-	_kc_port=$$(grep -m1 '^KEYCLOAK_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo 8081); \
+	_kc_url=$$(grep -m1 '^KEYCLOAK_URL=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo https://auth.gm-global-techies-town.club); \
 	_realm=$$(grep -m1 '^KEYCLOAK_REALM=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo society-events); \
 	_pub=$$(grep -m1 '^KEYCLOAK_PUBLIC_URL=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
-	_token=$$(curl -s -X POST "http://localhost:$$_kc_port/realms/master/protocol/openid-connect/token" \
+	_token=$$(curl -s -X POST "$$_kc_url/realms/master/protocol/openid-connect/token" \
 	  -d "client_id=admin-cli&grant_type=password&username=$$_kc_user&password=$$_kc_pass" \
 	  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null); \
-	_uid=$$(curl -s "http://localhost:$$_kc_port/admin/realms/$$_realm/users?email=$$_user&exact=true" \
+	_uid=$$(curl -s "$$_kc_url/admin/realms/$$_realm/users?email=$$_user&exact=true" \
 	  -H "Authorization: Bearer $$_token" \
 	  | python3 -c "import sys,json; u=json.load(sys.stdin); print(u[0]['id'] if u else '')" 2>/dev/null); \
 	if [ -z "$$_uid" ]; then echo "$(CYAN)User $$_user not found in Keycloak$(RESET)"; exit 1; fi; \
-	curl -s -X PUT "http://localhost:$$_kc_port/admin/realms/$$_realm/users/$$_uid/execute-actions-email" \
+	curl -s -X PUT "$$_kc_url/admin/realms/$$_realm/users/$$_uid/execute-actions-email" \
 	  -H "Authorization: Bearer $$_token" -H "Content-Type: application/json" \
 	  -G --data-urlencode "client_id=society-frontend" --data-urlencode "redirect_uri=$$_pub/" \
 	  -d '["UPDATE_PASSWORD"]' -w "\nHTTP %{http_code}\n" \
@@ -228,8 +220,8 @@ restart: ## Restart all core services (rebuilds changed images)
 restart-nginx: ## Rebuild & restart nginx (nginx.conf is baked into the image)
 	$(COMPOSE) up -d --build nginx
 
-restart-keycloak: ## Restart Keycloak only (picks up theme/realm changes)
-	$(COMPOSE) restart keycloak
+restart-keycloak: ## Restart Keycloak (managed by auth-service)
+	cd $(HOME)/auth-service && podman-compose restart keycloak
 
 restart-postgres: ## Restart Postgres only
 	$(COMPOSE) restart postgres
@@ -246,8 +238,8 @@ restart-user-service: ## Rebuild & restart user service (picks up code changes)
 restart-event-service: ## Rebuild & restart event service (picks up code changes)
 	$(COMPOSE) up -d --build event-service
 
-restart-cloudflared: ## Start/restart Cloudflare tunnel (works for any ENV)
-	docker compose --env-file $(ENV_FILE) -f docker-compose.yml -f docker-compose.prod.yml up -d cloudflared
+restart-cloudflared: ## Restart Cloudflare tunnel (managed by auth-service)
+	cd $(HOME)/auth-service && podman-compose restart cloudflared
 
 restart-mfe-admin: ## Rebuild & restart mfe-admin container
 	$(COMPOSE) --profile frontend up -d --build mfe-admin
@@ -261,41 +253,12 @@ restart-mfe-booking: ## Rebuild & restart mfe-booking container
 restart-mfe-payment: ## Rebuild & restart mfe-payment container
 	$(COMPOSE) --profile frontend up -d --build mfe-payment
 
-restart-splunk: ## Restart Splunk only (stage/prod)
-	$(COMPOSE) restart splunk
+## ── Splunk / Fluent Bit (centralized ~/splunk-service) ──────────────────────
+splunk-up: ## Start centralized Splunk + Fluent Bit (~/splunk-service)
+	cd $(HOME)/splunk-service && podman-compose up -d --build
 
-restart-fluent-bit: ## Restart Fluent Bit only (stage/prod)
-	$(COMPOSE) restart fluent-bit
-
-## ── Monitoring stack (stage / prod only) ────────────────────────────────────
-_check-monitoring:
-	@if [ "$(ENV)" != "stage" ] && [ "$(ENV)" != "prod" ]; then \
-	  echo "  ERROR: monitoring targets require ENV=stage or ENV=prod (got ENV=$(ENV))"; \
-	  exit 1; \
-	fi
-
-monitoring-up: _check-monitoring ## Start Splunk + Fluent Bit (ENV=stage|prod)
-	$(COMPOSE) up -d splunk fluent-bit
-	@echo ""
-	@echo "  $(CYAN)Monitoring stack starting… [$(ENV)]$(RESET)"
-	@echo "  Splunk UI → http://localhost:$$(grep -m1 '^NGINX_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]')/splunk/"
-	@echo "  Run 'make logs-splunk ENV=$(ENV)' to follow Splunk startup logs."
-	@echo ""
-
-monitoring-down: _check-monitoring ## Stop Splunk + Fluent Bit (ENV=stage|prod)
-	$(COMPOSE) stop splunk fluent-bit
-
-splunk-up: _check-monitoring ## Start Splunk only (ENV=stage|prod)
-	$(COMPOSE) up -d splunk
-
-splunk-down: _check-monitoring ## Stop Splunk only (ENV=stage|prod)
-	$(COMPOSE) stop splunk
-
-fluent-bit-up: _check-monitoring ## Start Fluent Bit only — Splunk must already be running
-	$(COMPOSE) up -d fluent-bit
-
-fluent-bit-down: _check-monitoring ## Stop Fluent Bit only (ENV=stage|prod)
-	$(COMPOSE) stop fluent-bit
+splunk-down: ## Stop centralized Splunk + Fluent Bit (~/splunk-service)
+	cd $(HOME)/splunk-service && podman-compose down
 
 ## ── Status ──────────────────────────────────────────────────────────────────
 ps: ## Show service status and health
@@ -308,8 +271,8 @@ logs: ## Follow logs for all running services
 logs-nginx: ## Follow nginx logs only
 	$(COMPOSE) logs -f nginx
 
-logs-kc: ## Follow Keycloak logs only
-	$(COMPOSE) logs -f keycloak
+logs-kc: ## Follow Keycloak logs (managed by auth-service)
+	cd $(HOME)/auth-service && podman-compose logs -f keycloak
 
 logs-db: ## Follow Postgres logs only
 	$(COMPOSE) logs -f postgres
@@ -320,8 +283,8 @@ logs-user: ## Follow user service logs only
 logs-events: ## Follow event service logs only
 	$(COMPOSE) logs -f event-service
 
-logs-cloudflared: ## Follow Cloudflare tunnel logs
-	$(COMPOSE) logs -f cloudflared
+logs-cloudflared: ## Follow Cloudflare tunnel logs (managed by auth-service)
+	cd $(HOME)/auth-service && podman-compose logs -f cloudflared
 
 logs-mfe-admin: ## Follow mfe-admin logs
 	$(COMPOSE) --profile frontend logs -f mfe-admin
@@ -335,11 +298,11 @@ logs-mfe-booking: ## Follow mfe-booking logs
 logs-mfe-payment: ## Follow mfe-payment logs
 	$(COMPOSE) --profile frontend logs -f mfe-payment
 
-logs-splunk: ## Follow Splunk logs (ENV=stage|prod)
-	$(COMPOSE) logs -f splunk
+logs-splunk: ## Follow Splunk logs (centralized ~/splunk-service)
+	cd $(HOME)/splunk-service && podman-compose logs -f splunk
 
-logs-fluent-bit: ## Follow Fluent Bit logs (ENV=stage|prod)
-	$(COMPOSE) logs -f fluent-bit
+logs-fluent-bit: ## Follow Fluent Bit logs (centralized ~/splunk-service)
+	cd $(HOME)/splunk-service && podman-compose logs -f fluent-bit
 
 ## ── Database ────────────────────────────────────────────────────────────────
 shell-db: ## Open psql in the active environment's database
@@ -382,51 +345,54 @@ otp-secret: check-env ## Generate a fresh OTP_BRIDGE_CLIENT_SECRET and add it to
 	  echo "  $(CYAN)OTP_BRIDGE_CLIENT_SECRET added to $$_f$(RESET)"; \
 	fi
 
-setup-otp-keycloak: check-env ## Register otp-bridge client in Keycloak and grant impersonation (idempotent)
+setup-otp-keycloak: check-env ## Register otp-bridge client in centralized Keycloak via REST API (idempotent)
 	@_secret=$$(grep -m1 '^OTP_BRIDGE_CLIENT_SECRET=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
 	_kc_admin=$$(grep -m1 '^KEYCLOAK_ADMIN_USER=' $(ENV_FILE) | cut -d= -f2- | tr -d '"[:space:]' || echo admin); \
 	_kc_pass=$$(grep -m1 '^KEYCLOAK_ADMIN_PASSWORD=' $(ENV_FILE) | cut -d= -f2- | tr -d '"[:space:]'); \
-	_kc_port=$$(grep -m1 '^KEYCLOAK_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo 8081); \
+	_kc_url=$$(grep -m1 '^KEYCLOAK_URL=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo https://auth.gm-global-techies-town.club); \
 	if [ -z "$$_secret" ]; then \
 	  echo "  ERROR: OTP_BRIDGE_CLIENT_SECRET not set in $(ENV_FILE). Run: make otp-secret ENV=$(ENV)"; \
 	  exit 1; \
 	fi; \
-	echo "  $(CYAN)[1/3] Authenticating kcadm…$(RESET)"; \
-	$(COMPOSE) exec -T keycloak \
-	  /opt/keycloak/bin/kcadm.sh config credentials \
-	  --server "http://localhost:$$_kc_port" --realm master \
-	  --user "$$_kc_admin" --password "$$_kc_pass"; \
+	echo "  $(CYAN)[1/3] Obtaining admin token from $$_kc_url…$(RESET)"; \
+	_token=$$(curl -s -X POST "$$_kc_url/realms/master/protocol/openid-connect/token" \
+	  -d "client_id=admin-cli&grant_type=password&username=$$_kc_admin&password=$$_kc_pass" \
+	  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null); \
+	if [ -z "$$_token" ]; then echo "  ERROR: Could not get Keycloak admin token"; exit 1; fi; \
 	echo "  $(CYAN)[2/3] Creating / updating otp-bridge client…$(RESET)"; \
-	_exists=$$($(COMPOSE) exec -T keycloak \
-	  /opt/keycloak/bin/kcadm.sh get clients -r society-events \
-	  --fields clientId 2>/dev/null | grep -c 'otp-bridge' || echo 0); \
-	if [ "$$_exists" -eq 0 ]; then \
-	  $(COMPOSE) exec -T keycloak \
-	    /opt/keycloak/bin/kcadm.sh create clients -r society-events \
-	    -s clientId=otp-bridge -s 'name=OTP Bridge Service' \
-	    -s enabled=true -s publicClient=false \
-	    -s serviceAccountsEnabled=true \
-	    -s directAccessGrantsEnabled=false \
-	    -s standardFlowEnabled=false \
-	    -s "secret=$$_secret"; \
+	_cid=$$(curl -s "$$_kc_url/admin/realms/society-events/clients?clientId=otp-bridge" \
+	  -H "Authorization: Bearer $$_token" \
+	  | python3 -c "import sys,json; c=json.load(sys.stdin); print(c[0]['id'] if c else '')" 2>/dev/null); \
+	if [ -z "$$_cid" ]; then \
+	  curl -s -X POST "$$_kc_url/admin/realms/society-events/clients" \
+	    -H "Authorization: Bearer $$_token" -H "Content-Type: application/json" \
+	    -d "{\"clientId\":\"otp-bridge\",\"name\":\"OTP Bridge Service\",\"enabled\":true,\"publicClient\":false,\"serviceAccountsEnabled\":true,\"directAccessGrantsEnabled\":false,\"standardFlowEnabled\":false,\"secret\":\"$$_secret\"}" \
+	    -w "  Create status: %{http_code}\n" -o /dev/null; \
 	  echo "    otp-bridge client created."; \
 	else \
-	  _cid=$$($(COMPOSE) exec -T keycloak \
-	    /opt/keycloak/bin/kcadm.sh get clients -r society-events \
-	    --fields id,clientId 2>/dev/null \
-	    | grep -A2 '"otp-bridge"' | grep '"id"' \
-	    | sed 's/.*: "//;s/".*//'); \
-	  $(COMPOSE) exec -T keycloak \
-	    /opt/keycloak/bin/kcadm.sh update "clients/$$_cid" \
-	    -r society-events -s "secret=$$_secret"; \
+	  curl -s -X PUT "$$_kc_url/admin/realms/society-events/clients/$$_cid" \
+	    -H "Authorization: Bearer $$_token" -H "Content-Type: application/json" \
+	    -d "{\"secret\":\"$$_secret\"}" \
+	    -w "  Update status: %{http_code}\n" -o /dev/null; \
 	  echo "    otp-bridge secret refreshed (client already existed)."; \
 	fi; \
 	echo "  $(CYAN)[3/3] Granting impersonation role to service account…$(RESET)"; \
-	$(COMPOSE) exec -T keycloak \
-	  /opt/keycloak/bin/kcadm.sh add-roles -r society-events \
-	  --uusername service-account-otp-bridge \
-	  --cclientid realm-management \
-	  --rolename impersonation 2>&1 | grep -v 'already' || true; \
+	_sa_id=$$(curl -s "$$_kc_url/admin/realms/society-events/clients?clientId=otp-bridge" \
+	  -H "Authorization: Bearer $$_token" \
+	  | python3 -c "import sys,json; c=json.load(sys.stdin); print(c[0]['id'] if c else '')" 2>/dev/null); \
+	_rm_id=$$(curl -s "$$_kc_url/admin/realms/society-events/clients?clientId=realm-management" \
+	  -H "Authorization: Bearer $$_token" \
+	  | python3 -c "import sys,json; c=json.load(sys.stdin); print(c[0]['id'] if c else '')" 2>/dev/null); \
+	_imp_role=$$(curl -s "$$_kc_url/admin/realms/society-events/clients/$$_rm_id/roles/impersonation" \
+	  -H "Authorization: Bearer $$_token" \
+	  | python3 -c "import sys,json; r=json.load(sys.stdin); print(r.get('id',''))" 2>/dev/null); \
+	_sa_user=$$(curl -s "$$_kc_url/admin/realms/society-events/clients/$$_sa_id/service-account-user" \
+	  -H "Authorization: Bearer $$_token" \
+	  | python3 -c "import sys,json; u=json.load(sys.stdin); print(u.get('id',''))" 2>/dev/null); \
+	curl -s -X POST "$$_kc_url/admin/realms/society-events/users/$$_sa_user/role-mappings/clients/$$_rm_id" \
+	  -H "Authorization: Bearer $$_token" -H "Content-Type: application/json" \
+	  -d "[{\"id\":\"$$_imp_role\",\"name\":\"impersonation\"}]" \
+	  -w "  Role grant status: %{http_code}\n" -o /dev/null; \
 	echo "  $(CYAN)Keycloak otp-bridge setup complete.$(RESET)"
 
 setup-otp: check-env ## Full OTP setup: generate secret → migrate DB → Keycloak client → build service (idempotent)
@@ -461,10 +427,10 @@ restart-otp-service: ## Rebuild & restart otp-service (picks up code/env changes
 logs-otp: ## Follow otp-service logs
 	$(COMPOSE) logs -f otp-service
 
-sync-users: ## Sync users from keycloak/realm.json → postgres (inserts only, never overwrites)
+sync-users: ## Sync users from auth-service realm.json → postgres (inserts only, never overwrites)
 	docker run --rm \
 	  --network $(COMPOSE_PROJECT)_network \
-	  -v $(PWD)/keycloak/realm.json:/realm.json:ro \
+	  -v $(HOME)/auth-service/keycloak/realm.json:/realm.json:ro \
 	  -v $(PWD)/scripts/sync_keycloak_users.py:/sync.py:ro \
 	  -e POSTGRES_HOST=society_postgres \
 	  -e POSTGRES_DB=$(POSTGRES_DB_NAME) \

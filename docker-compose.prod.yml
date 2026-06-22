@@ -1,29 +1,9 @@
-# Production overlay — included for prod only (on top of monitoring overlay).
-# Usage (directly):  docker compose -f docker-compose.yml -f docker-compose.monitoring.yml -f docker-compose.prod.yml up -d
+# Production overlay — included for prod only.
+# Usage (directly):  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 # Usage (via make):  make up ENV=prod
 #
-# Adds: Cloudflare Tunnel (public HTTPS ingress via gm-global-techies-town.club)
-
-services:
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: society_cloudflared
-    restart: always
-    command: tunnel --config /etc/cloudflared/config.yml run
-    volumes:
-      - ./cloudflared/config.yml:/etc/cloudflared/config.yml:ro
-      - ./cloudflared/4f6ad36b-5a4a-4f31-9612-b11129f33205.json:/etc/cloudflared/4f6ad36b-5a4a-4f31-9612-b11129f33205.json:ro
-    depends_on:
-      - nginx
-    healthcheck:
-      test: ["CMD", "cloudflared", "tunnel", "--config", "/etc/cloudflared/config.yml", "ingress", "validate"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    networks:
-      - society_net
+# Cloudflare tunnel → ~/auth-service  (make restart-cloudflared)
+# Splunk + Fluent Bit → ~/splunk-service  (make splunk-up)
 
 networks:
   society_net:
