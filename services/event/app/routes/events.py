@@ -33,6 +33,7 @@ _EVENT_COLS = """
     e.ticket_price,
     e.price_currency,
     e.is_free,
+    e.cancel_freeze_at,
     e.created_at,
     e.organizer_id::text,
     ec.id::text          AS category_id,
@@ -214,6 +215,8 @@ async def create_event(
 ):
     if body.end_time <= body.start_time:
         raise HTTPException(status_code=422, detail="end_time must be after start_time")
+    if body.cancel_freeze_at is not None and body.cancel_freeze_at >= body.start_time:
+        raise HTTPException(status_code=422, detail="cancel_freeze_at must be before start_time")
 
     organizer_sub = claims.get("sub")
     pool = await get_pool()
@@ -227,8 +230,8 @@ async def create_event(
         row = await conn.fetchrow(
             "INSERT INTO event (society_id, category_id, organizer_id, title, description, "
             "start_time, end_time, venue, venue_lat, venue_lng, venue_place_id, venue_address, "
-            "capacity, ticket_price, price_currency, is_free, status) "
-            "VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'draft') "
+            "capacity, ticket_price, price_currency, is_free, cancel_freeze_at, status) "
+            "VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'draft') "
             "RETURNING id::text",
             _SOCIETY,
             body.category_id,
@@ -246,6 +249,7 @@ async def create_event(
             body.ticket_price,
             body.price_currency,
             body.is_free,
+            body.cancel_freeze_at,
         )
     return {"id": row["id"], "status": "draft"}
 
@@ -261,13 +265,18 @@ async def update_event(
     pool = await get_pool()
     async with pool.acquire() as conn:
         event = await conn.fetchrow(
-            "SELECT status FROM event WHERE id=$1::uuid AND society_id=$2::uuid",
+            "SELECT status, start_time FROM event WHERE id=$1::uuid AND society_id=$2::uuid",
             event_id, _SOCIETY,
         )
         if not event:
             raise HTTPException(status_code=404, detail="Event not found")
         if event["status"] not in ("draft", "published"):
             raise HTTPException(status_code=409, detail="Cannot edit a cancelled or completed event")
+
+        if body.cancel_freeze_at is not None:
+            effective_start = body.start_time or event["start_time"]
+            if body.cancel_freeze_at >= effective_start:
+                raise HTTPException(status_code=422, detail="cancel_freeze_at must be before start_time")
 
         updates: list[str] = []
         params: list = []
@@ -280,7 +289,7 @@ async def update_event(
             ("start_time", "start_time"), ("end_time", "end_time"),
             ("capacity", "capacity"), ("ticket_price", "ticket_price"),
             ("price_currency", "price_currency"), ("is_free", "is_free"),
-            ("category_id", "category_id"),
+            ("category_id", "category_id"), ("cancel_freeze_at", "cancel_freeze_at"),
         ]:
             val = getattr(body, field)
             if val is not None:

@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     society_bank_beneficiary: str = ""
     uploads_dir: str = "/app/uploads"
 
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    gmail_smtp_user: str = ""
+    gmail_app_password: str = ""
+    smtp_from_name: str = "GM Global Techies Town"
+    society_name: str = "GM Global Techies Town"
+
     @property
     def database_url(self) -> str:
         return (

@@ -6,6 +6,7 @@ import {
   TextField, Tooltip, Typography,
 } from '@mui/material';
 import { AdminSidebar } from '../components/AdminSidebar';
+import CancelIcon       from '@mui/icons-material/Cancel';
 import CheckCircleIcon   from '@mui/icons-material/CheckCircle';
 import CloseIcon         from '@mui/icons-material/Close';
 import ErrorOutlineIcon  from '@mui/icons-material/ErrorOutline';
@@ -52,7 +53,9 @@ function screenshotUrl(path: string) {
   return `/api/registrations/uploads/${path}`;
 }
 
-function statusChip(ps: string | undefined) {
+function statusChip(reg: Registration) {
+  const ps = reg.payment?.status;
+  if (reg.status === 'cancelled')  return <Chip label="Dropped by Resident" color="default" size="small" icon={<CancelIcon />} />;
   if (ps === 'pending_review')     return <Chip label="Pending Review" color="warning" size="small" icon={<HourglassTopIcon />} />;
   if (ps === 'approved')           return <Chip label="Approved" color="success" size="small" icon={<CheckCircleIcon />} />;
   if (ps === 'rejected')           return <Chip label="Rejected" color="error" size="small" icon={<ErrorOutlineIcon />} />;
@@ -213,8 +216,8 @@ function RegRow({
         </Box>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
-          {statusChip(reg.payment?.status)}
-          {(reg.payment?.status === 'pending_review' || reg.payment?.status === 'pending_screenshot') && (
+          {statusChip(reg)}
+          {reg.status !== 'cancelled' && (reg.payment?.status === 'pending_review' || reg.payment?.status === 'pending_screenshot') && (
             <Button size="small" variant="contained" onClick={() => onReview(reg)}>
               Review
             </Button>
@@ -257,16 +260,19 @@ export function PaymentApprovals({ token, role }: { token?: string | null; role?
 
   useEffect(() => { load(); }, [load]);
 
-  const pending  = regs.filter(r => r.payment?.status === 'pending_review');
-  const approved = regs.filter(r => r.payment?.status === 'approved' || r.status === 'confirmed');
-  const rejected = regs.filter(r => r.payment?.status === 'rejected');
-  const noUpload = regs.filter(r => r.payment?.status === 'pending_screenshot');
+  const live      = regs.filter(r => r.status !== 'cancelled');
+  const pending   = live.filter(r => r.payment?.status === 'pending_review');
+  const approved  = live.filter(r => r.payment?.status === 'approved' || r.status === 'confirmed');
+  const rejected  = live.filter(r => r.payment?.status === 'rejected');
+  const noUpload  = live.filter(r => r.payment?.status === 'pending_screenshot');
+  const dropped   = regs.filter(r => r.status === 'cancelled');
 
   const tabs = [
     { label: `Pending Review (${pending.length})`,  data: pending },
     { label: `No Upload (${noUpload.length})`,       data: noUpload },
     { label: `Approved (${approved.length})`,        data: approved },
     { label: `Rejected (${rejected.length})`,        data: rejected },
+    { label: `Dropped (${dropped.length})`,          data: dropped },
   ];
 
   if (!token) {

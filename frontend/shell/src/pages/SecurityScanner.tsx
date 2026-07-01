@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -18,13 +18,17 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
 import PersonSearchIcon from '@mui/icons-material/PersonSearch';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
+import StopCircleIcon from '@mui/icons-material/StopCircle';
+import { Html5Qrcode } from 'html5-qrcode';
 import { useAuth } from '../contexts/AuthContext';
+import { logError } from '../utils/splunk';
 
 // ── API base URLs ─────────────────────────────────────────────────────────────
 
@@ -82,15 +86,21 @@ interface AttendeeRow {
 
 // ── QR Scan tab ───────────────────────────────────────────────────────────────
 
+const QR_READER_ELEMENT_ID = 'gate-entry-qr-reader';
+
 function QrScanTab({ token }: { token: string }) {
   const [qrInput, setQrInput]   = useState('');
   const [loading, setLoading]   = useState(false);
   const [result,  setResult]    = useState<ScanResult | null>(null);
   const [error,   setError]     = useState<string | null>(null);
 
-  const handleScan = async () => {
-    const raw = qrInput.trim();
-    if (!raw) return;
+  const [cameraOn, setCameraOn]             = useState(false);
+  const [cameraError, setCameraError]       = useState<string | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+  const scannerRef     = useRef<Html5Qrcode | null>(null);
+  const processingRef  = useRef(false);
+
+  const runScan = useCallback(async (raw: string) => {
     setLoading(true);
     setError(null);
     setResult(null);
@@ -107,13 +117,168 @@ function QrScanTab({ token }: { token: string }) {
     } finally {
       setLoading(false);
     }
+  }, [token]);
+
+  const handleScan = () => {
+    const raw = qrInput.trim();
+    if (!raw) return;
+    void runScan(raw);
   };
+
+  const stopCamera = useCallback(async () => {
+    const scanner = scannerRef.current;
+    scannerRef.current = null;
+    if (scanner) {
+      try {
+        await scanner.stop();
+        scanner.clear();
+      } catch {
+        // camera may already be stopped/unmounted — safe to ignore
+      }
+    }
+    setCameraOn(false);
+  }, []);
+
+  const startCamera = useCallback(async () => {
+    setCameraError(null);
+    setPermissionDenied(false);
+    setError(null);
+    setCameraOn(true);
+    try {
+      const scanner = new Html5Qrcode(QR_READER_ELEMENT_ID);
+      scannerRef.current = scanner;
+      await scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+          if (processingRef.current) return;
+          processingRef.current = true;
+          void stopCamera().then(() => {
+            void runScan(decodedText).finally(() => {
+              processingRef.current = false;
+            });
+          });
+        },
+        () => {
+          // per-frame decode miss — expected while the camera is still focusing/aiming
+        },
+      );
+    } catch (e) {
+      scannerRef.current = null;
+      setCameraOn(false);
+      // html5-qrcode doesn't always reject with a real Error/DOMException — on
+      // getUserMedia failure it rejects with a plain string like
+      // "Error getting userMedia, error = NotAllowedError: Permission denied".
+      const message = e instanceof Error ? e.message : String(e);
+      const denied = /notallowederror|permissiondeniederror|permission denied|permission dismissed/i.test(message);
+      setPermissionDenied(denied);
+
+      // Once the browser records a hard "block" for this site, calling
+      // getUserMedia() again will not re-show the native prompt — the user
+      // has to flip it in the browser's site settings. Detect that case via
+      // the Permissions API (where supported) so we don't tell them to
+      // "retry" when retrying can't possibly work. Also gather enough
+      // environment info here to actually debug camera-open failures from
+      // Splunk instead of guessing.
+      let permissionState = 'unsupported';
+      let videoInputs: string[] = [];
+      try {
+        const status = await navigator.permissions?.query({ name: 'camera' as PermissionName });
+        permissionState = status?.state ?? 'unsupported';
+      } catch {
+        // Permissions API doesn't support querying 'camera' in this browser.
+      }
+      try {
+        const devices = await navigator.mediaDevices?.enumerateDevices();
+        videoInputs = (devices ?? [])
+          .filter((d) => d.kind === 'videoinput')
+          .map((d) => d.label || '(label hidden — permission not yet granted)');
+      } catch {
+        // enumerateDevices unsupported/blocked — leave videoInputs empty.
+      }
+      const blocked = permissionState === 'denied';
+
+      logError(`Gate scanner camera failed to open: ${message}`, {
+        source: 'SecurityScanner.startCamera',
+        extra: {
+          raw_error:        message,
+          permission_denied: denied,
+          permission_state:  permissionState,
+          is_secure_context: window.isSecureContext,
+          has_media_devices: !!navigator.mediaDevices,
+          has_get_user_media: !!navigator.mediaDevices?.getUserMedia,
+          video_input_count: videoInputs.length,
+          video_input_labels: videoInputs,
+          user_agent:         navigator.userAgent,
+        },
+      });
+
+      if (!denied) {
+        setCameraError(`Could not access camera: ${message}`);
+        return;
+      }
+      setCameraError(
+        blocked
+          ? 'Camera is blocked for this site. Enable it in your browser’s site settings, then retry.'
+          : 'Camera access was denied. Tap retry and allow the prompt.',
+      );
+    }
+  }, [runScan, stopCamera]);
+
+  useEffect(() => () => { void stopCamera(); }, [stopCamera]);
 
   return (
     <Box sx={{ maxWidth: 520, mx: 'auto', mt: 3 }}>
       <Typography variant="body2" color="text.secondary" mb={2}>
-        Enter or paste the QR code value from a resident's ticket.
+        Scan a resident's ticket QR with the camera, or enter/paste the code manually.
       </Typography>
+
+      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+        <Button
+          variant={cameraOn ? 'outlined' : 'contained'}
+          color={cameraOn ? 'error' : 'primary'}
+          startIcon={cameraOn ? <StopCircleIcon /> : <CameraAltIcon />}
+          onClick={() => (cameraOn ? void stopCamera() : void startCamera())}
+        >
+          {cameraOn ? 'Stop Camera' : 'Scan with Camera'}
+        </Button>
+      </Box>
+
+      {cameraError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setCameraError(null)}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            <Typography variant="body2" sx={{ flex: 1, minWidth: 160 }}>
+              {cameraError}
+            </Typography>
+            {permissionDenied && (
+              <Button
+                variant="outlined"
+                color="error"
+                size="small"
+                onClick={() => void startCamera()}
+                sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+              >
+                Retry
+              </Button>
+            )}
+          </Box>
+        </Alert>
+      )}
+
+      <Box
+        id={QR_READER_ELEMENT_ID}
+        sx={{
+          display: cameraOn ? 'block' : 'none',
+          mb: 2,
+          borderRadius: 2,
+          overflow: 'hidden',
+          '& video': { width: '100%', borderRadius: 2 },
+        }}
+      />
+
+      <Divider sx={{ my: 2 }}>
+        <Typography variant="caption" color="text.secondary">OR</Typography>
+      </Divider>
 
       <Box sx={{ display: 'flex', gap: 1 }}>
         <TextField
@@ -124,7 +289,6 @@ function QrScanTab({ token }: { token: string }) {
           onChange={(e) => setQrInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleScan()}
           placeholder="Scan or paste QR token…"
-          autoFocus
         />
         <Button
           variant="contained"

@@ -148,14 +148,6 @@ async def create_registration(
             if confirmed + requested > event["capacity"]:
                 raise HTTPException(status_code=400, detail="Not enough spots available")
 
-        # Prevent duplicate registration
-        existing = await conn.fetchval(
-            "SELECT id FROM registration WHERE event_id = $1::uuid AND user_id = $2::uuid",
-            body.event_id, user_id,
-        )
-        if existing:
-            raise HTTPException(status_code=409, detail="Already registered for this event")
-
         # Calculate total
         if body.tickets:
             ticket_count = sum(t.quantity for t in body.tickets)
@@ -267,7 +259,7 @@ async def get_payment_qr(
 
 # ── DELETE /registrations/{id} — cancel ──────────────────────────────────────
 
-@router.delete("/{reg_id}", status_code=204, summary="Cancel a registration")
+@router.delete("/{reg_id}", summary="Cancel a registration")
 async def cancel_registration(
     reg_id: str,
     claims: dict = Depends(get_current_claims),
@@ -281,7 +273,8 @@ async def cancel_registration(
         user_id = await _get_db_user_id(conn, sub)
 
         row = await conn.fetchrow(
-            "SELECT r.id, r.user_id::text, r.status, e.start_time "
+            "SELECT r.id, r.user_id::text, r.status, r.total_amount, "
+            "e.start_time, e.cancel_freeze_at "
             "FROM registration r JOIN event e ON e.id = r.event_id "
             "WHERE r.id = $1::uuid",
             reg_id,
@@ -295,15 +288,46 @@ async def cancel_registration(
         if row["status"] == "cancelled":
             raise HTTPException(status_code=400, detail="Registration already cancelled")
 
-        # Residents cannot cancel after event starts; admins can always cancel
         if not is_admin:
             now = datetime.now(timezone.utc)
             if row["start_time"].replace(tzinfo=timezone.utc) <= now:
                 raise HTTPException(status_code=400, detail="Cannot cancel after event has started")
 
+            # A confirmed (ticketed) booking can be self-cancelled any time before
+            # the event starts, unless the organizer configured an earlier freeze
+            # time — in which case it must be cancelled before that.
+            if row["status"] == "confirmed" and row["cancel_freeze_at"] is not None:
+                if row["cancel_freeze_at"].replace(tzinfo=timezone.utc) <= now:
+                    raise HTTPException(status_code=400, detail="Cancellation window has closed")
+
         await conn.execute(
             "UPDATE registration SET status = 'cancelled' WHERE id = $1::uuid", reg_id
         )
+        await conn.execute(
+            "UPDATE ticket SET status = 'cancelled' WHERE reg_id = $1::uuid", reg_id
+        )
+
+        refund_requested = False
+        if row["total_amount"] > 0:
+            txn = await conn.fetchrow(
+                "SELECT id::text FROM payment_transaction "
+                "WHERE registration_id = $1::uuid AND status = 'verified'",
+                reg_id,
+            )
+            if txn:
+                await conn.execute(
+                    "UPDATE payment_transaction SET status = 'refund_requested', updated_at = now() "
+                    "WHERE id = $1::uuid",
+                    txn["id"],
+                )
+                await conn.execute(
+                    "INSERT INTO payment_audit_log (txn_id, from_status, to_status, updated_by, note) "
+                    "VALUES ($1::uuid, 'verified', 'refund_requested', $2, 'Refund requested by resident on ticket cancellation')",
+                    txn["id"], sub,
+                )
+                refund_requested = True
+
+    return {"status": "cancelled", "refund_requested": refund_requested}
 
 
 # ── POST /registrations/{id}/screenshot ───────────────────────────────────────

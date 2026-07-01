@@ -69,6 +69,7 @@ interface EventItem {
   venue_place_id: string | null; venue_address: string | null;
   capacity: number | null; status: string;
   ticket_price: number; price_currency: string; is_free: boolean;
+  cancel_freeze_at: string | null;
   category_id: string | null; category_name: string | null; category_color: string | null;
   organizer_name: string;
   registration_count: number; confirmed_tickets: number;
@@ -643,7 +644,7 @@ interface FormState {
   venueAddress: string; venueLat: string; venueLng: string;
   start_time: string; end_time: string; capacity: string;
   ticket_price: string; price_currency: string; is_free: boolean;
-  category_id: string;
+  category_id: string; cancel_freeze_at: string;
 }
 
 function EventForm({
@@ -672,15 +673,32 @@ function EventForm({
     price_currency: initial?.price_currency ?? 'INR',
     is_free:        initial?.is_free        ?? true,
     category_id:    initial?.category_id    ?? '',
+    cancel_freeze_at: initial?.cancel_freeze_at ? toLocalDT(initial.cancel_freeze_at) : '',
   });
 
   const patch = (p: Partial<FormState>) => setForm(f => ({ ...f, ...p }));
+
+  // For a brand-new event, suggest a freeze time 1 day before the start —
+  // but stop once the organizer has touched the field, so "leave it blank" sticks.
+  const freezeTouchedRef = useRef(!!initial);
+  useEffect(() => {
+    if (freezeTouchedRef.current || !form.start_time) return;
+    const start = new Date(form.start_time);
+    if (Number.isNaN(start.getTime())) return;
+    const suggested = new Date(start.getTime() - 24 * 60 * 60 * 1000);
+    patch({ cancel_freeze_at: toLocalDT(suggested.toISOString()) });
+  }, [form.start_time]);
 
   // Save all current form state to the backend; optionally advance to nextTab.
   const handleSave = async (nextTab?: number) => {
     setError(null);
     if (!form.title.trim() || !form.venue.trim() || !form.start_time || !form.end_time) {
       setError('Title, venue, and start / end dates are required.');
+      setTab(0);
+      return;
+    }
+    if (form.cancel_freeze_at && new Date(form.cancel_freeze_at) >= new Date(form.start_time)) {
+      setError('Ticket cancellation freeze time must be before the event start time.');
       setTab(0);
       return;
     }
@@ -700,6 +718,7 @@ function EventForm({
         price_currency: form.price_currency,
         is_free:        form.is_free,
         category_id:    form.category_id || null,
+        cancel_freeze_at: form.cancel_freeze_at ? new Date(form.cancel_freeze_at).toISOString() : null,
       };
       let id = savedId;
       if (id) {
@@ -786,6 +805,13 @@ function EventForm({
                   onChange={e => patch({ end_time: e.target.value })} />
               </Grid>
             </Grid>
+            <TextField
+              label="Ticket Cancellation Freeze Time (optional)"
+              type="datetime-local" size="small" fullWidth
+              InputLabelProps={{ shrink: true }} value={form.cancel_freeze_at}
+              onChange={e => { freezeTouchedRef.current = true; patch({ cancel_freeze_at: e.target.value }); }}
+              helperText="Defaults to 1 day before the start time; clear it to let residents cancel a confirmed ticket any time before the event starts. Must be before the start time."
+            />
             <Grid container spacing={2}>
               <Grid item xs={4}>
                 <TextField label="Capacity (blank = unlimited)" type="number" size="small" fullWidth
@@ -921,7 +947,6 @@ function EventForm({
 
 const SUB_PAGES = [
   { path: 'finance',       label: 'Finance & Expenses',    icon: '💰', color: '#10b981' },
-  { path: 'complimentary', label: 'Complimentary Tickets', icon: '🎟', color: '#6366f1' },
   { path: 'vendors',       label: 'Vendor Management',     icon: '🏪', color: '#f59e0b' },
   { path: 'tickets',       label: 'Ticket Types',          icon: '🎫', color: '#0ea5e9' },
   { path: 'tokens',        label: 'Free Tokens',           icon: '🔑', color: '#8b5cf6' },
@@ -1137,6 +1162,11 @@ export function ManageEvents({ token, id }: Props) {
                     {(ev.status === 'cancelled' || ev.status === 'completed') && (
                       <Typography fontSize={11} color="text.disabled" sx={{ px: 0.5 }}>No actions</Typography>
                     )}
+                    <Tooltip title="Complimentary tickets">
+                      <IconButton size="small" onClick={() => { window.location.href = `/manage/complimentary/${ev.id}`; }}>
+                        <LocalActivityIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                     <Tooltip title="View in events page">
                       <IconButton size="small" onClick={() => window.open('/events', '_blank')}>
                         <OpenInNewIcon fontSize="small" />
@@ -1251,6 +1281,11 @@ export function ManageEvents({ token, id }: Props) {
                           {(ev.status === 'cancelled' || ev.status === 'completed') && (
                             <Typography fontSize={11} color="text.disabled" sx={{ px: 0.5 }}>No actions</Typography>
                           )}
+                          <Tooltip title="Complimentary tickets">
+                            <IconButton size="small" onClick={() => { window.location.href = `/manage/complimentary/${ev.id}`; }}>
+                              <LocalActivityIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                           <Tooltip title="View in events page">
                             <IconButton size="small" onClick={() => window.open('/events', '_blank')}>
                               <OpenInNewIcon fontSize="small" />

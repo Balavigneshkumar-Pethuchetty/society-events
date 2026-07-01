@@ -245,6 +245,8 @@ services:
       SOCIETY_BANK_ACCOUNT:      ${SOCIETY_BANK_ACCOUNT:-}
       SOCIETY_BANK_IFSC:         ${SOCIETY_BANK_IFSC:-}
       SOCIETY_BANK_BENEFICIARY:  ${SOCIETY_BANK_BENEFICIARY:-}
+      GMAIL_SMTP_USER:           ${GMAIL_SMTP_USER:-}
+      GMAIL_APP_PASSWORD:        ${GMAIL_APP_PASSWORD:-}
     volumes:
       - registration_uploads:/app/uploads
     depends_on:

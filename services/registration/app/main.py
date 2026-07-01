@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import wait_for_db, close_pool, get_pool
-from app.routes import cart, registrations
+from app.routes import cart, complimentary, registrations
 from app.middleware.splunk import SplunkLoggingMiddleware
 
 _OPENAPI_URL     = "openapi.json"
@@ -80,6 +80,7 @@ app.add_middleware(SplunkLoggingMiddleware)
 
 app.include_router(cart.router,          prefix="/registrations", tags=["cart"])
 app.include_router(registrations.router, prefix="/registrations", tags=["registrations"])
+app.include_router(complimentary.router, prefix="/complimentary", tags=["complimentary"])
 
 _uploads_dir = settings.uploads_dir
 os.makedirs(_uploads_dir, exist_ok=True)

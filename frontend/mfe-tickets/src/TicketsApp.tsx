@@ -9,6 +9,7 @@ import CalendarTodayIcon      from '@mui/icons-material/CalendarToday';
 import CheckCircleIcon        from '@mui/icons-material/CheckCircle';
 import CloseIcon              from '@mui/icons-material/Close';
 import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
+import EventBusyIcon          from '@mui/icons-material/EventBusy';
 import LocationOnIcon         from '@mui/icons-material/LocationOn';
 import QrCode2Icon            from '@mui/icons-material/QrCode2';
 import TaskAltIcon            from '@mui/icons-material/TaskAlt';
@@ -24,6 +25,7 @@ interface Ticket {
   event_end_time: string;
   event_venue: string;
   event_image_color: string | null;
+  cancel_freeze_at: string | null;
   ticket_count: number;
   total_amount: number;
   display_currency: string;
@@ -122,9 +124,40 @@ function QrDialog({ ticket, onClose }: { ticket: Ticket; onClose: () => void }) 
 
 // ── Ticket card ───────────────────────────────────────────────────────────────
 
-function TicketCard({ ticket }: { ticket: Ticket }) {
-  const [qrOpen, setQrOpen] = useState(false);
+function TicketCard({
+  ticket, token, onCancelled,
+}: {
+  ticket: Ticket;
+  token: string;
+  onCancelled: (message: string) => void;
+}) {
+  const [qrOpen, setQrOpen]       = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const color = ticket.event_image_color ?? '#6366f1';
+
+  const canCancel = ticket.status === 'active'
+    && new Date(ticket.event_start_time) > new Date()
+    && (ticket.cancel_freeze_at === null || new Date(ticket.cancel_freeze_at) > new Date());
+
+  async function handleCancel() {
+    if (!window.confirm(
+      `Cancel your ticket for "${ticket.event_title}"?` +
+      (ticket.total_amount > 0 ? ' A refund request will be sent to the committee.' : '')
+    )) return;
+    setCancelling(true);
+    try {
+      const res = await fetch(`/api/registrations/registrations/${ticket.reg_id}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body: { refund_requested: boolean } = await res.json();
+      onCancelled(body.refund_requested
+        ? 'Ticket cancelled. A refund request has been sent to the committee for approval.'
+        : 'Ticket cancelled.');
+    } catch {
+      setCancelling(false);
+    }
+  }
 
   return (
     <>
@@ -155,17 +188,28 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
             <Typography variant="body2" color="text.secondary">
               {ticket.ticket_count} ticket{ticket.ticket_count > 1 ? 's' : ''} · {fmtAmount(ticket.total_amount)}
             </Typography>
-            {ticket.status !== 'cancelled' && (
-              <Button
-                size="small"
-                variant={ticket.status === 'used' ? 'outlined' : 'contained'}
-                startIcon={ticket.status === 'used' ? <TaskAltIcon /> : <QrCode2Icon />}
-                color={ticket.status === 'used' ? 'success' : 'primary'}
-                onClick={() => setQrOpen(true)}
-              >
-                {ticket.status === 'used' ? 'View Entry' : 'Show Ticket'}
-              </Button>
-            )}
+            <Stack direction="row" spacing={1}>
+              {canCancel && (
+                <Button
+                  size="small" variant="outlined" color="error" disabled={cancelling}
+                  startIcon={cancelling ? <CircularProgress size={14} color="inherit" /> : <EventBusyIcon />}
+                  onClick={handleCancel}
+                >
+                  Cancel{ticket.total_amount > 0 ? ' & Refund' : ''}
+                </Button>
+              )}
+              {ticket.status !== 'cancelled' && (
+                <Button
+                  size="small"
+                  variant={ticket.status === 'used' ? 'outlined' : 'contained'}
+                  startIcon={ticket.status === 'used' ? <TaskAltIcon /> : <QrCode2Icon />}
+                  color={ticket.status === 'used' ? 'success' : 'primary'}
+                  onClick={() => setQrOpen(true)}
+                >
+                  {ticket.status === 'used' ? 'View Entry' : 'Show Ticket'}
+                </Button>
+              )}
+            </Stack>
           </Box>
         </Box>
       </Paper>
@@ -185,6 +229,7 @@ export function TicketsApp({ token }: TicketsAppProps) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
+  const [notice,  setNotice]  = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!token) { setLoading(false); return; }
@@ -223,7 +268,8 @@ export function TicketsApp({ token }: TicketsAppProps) {
         </Button>
       </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {error  && <Alert severity="error"   sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
+      {notice && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setNotice(null)}>{notice}</Alert>}
 
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', pt: 6 }}>
@@ -252,7 +298,12 @@ export function TicketsApp({ token }: TicketsAppProps) {
                 Active Tickets ({active.length})
               </Typography>
               <Stack spacing={1.5}>
-                {active.map(t => <TicketCard key={t.id} ticket={t} />)}
+                {active.map(t => (
+                  <TicketCard
+                    key={t.id} ticket={t} token={token!}
+                    onCancelled={message => { setNotice(message); load(); }}
+                  />
+                ))}
               </Stack>
             </Box>
           )}
@@ -263,7 +314,12 @@ export function TicketsApp({ token }: TicketsAppProps) {
                 Past Events ({used.length})
               </Typography>
               <Stack spacing={1.5}>
-                {used.map(t => <TicketCard key={t.id} ticket={t} />)}
+                {used.map(t => (
+                  <TicketCard
+                    key={t.id} ticket={t} token={token!}
+                    onCancelled={message => { setNotice(message); load(); }}
+                  />
+                ))}
               </Stack>
             </Box>
           )}

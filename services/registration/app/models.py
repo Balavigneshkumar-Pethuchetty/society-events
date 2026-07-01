@@ -86,3 +86,41 @@ class CartOut(BaseModel):
     tickets: list[CartTicket]
     created_at: datetime
     updated_at: datetime
+
+
+# ── Complimentary tickets ─────────────────────────────────────────────────────
+
+class ComplimentaryTicketCreate(BaseModel):
+    event_id: str
+    inviter_type: str = Field(..., pattern=r'^(organizer|committee_member|sponsor|walk_in)$')
+    invited_by_user_id: Optional[str] = None
+    guest_name: str = Field(..., min_length=1, max_length=255)
+    guest_email: Optional[str] = None
+    ticket_count: int = Field(1, ge=1, le=20)
+    notes: Optional[str] = None
+
+
+class ComplimentaryTicketOut(BaseModel):
+    id: str
+    event_id: str
+    inviter_type: str
+    invited_by_user_id: Optional[str] = None
+    invited_by_name: Optional[str] = None
+    guest_name: Optional[str] = None
+    guest_email: Optional[str] = None
+    ticket_id: Optional[str] = None
+    ticket_status: Optional[str] = None
+    qr_token: Optional[str] = None
+    ticket_count: int
+    notes: Optional[str] = None
+    created_by: str
+    created_by_name: Optional[str] = None
+    created_at: datetime
+    cancelled_at: Optional[datetime] = None
+    emailed_at: Optional[datetime] = None
+
+
+class WalkInCreate(BaseModel):
+    event_id: str
+    ticket_count: int = Field(..., ge=1, le=500)
+    notes: Optional[str] = None

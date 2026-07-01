@@ -1,413 +1,110 @@
 # Society Events — Architecture
 
+This document describes what is actually built and wired up today. For dev commands, DB
+migration conventions, the module-federation routing convention, and the Cloudflare tunnel,
+see [CLAUDE.md](CLAUDE.md) — this file focuses on **what each service/page actually does**.
+
 ## Overview
 
-**7 backend microservices** + **6 micro frontends**, connected through a central API Gateway and Keycloak for auth. Each service owns its domain of the DB schema.
-
----
-
-## Microservices
-
-| # | Service | Port | Owns Tables | Status |
-|---|---------|------|-------------|--------|
-| 1 | API Gateway (nginx) | 8080 | — | ✅ Implemented |
-| 2 | User Service | 3001 | users, apartment, notification, oauth_session | ✅ Implemented |
-| 3 | Event Service | 3002 | event, event_category, announcement, sponsor, event_sponsorship, event_expense, complimentary_ticket, vendor | ✅ Implemented |
-| 4 | Registration Service | 3005 | registration, payment, cart | ✅ Implemented |
-| 5 | Ticket Service | 3006 | ticket | ✅ Implemented |
-| 6 | Notification Service | — | notification (async dispatch) | 🔲 Planned |
-
-## Micro Frontends
-
-| MFE | Port | Route | Purpose | Status |
-|-----|------|-------|---------|--------|
-| shell | 3000 | `/` | Host + auth + nav | ✅ Implemented |
-| mfe-events | 4001 | `/events/*` | Event discovery + registration start | ✅ Implemented |
-| mfe-booking | 4002 | `/registrations/*` | Registration tracking + payment uploads | ✅ Implemented |
-| mfe-payment | 4003 | `/checkout/*`, `/payments/*` | Checkout + UPI QR + screenshot upload | ✅ Implemented |
-| mfe-admin | 4004 | `/admin/*`, `/manage/*` | Admin console + payment approvals | ✅ Implemented |
-| mfe-tickets | 4005 | `/tickets/*` | Confirmed tickets + gate-entry QR display | ✅ Implemented |
-
----
-
-## ✅ 1. API Gateway — nginx (port 8080)
-
-Single HTTPS entry point for all clients. Handles routing, rate limiting, and security hardening.
-
-### Routing
-- `/realms/` → Keycloak (OIDC login, token exchange, broker endpoints)
-- `/resources/`, `/js/` → Keycloak static assets
-- `/api/users/` → User Service (`:3001`) — path prefix stripped before forwarding
-- `/pgadmin/` → pgAdmin (basic auth protected)
-- `/splunk/` → Splunk UI (basic auth protected)
-- `/mfe-admin/`, `/mfe-events/`, `/mfe-booking/`, `/mfe-payment/` → individual MFE containers
-- `/` → Shell App (main frontend)
-
-### Rate Limiting
-- `general` zone — 30 req/s per IP (API + frontend traffic)
-- `auth` zone — 5 req/s per IP (Keycloak endpoints, burst=20)
-- `admin` zone — 10 req/s per IP (pgAdmin, Splunk, burst=15)
-
-### Security
-- `X-Content-Type-Options: nosniff` on all responses
-- `X-XSS-Protection: 1; mode=block` on all responses
-- `Referrer-Policy: strict-origin-when-cross-origin` on all responses
-- `Permissions-Policy: geolocation=(), microphone=(), camera=()` on all responses
-- Hard block on `.php`, `.asp`, `.aspx`, `.jsp`, `.cgi` requests (→ 404)
-- Hard block on `wp-admin`, `wp-login`, `phpmyadmin`, `xmlrpc.php`, `/etc/passwd` (→ 404)
-- Hard block on `.git`, `.env`, `.svn`, `.ssh`, `.htaccess` file access (→ 404)
-- IP allowlist on Swagger docs and internal health endpoint (localhost + RFC-1918 only)
-- Cloudflare `CF-Visitor` header detection for real scheme (`http`/`https`) forwarding
-
-### Caching
-- `remoteEntry.js` for all MFEs served with `Cache-Control: no-cache, no-store` — ensures the browser always fetches the latest module federation manifest after a rebuild
-
-### Health
-- `GET /nginx-health` — internal liveness probe (IP-restricted to Docker network)
-
----
-
-## ✅ 2. User Service — FastAPI / Python (port 3001)
-
-Owns resident identity, apartment assignment, role lifecycle, and in-app notifications.
-
-### Public Endpoints (no auth)
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/users/forgot-password` | Send password-reset email via Keycloak Admin API. Validates email exists in DB, checks account is active, and rejects social-login accounts (no password to reset). |
-| GET | `/society` | Return society name, short name, and city (read from env). Used by the frontend `SocietyContext`. |
-| GET | `/health` | Liveness probe — pings PostgreSQL and returns `{ status: "ok" }`. |
-| POST | `/frontend-logs` | Proxy JS error payloads from the browser to Splunk HEC, keeping the HEC token server-side. |
-
-### Authenticated Endpoints (valid Keycloak JWT required)
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/users/sync` | Upsert the calling user into the local `users` table from their JWT claims (first login provisioning). Creates admin notifications for new registrations. |
-| GET | `/users/me` | Return the caller's own profile including apartment and role. |
-| PUT | `/users/me` | Update own profile fields (name, phone). |
-| PUT | `/users/me/apartment` | Self-assign an apartment unit. |
-| GET | `/users/apartments/list` | List all apartments in the society for the apartment picker. |
-| GET | `/notifications` | List the caller's notifications. Supports `?unread=true` filter and pagination (`limit`, `offset`). |
-| PATCH | `/notifications/{id}/read` | Mark a single notification as read. |
-| PATCH | `/notifications/read-all` | Mark all of the caller's notifications as read. |
-
-### Admin / Committee Endpoints (role-gated)
-| Method | Path | Role | Description |
-|--------|------|------|-------------|
-| GET | `/users` | admin, committee_member | List all users with optional `role` and `is_active` filters; paginated. |
-| GET | `/users/admin-stats` | admin, committee_member | Approval/rejection/revocation counts per admin, plus last 20 admin actions. |
-| GET | `/users/{user_id}` | any (own profile) / admin+committee | Fetch user by internal UUID. Residents can only view their own record. |
-| PATCH | `/users/{user_id}/role` | admin | Update the user's role in both the local DB and Keycloak realm roles. |
-| PATCH | `/users/{user_id}/active` | admin | Activate or deactivate a user account. |
-| POST | `/users/{user_id}/approve` | admin | Approve a pending registration — assigns Keycloak realm role and sets `is_active = TRUE`. |
-| DELETE | `/users/{user_id}/reject` | admin | Reject and delete a pending registration from DB. |
-| DELETE | `/users/{user_id}` | admin | Permanently remove an active user from DB and Keycloak. |
-| PATCH | `/users/{user_id}/revoke` | admin | Revoke access — sets `is_active = FALSE` and strips all Keycloak realm roles. |
-
-### Internal Endpoints (X-Internal-Key header required)
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/internal/users/by-sub/{keycloak_sub}` | Resolve Keycloak `sub` claim → internal user record. Used by other services. |
-| GET | `/internal/users/by-id/{user_id}` | Resolve internal UUID → user record. |
-
-### Observability (Splunk integration)
-- `SplunkLoggingMiddleware` — classifies every request into `society_security`, `society_app_errors`, or `society_web_access` Splunk indexes. Fire-and-forget via `asyncio.create_task`; zero impact when Splunk is down.
-- `metrics_collector` — ships host CPU % and memory stats to `society_metrics` index every 60 s.
-- Both components short-circuit immediately when `SPLUNK_HEC_TOKEN` is unset.
-
-### Auth & Security
-- JWT validation via Keycloak JWKS endpoint (5-minute in-process cache)
-- PKCE + Keycloak role-based access control (`require_role` dependency factory)
-- Keycloak Admin API calls (obtain token, assign roles, delete users) are isolated to helper functions
-- All admin actions persisted to `admin_actions` audit table
-
----
-
-## ✅ 3. Event Service — FastAPI / Python (port 3002)
-
-Owns the full event lifecycle and all event-related content.
-
-### Event Lifecycle Management
-- Create event (title, description, venue, start/end time, capacity, ticket price, currency, category)
-- Save as **draft** — visible only to the organiser and admins
-- **Publish** — makes the event visible to all residents; triggers `event.published` notification
-- **Cancel** — closes registrations; triggers `event.cancelled` notification to all registrants
-- **Complete** — manual or auto-trigger after end time; triggers registration status update
-- Edit event details (allowed in draft and published states)
-- Delete event (draft only; published events must be cancelled first)
-
-### Category Management
-- List all categories for the society (name, icon, colour hex)
-- Create / update / delete categories (admin only)
-- Filter events by one or more categories
-
-### Event Discovery & Search
-- Paginated event listing (default filter: `status = published`)
-- Full-text search on title using PostgreSQL `pg_trgm` GIN index
-- Filter by category, date range, free/paid, status
-- Sort by start date, newest first, or registration count
-- Single event detail — description, organiser, venue, capacity remaining, price, announcements
-- Real-time remaining seat count (capacity − confirmed registrations)
-- Sold-out flag when remaining seats reach zero
-
-### Announcements
-- Post announcements against a specific event (organiser / committee member)
-- List announcements on the event detail page in reverse-chronological order
-- Emit `announcement.posted` → Notification Service alerts all confirmed registrants
-
-### Sponsor Management
-- Link one or more sponsors to an event with pledged amount and currency
-- Track sponsorship status: `pledged → received → refund_requested → refunded`
-- Raise and review sponsorship refund requests (organiser approves/rejects)
-
-### Expense Tracking
-- Log cost items per event (venue, catering, equipment, marketing, staff, other)
-- Attach receipt URL per line
-- Aggregate total expenses for the admin finance view
-
-### Complimentary Tickets
-- Allocate free-entry passes by organiser, committee member, or sponsor
-- Track inviter type and ticket count per allocation
-- Support walk-in entries with no account requirement
-
-### Vendor Management
-- Invite vendors to an event with category (food, beverages, merchandise, games, services)
-- Assign stall number and fee type: `fixed`, `revenue_share %`, or `free`
-- Track actual vendor revenue after event completion
-- Manage status: `invited → confirmed → cancelled`
-- Revenue distribution: collect vendor fees into a pool, approve, and distribute to sponsors / organiser / society via `distribution_entry` rows
-
-### Caching
-- Redis cache for the published event listing; invalidated on publish, cancel, or completion
-- Read replica routing for all read queries (listing, detail, search)
-
-### Inter-service Events Published
-| Event | Consumed by |
-|-------|-------------|
-| `event.published` | Notification Service → bell notification to all residents |
-| `event.cancelled` | Notification Service → alert all registrants |
-| `event.completed` | Registration Service → mark confirmed registrations as attended |
-
----
-
-## ✅ 4. Registration Service — Python/FastAPI (port 3005)
-
-Owns the full booking lifecycle: seat reservation → manual payment → admin review → gate entry.
-
-### Registration
-- Register for a published event (enforce capacity, uniqueness per user per event via DB constraint)
-- Support `ticket_count > 1` for family group bookings
-- Calculate `total_amount` based on ticket price × ticket count
-- Cancel own registration (if event not yet started)
-- Admin / organiser cancel any registration
-
-### Manual Payment Flow
-- Free events: confirm immediately; Ticket Service lazily issues QR ticket on next `/tickets/my` call
-- Paid events: `pending_payment` → user uploads UPI screenshot → `pending_review` → admin approves/rejects
-- Rejected payments reset to `pending_payment` with a review note
-- Admin endpoint: `PATCH /registrations/{id}/review` (approve | reject)
-- Payment screenshots stored in `/app/uploads/payment-screenshots/` (Docker volume `registration_uploads`)
-- Society UPI/bank details served from `GET /payment-config`
-
-### UPI Payment QR
-- `GET /registrations/{id}/payment-qr` — SVG QR encoding the UPI deep-link (`upi://pay?pa=…&am=…`)
-- Amount is pre-filled so the user cannot modify it in their UPI app
-
-### Cart
-- `PUT /registrations/cart` — upsert (one cart per user, replaces on new selection)
-- `GET /registrations/cart` — read saved cart (404 if empty)
-- `DELETE /registrations/cart` — cleared on successful registration
-
----
-
-## ✅ 5. Ticket Service — Python/FastAPI (port 3006)
-
-Owns the ticket lifecycle: issuance on registration confirmation, QR code generation, and gate-entry scanning.
-
-### Ticket Issuance
-- **Lazy issuance**: when `GET /tickets/my` is called, the service scans for any confirmed registrations that don't have a ticket yet and issues them automatically (idempotent — `ON CONFLICT DO NOTHING`)
-- Reuses existing `registration.qr_code` if present (backward compat for registrations confirmed before this service existed)
-- One ticket per registration (`UNIQUE(reg_id)` constraint)
-
-### QR Code Display
-- `GET /tickets/my` — returns all active + used tickets for the calling user
-- `GET /tickets/{id}/qr` — serves an SVG QR code (`image/svg+xml`) encoding the ticket's `qr_token`
-- Used by **mfe-tickets** "Show Ticket" button to display the gate-entry QR in a full-screen dialog
-- Cancelled tickets return `400`; QR is not served
-
-### Gate-Entry Scanning
-- `POST /tickets/scan` — accepts `{ token }` (security guard scans QR)
-  - Finds ticket by `qr_token`; validates it is `active`
-  - Marks `ticket.status = 'used'`, records `scanned_at` and `scanned_by`
-  - Also updates `registration.status = 'attended'` for cross-service consistency
-  - Already-scanned tickets return the existing record with `already_scanned: true` (idempotent)
-- Requires role: `admin`, `committee_member`, or `security_guard`
-
-### Ticket Management
-- `GET /tickets/{id}` — owner or privileged roles can view a single ticket
-- `DELETE /tickets/{id}` — admin only; cannot cancel a `used` ticket
-- `status` values: `active` → `used` (on scan) | `cancelled` (by admin)
-
----
-
-## 🔲 6. Payment Service — Node.js (port 3004)
-
-Owns the payment transaction lifecycle, refunds, and multi-currency conversion.
-
-### Payment Initiation
-- Create a Razorpay order for a confirmed registration; return `order_id` + `key_id` to frontend
-- Lock exchange rate at order creation time (stored as `exchange_rate_id` on the payment row)
-- Support multi-currency display (NRI residents pay in USD/GBP, settled in INR)
-
-### Payment Verification
-- Verify Razorpay HMAC signature on frontend callback
-- Idempotent handling — `gateway_txn_id UNIQUE` constraint prevents duplicate credits
-- Store full webhook payload in `gateway_response JSONB`
-
-### Webhooks
-- Handle Razorpay `payment.captured` webhook → mark payment `success`, publish `payment.success`
-- Handle `payment.failed` → mark payment `failed`
-- Replay-safe via `gateway_txn_id` uniqueness check
-
-### Refunds
-- Initiate full or partial refund via Razorpay Refunds API
-- Two-amount model mirrors payment: `original_refund_amount` (user-facing) + `settled_refund_amount` (INR)
-- Track refund status: `pending → processed / failed`
-- Publish `payment.refunded` on success
-
-### Multi-currency
-- `currency` table lists supported codes
-- `exchange_rate` table stores `from_currency`, `to_currency`, `rate`, `valid_from`
-- Rate locked at payment time; historical rate preserved on the payment row
-
-### Inter-service Events Published
-| Event | Consumed by |
-|-------|-------------|
-| `payment.success` | Registration Service → confirm booking; Notification Service → receipt |
-| `payment.refunded` | Registration Service → cancel booking; Notification Service → refund notice |
-
----
-
-## 🔲 6. Notification Service — Node.js (port 3005)
-
-Async consumer — listens on the message queue and dispatches in-app + email notifications.
-
-### In-app Notifications
-- Insert `notification` rows (drives the bell icon badge count in the Shell App)
-- Types: `registration_confirmed`, `payment_success`, `event_reminder`, `event_cancelled`, `refund_processed`, `announcement`, `new_registration` (admin only)
-- Mark as read via User Service endpoints
-
-### Email Dispatch
-- Send transactional emails via SMTP (Mailpit in dev, Gmail / SES in prod)
-- Templates: registration confirmation, payment receipt, event cancellation, refund processed, password reset, announcement broadcast
-
-### Queue Consumers
-| Message | Action |
-|---------|--------|
-| `event.published` | Bell notification to all society residents |
-| `event.cancelled` | Email + bell to all registrants of that event |
-| `registration.confirmed` | Confirmation email + bell to the registrant |
-| `registration.cancelled` | Cancellation notice email + bell to the registrant |
-| `payment.success` | Payment receipt email + bell to the payer |
-| `payment.refunded` | Refund confirmation email + bell to the payer |
-| `announcement.posted` | Bell notification to all confirmed registrants of the event |
-
-### Event Reminder (scheduled)
-- Cron-triggered 24 h before event start → email + bell reminder to all confirmed registrants
-
-### Inter-service Communication
-- **Synchronous:** REST over HTTP on `society_network` (no auth required inside Docker)
-- **Async (dev):** Redis Pub/Sub
-- **Async (prod):** RabbitMQ or AWS SQS
-
----
-
-## Micro Frontends
-
-| # | MFE | Routes | Key Pages |
-|---|-----|--------|-----------|
-| 1 | Shell (host) | / | Nav, auth, notification bell |
-| 2 | Events MFE | /events/* | Listing, search, event detail |
-| 3 | Booking MFE | /tickets/* | My tickets, QR viewer, cancel |
-| 4 | Payment MFE | /checkout/* | Checkout, payment history |
-| 5 | Admin MFE | /admin/* | Dashboard, event CRUD, reports |
-
-**Module Federation** (Vite + `@originjs/vite-plugin-federation`)
-
-```
-Shell App (host) — port 3000
-├── Events MFE       (lazy loaded) — port 4001
-├── Booking MFE      (lazy loaded) — port 4002
-├── Payment MFE      (lazy loaded) — port 4003
-└── Admin MFE        (lazy, role-gated: admin | committee_member) — port 4004
-```
-
-### Shell App
-- Bootstraps Keycloak JS, handles login/logout/Google SSO, silent token refresh
-- Top-level router, global nav: logo, category links, notification bell, avatar menu
-- Provides `AuthContext` (user, token, login, loginWithGoogle, register, logout) and `SocietyContext`
-- Polls `/api/users/notifications?unread=true` for bell badge count
-
-### Events MFE
-- `/events` — paginated grid with category filter chips + full-text search bar
-- `/events/:id` — banner, description, announcements section, registration card
-
-### Booking MFE
-- `/tickets` — all my registrations with status badges
-- `/tickets/:id` — full-screen QR code display for gate scan
-
-### Payment MFE
-- `/checkout/:registrationId` — order summary, currency picker, Razorpay SDK integration
-- `/payments` — payment history with invoice download
-
-### Admin MFE
-- `/admin/events` — event table with full CRUD actions
-- `/admin/events/new` and `/admin/events/:id/edit` — event form
-- `/admin/users` — user list, approval queue, role management
-- `/admin/reports` — revenue charts, registration stats, expense summaries
-- `/admin/announcements` — compose and send to all event registrants
-
----
-
-## Deployment Topology
-
-```
-Browser (public domain or LAN)
-         │
-         │  https://gm-global-techies-town.club  (prod)
-         │  http://localhost:8080                (dev)
-         ▼
-┌─────────────────────────────────────────────────────┐
-│            Cloudflare Tunnel (cloudflared)           │
-│     routes public HTTPS → nginx on society_net       │
-└──────────────────────┬──────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────┐
-│         nginx — API Gateway  (port 8080)             │
-│  Rate limiting · Security headers · Path routing     │
-└──┬──────────┬──────────┬────────┬────────┬──────────┘
-   ▼          ▼          ▼        ▼        ▼
-User Svc   Event Svc  Reg Svc  Pay Svc  Notif Svc
-:3001      :3002      :3003    :3004    :3005
-✅ Built   ✅ Built   🔲Planned🔲Planned🔲 Planned
-   │          │          │        │        │
-   └──────────┴──────────┴────────┴────────┘
-                         │
-             ┌───────────┼───────────┐
-             ▼           ▼           ▼
-        PostgreSQL      Redis     Keycloak
-          :5432         :6379      :8081
-```
-
----
-
-## Scaling Notes
-
-| Concern | Solution |
-|---------|----------|
-| Event listing is high traffic | Redis cache for `/events` list; invalidate on publish / cancel / complete |
-| Registration burst (popular event) | Horizontal scale; `UNIQUE(event_id, user_id)` in DB prevents double-booking |
-| Payment webhook replay | `gateway_txn_id UNIQUE` constraint makes handlers idempotent |
-| Notification spikes | Async queue absorbs bursts; Notification Service scales independently |
-| Multi-society SaaS later | `society_id` FK on every major table; tenant isolation at gateway routing layer |
-| NRI currency | Exchange rate locked at payment time via `exchange_rate_id` on the payment row |
+**6 backend microservices** (all Python/FastAPI) + **1 shell + 5 micro-frontends**, behind a
+single nginx gateway. All backend services share one PostgreSQL database (`society_events`);
+see CLAUDE.md's "single-tenant, shared-database" note for why cross-service direct table
+writes are the norm here, not a bug.
+
+| Service | Port | Nginx prefix |
+|---|---|---|
+| user-service | 3001 | `/api/users/` |
+| event-service | 3002 | `/api/events/` |
+| otp-service | 3003 | `/api/otp/` |
+| registration-service | 3005 | `/api/registrations/` (includes `/complimentary/*`) |
+| ticket-service | 3006 | `/api/tickets/` |
+| payment-service | 3007 | `/api/payments/` |
+
+## Backend services
+
+### user-service (3001)
+
+Identity, roles, building/unit structure, notifications.
+
+- **Users**: Keycloak-JWT sync/upsert on first login, own-profile get/update, apartment/unit self-assignment, admin listing with role/active filters, approve/reject pending registrations, role change, activate/deactivate/revoke (with Keycloak realm-role sync), permanent delete. All admin mutations are written to an `admin_actions` audit table.
+- **Building structure**: configurable hierarchy level names, structure-node tree CRUD, unit-assignment request workflow (resident requests a flat, admin approves/rejects).
+- **Notifications**: list (with unread filter), mark one/all read — drives the bell icon.
+- **Auth-adjacent**: `POST /users/forgot-password` delegates to Keycloak's Admin API to send the reset email (no SMTP of its own here).
+- **Internal-only** (`X-Internal-Key` header): resolve Keycloak `sub` → user, or internal UUID → user, for other services.
+
+### event-service (3002)
+
+Event lifecycle + content. Does **not** own registrations, tickets, or payments.
+
+- **Events**: paginated/filterable listing, detail, create (starts as `draft`), update, publish, cancel, complete, delete (draft only). `cancel_freeze_at` (self-cancel deadline) is validated to always be before `start_time`.
+- **Categories**: CRUD.
+- **Announcements**: per-event, reverse-chronological.
+- **Ticket types**: per-event named ticket tiers (price, free/paid, capacity, sort order, active flag).
+- **Dead code**: `app/routes/registrations.py` exists in this service but is **not mounted** in `main.py` (only `events` and `categories` routers are). Don't be misled by its presence — registrations are entirely owned by `registration-service`.
+
+### registration-service (3005)
+
+Owns the booking lifecycle end to end: cart → registration → payment review → complimentary tickets → cancellation.
+
+- **Cart**: one saved cart per user (`PUT`/`GET`/`DELETE /registrations/cart`), cleared on successful registration.
+- **Registration**: create (free events auto-confirm; paid events start `pending_payment`), list own, get one, cancel. A user may hold **multiple** registrations for the same event (no uniqueness constraint — e.g. buying an extra ticket for a guest is allowed). Cancelling a **confirmed** registration is blocked for residents unless the event's `cancel_freeze_at` is unset (always allowed until start) or still in the future; cancelling also cancels the linked `ticket` row and, if a `payment_transaction` was `verified`, flips it to `refund_requested` for the admin refund queue.
+- **Manual payment (legacy flow)**: UPI QR generation with the amount pre-filled, screenshot upload (`pending_review`), admin `PATCH /registrations/{id}/review` (approve/reject).
+- **Complimentary tickets** (`/complimentary/*`, i.e. `/api/registrations/complimentary/*`): admin/committee issue a **real** registration + ticket (QR-scannable, shows up in the normal gate-scan flow) to a named guest on behalf of an organizer/committee member/sponsor, or log an anonymous walk-in headcount (no ticket). Guests without an account get a lightweight placeholder `users` row (`role='guest'`, no `keycloak_sub`, can never log in). Revoke is a soft-cancel (keeps the row for audit, cancels the linked registration+ticket). Named tickets with an email on file can be emailed (QR embedded inline) via Gmail SMTP — see `app/email.py`.
+
+### ticket-service (3006)
+
+Ticket issuance, QR display, gate entry.
+
+- **Lazy issuance**: `GET /tickets/my` scans for the caller's `confirmed` registrations with no ticket yet and issues one on the spot (idempotent). This is how paid/free resident checkouts get a ticket — there's no explicit "issue" call from the checkout flow itself.
+- **QR**: `GET /tickets/{id}/qr` is a **public**, unauthenticated SVG endpoint (safe because the QR only contains an opaque token) — used both by residents' "Show Ticket" dialog and by the admin Complimentary Tickets page.
+- **Gate entry**: `POST /tickets/scan` (by QR token) or `POST /tickets/{id}/enter` (by ticket ID) mark a ticket `used`, set `scanned_at`/`scanned_by`, and flip the linked registration to `attended`. Idempotent — re-scanning an already-used ticket returns `already_scanned: true` instead of erroring.
+- **Roster**: `GET /tickets/event/{event_id}` — full attendee list for an event (security/admin/committee).
+- Admin-only `DELETE /tickets/{id}` cancels a ticket directly (can't cancel an already-`used` one) — separate from, and lower-level than, registration-service's cancel flow.
+
+### payment-service (3007)
+
+UPI payment reconciliation and refunds — **not** a Razorpay/card gateway; there is no such integration anywhere in this codebase.
+
+- **Transactions** (`/payments`): initiate, auto-confirm (called by the frontend once a payment is externally verified — see the note below), get/list, manual verify/approve/reject, flag a verified transaction for refund.
+- **Refund queue** (`/refunds`): list transactions in `refund_requested` status; admin/committee log the refund UTR to close it out.
+- **Reconciliation** (`/reconciliation`, `/recon-settings`): this service has its **own** IMAP-polling + Ollama-LLM screenshot-parsing implementation (`app/reconciliation/`, `aioimaplib` dependency) and its own settings UI (IMAP host/creds, Ollama host/model, test-connection endpoints).
+- **Committee registry** (`/registry`): assigns a committee member + UPI ID as the payment collector for a given event; exposes that collector's QR.
+- **Audit** (`/audit`): reconciliation status-change log.
+
+**Important gotcha**: the resident-facing checkout UI (`frontend/mfe-payment/src/PaymentApp.tsx`) does **not** call this service for the live QR/screenshot-verification/SSE flow — it calls an entirely separate, external domain (`https://pay.gm-global-techies-town.club`, hardcoded as `PAY_BASE`), which is the **different, standalone** sibling project `~/payment_reconcilation_service` (see CLAUDE.md). The checkout flow only calls back into *this* repo's payment-service for `auto-confirm` (after the external SSE reports success) and for listing payment history. If you're debugging the live checkout/verification experience, you are very likely debugging the wrong codebase if you're only looking at `services/payment` in this repo.
+
+### otp-service (3003)
+
+Mobile OTP login/registration bridge — Redis for OTP+session storage, Keycloak Admin API for RFC 8693 token exchange (impersonation). `POST /send`, `/verify`, `/refresh`, `/logout`; `POST /register/send-otp`, `/register/confirm` for phone-based signup. See the README's step-by-step OTP setup walkthrough for the full flow.
+
+## Frontend
+
+`frontend/shell` (host, port 3000) + 5 independently-buildable module-federation remotes: `mfe-events` (4001), `mfe-booking` (4002), `mfe-payment` (4003), `mfe-admin` (4004), `mfe-tickets` (4005). See CLAUDE.md for the federation/routing convention (URL path → `page`/`id` props → remote dispatcher).
+
+Resident-facing apps (`mfe-events`, `mfe-booking`, `mfe-payment`, `mfe-tickets`) are all real and backend-wired.
+
+### mfe-admin — reality check
+
+`mfe-admin` exposes three route trees (`ManageRoutes` at `/manage/*`, `AdminRoutes` at `/admin/*`, `SponsorApp` at `/sponsor`) and bundles many admin pages — **several of which have no backend at all** and only render hardcoded local state. Before spending time on one of these, check whether it's actually wired up:
+
+| Page | Status |
+|---|---|
+| `ManageEvents.tsx` | Real |
+| `TicketTypeSetup.tsx` | Real |
+| `ComplimentaryTickets.tsx` | Real |
+| `CollectorRegistry.tsx` | Real |
+| `ReconciliationConsole.tsx` | Real |
+| `RefundTasks.tsx` | Real |
+| `PaymentApprovals.tsx` | Real |
+| `UserApproval.tsx` | Real |
+| `BuildingStructure.tsx` | Real |
+| `UnitManagement.tsx` | Real |
+| **`FreeTokens.tsx`** | **Mock** — hardcoded token list, no API calls. Duplicates what `ComplimentaryTickets.tsx` now does for real; prefer that page. |
+| **`EventFinance.tsx`** | **Mock** — no API calls. |
+| **`VendorManagement.tsx`** | **Mock** — no API calls; no `vendor`-table routes exist on any service. |
+| **`RevenueDistribution.tsx`** | **Mock** — no API calls. |
+| **`SponsorDashboard.tsx`** | **Mock** — no API calls. |
+| **`SponsorManagement.tsx`** | **Mock** — no API calls. |
+| **`SponsorshipRefunds.tsx`** | **Mock** — no API calls. |
+
+The `sponsor`/`event_sponsorship`/`sponsorship_refund`/`event_expense`/`vendor` tables exist in `db/init/01_schema.sql`, but **no service has any route touching them** — they're schema-only, same situation `complimentary_ticket` was in before this session's work made it real.

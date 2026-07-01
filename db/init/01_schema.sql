@@ -166,6 +166,8 @@ CREATE TABLE IF NOT EXISTS event (
     venue_lng       DOUBLE PRECISION,
     venue_place_id  TEXT,
     venue_address   TEXT,
+    cancel_freeze_at TIMESTAMPTZ,
+                    -- last moment a resident may self-cancel a confirmed ticket; NULL = disabled
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_end_after_start CHECK (end_time > start_time),
     CONSTRAINT chk_price_positive  CHECK (ticket_price >= 0)
@@ -184,8 +186,9 @@ CREATE TABLE IF NOT EXISTS registration (
     status           VARCHAR(50) NOT NULL DEFAULT 'pending',
                      -- 'pending' | 'confirmed' | 'cancelled' | 'attended'
     qr_code          TEXT,                              -- base64 QR or short token
-    registered_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (event_id, user_id)
+    registered_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    -- No UNIQUE (event_id, user_id): a resident may hold multiple
+    -- registrations for the same event (e.g. buying a ticket for a guest).
 );
 
 -- ---------------------------------------------------------------------------
@@ -372,6 +375,9 @@ CREATE TABLE IF NOT EXISTS event_expense (
 -- ---------------------------------------------------------------------------
 -- COMPLIMENTARY_TICKET  (free-entry allocation managed by organizer)
 -- invited_by_user_id is NULL for walk_in entries — no account required.
+-- Named entries (organizer/committee_member/sponsor) get a real registration
+-- + ticket (registration_id/guest_user_id set, scannable QR); walk_in entries
+-- stay a headcount-only log (registration_id/guest_user_id/guest_name NULL).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS complimentary_ticket (
     id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -379,11 +385,18 @@ CREATE TABLE IF NOT EXISTS complimentary_ticket (
     invited_by_user_id  UUID        REFERENCES users(id) ON DELETE SET NULL,
     inviter_type        VARCHAR(50) NOT NULL,
                         -- 'organizer' | 'committee_member' | 'sponsor' | 'walk_in'
+    registration_id     UUID        REFERENCES registration(id) ON DELETE CASCADE,
+    guest_user_id       UUID        REFERENCES users(id),
+    guest_name          VARCHAR(255),
+    guest_email         VARCHAR(255),
     ticket_count        INTEGER     NOT NULL DEFAULT 1,
     notes               TEXT,
     created_by          UUID        NOT NULL REFERENCES users(id),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT chk_comp_ticket_count CHECK (ticket_count > 0)
+    cancelled_at        TIMESTAMPTZ,
+    emailed_at          TIMESTAMPTZ,
+    CONSTRAINT chk_comp_ticket_count CHECK (ticket_count > 0),
+    CONSTRAINT complimentary_ticket_reg_unique UNIQUE (registration_id)
 );
 
 -- =============================================================================

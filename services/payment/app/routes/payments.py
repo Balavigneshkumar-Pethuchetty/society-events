@@ -18,6 +18,14 @@ class ApproveBody(BaseModel):
 class RejectBody(BaseModel):
     notes: Optional[str] = None
 
+
+class AutoConfirmBody(BaseModel):
+    event_id: str
+    registration_id: str
+    reconciliation_txn_id: str
+    upi_ref: str
+    amount: float
+
 router = APIRouter()
 
 _TXN_QUERY = """
@@ -76,6 +84,74 @@ async def initiate(
         "idempotency_key": idempotency_key,
     })
     return result
+
+
+# ── POST /payments/auto-confirm ───────────────────────────────────────────────
+
+@router.post("/auto-confirm", response_model=dict,
+             summary="Auto-confirm a payment via reconciliation service verdict")
+async def auto_confirm(
+    body: AutoConfirmBody,
+    claims: dict = Depends(get_current_claims),
+):
+    """Called by the frontend after receiving a CONFIRMED SSE event. Creates a
+    verified payment_transaction and marks the registration confirmed — no admin
+    action needed."""
+    sub = claims.get("sub", "")
+    pool = await get_pool()
+
+    async with pool.acquire() as conn:
+        user_id = await conn.fetchval(
+            "SELECT id::text FROM users WHERE keycloak_sub = $1", sub
+        )
+        if not user_id:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        reg = await conn.fetchrow(
+            """SELECT r.id::text, r.status, r.total_amount, e.price_currency
+               FROM registration r
+               JOIN event e ON e.id = r.event_id
+               WHERE r.id = $1::uuid AND r.user_id = $2::uuid""",
+            body.registration_id, user_id,
+        )
+        if not reg:
+            raise HTTPException(status_code=404, detail="Registration not found")
+
+        # Idempotent: if already confirmed return the existing verified txn
+        if reg["status"] == "confirmed":
+            existing = await conn.fetchrow(
+                "SELECT txn_ref FROM payment_transaction "
+                "WHERE registration_id = $1::uuid AND status = 'verified' LIMIT 1",
+                body.registration_id,
+            )
+            if existing:
+                return {"txn_ref": existing["txn_ref"], "status": "verified"}
+
+        txn_ref = "TXN" + secrets.token_hex(8).upper()
+        currency = reg["price_currency"] or "INR"
+        idempotency_key = f"reconciliation:{body.reconciliation_txn_id}"
+
+        txn_id = await conn.fetchval(
+            """INSERT INTO payment_transaction
+               (txn_ref, event_id, registration_id, user_id, amount, currency,
+                payment_utr, status, idempotency_key)
+               VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, 'verified', $8)
+               RETURNING id::text""",
+            txn_ref, body.event_id, body.registration_id, user_id,
+            body.amount, currency, body.upi_ref, idempotency_key,
+        )
+        await conn.execute(
+            """INSERT INTO payment_audit_log (txn_id, from_status, to_status, updated_by, note)
+               VALUES ($1::uuid, NULL, 'verified', $2, $3)""",
+            txn_id, sub,
+            f"Auto-confirmed via reconciliation service. Rec TXN: {body.reconciliation_txn_id}",
+        )
+        await conn.execute(
+            "UPDATE registration SET status = 'confirmed' WHERE id = $1::uuid",
+            body.registration_id,
+        )
+
+    return {"txn_ref": txn_ref, "status": "verified"}
 
 
 # ── GET /payments/{txn_ref} ───────────────────────────────────────────────────

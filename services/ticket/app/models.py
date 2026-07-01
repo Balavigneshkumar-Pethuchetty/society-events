@@ -12,6 +12,7 @@ class TicketOut(BaseModel):
     event_end_time: datetime
     event_venue: str
     event_image_color: Optional[str] = None
+    cancel_freeze_at: Optional[datetime] = None
     ticket_count: int
     total_amount: float
     display_currency: str

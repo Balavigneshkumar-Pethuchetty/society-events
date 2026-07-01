@@ -43,6 +43,7 @@ class EventListItem(BaseModel):
     ticket_price: Decimal
     price_currency: str
     is_free: bool
+    cancel_freeze_at: Optional[datetime] = None
     category_id: Optional[str] = None
     category_name: Optional[str] = None
     category_color: Optional[str] = None
@@ -76,6 +77,7 @@ class EventCreate(BaseModel):
     price_currency: str = Field("INR", min_length=3, max_length=3)
     is_free: bool = True
     category_id: Optional[str] = None
+    cancel_freeze_at: Optional[datetime] = None
 
 
 class EventUpdate(BaseModel):
@@ -93,6 +95,7 @@ class EventUpdate(BaseModel):
     price_currency: Optional[str] = Field(None, min_length=3, max_length=3)
     is_free: Optional[bool] = None
     category_id: Optional[str] = None
+    cancel_freeze_at: Optional[datetime] = None
 
 
 class EventListResponse(BaseModel):

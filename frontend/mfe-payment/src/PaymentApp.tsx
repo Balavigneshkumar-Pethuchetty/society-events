@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import { fetchEventSource } from '@microsoft/fetch-event-source';
 import {
   Alert, Box, Button, Chip, CircularProgress, Container,
   Divider, IconButton, Paper, Stack, Step, StepLabel,
-  Stepper, TextField, Tooltip, Typography,
+  Stepper, Tooltip, Typography,
 } from '@mui/material';
 import AccountBalanceIcon  from '@mui/icons-material/AccountBalance';
 import CheckCircleIcon     from '@mui/icons-material/CheckCircle';
@@ -13,8 +13,34 @@ import HourglassTopIcon    from '@mui/icons-material/HourglassTop';
 import InfoOutlinedIcon    from '@mui/icons-material/InfoOutlined';
 import PaymentIcon         from '@mui/icons-material/Payment';
 import QrCode2Icon         from '@mui/icons-material/QrCode2';
-import RefreshIcon         from '@mui/icons-material/Refresh';
+import UploadFileIcon      from '@mui/icons-material/UploadFile';
 import VerifiedIcon        from '@mui/icons-material/Verified';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const PAY_BASE = 'https://pay.gm-global-techies-town.club';
+
+// Module-level cache: populated once from GET /channels, then reused.
+// Can be pre-seeded at build time via VITE_PAY_CHANNEL_ID.
+let _channelId: string | null =
+  (import.meta.env.VITE_PAY_CHANNEL_ID as string | undefined) ?? null;
+
+async function fetchChannelId(token: string): Promise<string | null> {
+  if (_channelId) return _channelId;
+  try {
+    const channels: Array<{ id: string; is_active: boolean }> = await apiFetch(
+      `${PAY_BASE}/channels`, token
+    );
+    const active = channels.find(c => c.is_active);
+    if (active) { _channelId = active.id; }
+  } catch { /* requires admin role — falls back to null if caller lacks it */ }
+  return _channelId;
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> {
+  try { return JSON.parse(atob(token.split('.')[1])); }
+  catch { return {}; }
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -40,9 +66,21 @@ interface Transaction {
   payment_utr: string | null; event_title: string;
 }
 
-interface Collector {
-  upi_id: string; upi_name: string; upi_intent_uri: string;
-  event_title: string; amount: number; currency: string;
+interface PaymentIntentResp {
+  transaction_id: string;
+  status: string;
+  amount: number;
+  upi_qr_data: string;   // data:image/png;base64,...
+  upi_vpa: string;
+  expiry_at: string;
+  checksum_hash: string;
+}
+
+interface VerifyResult {
+  verdict: string;       // CONFIRMED | AMOUNT_MISMATCH | PENDING
+  confidence: string;
+  upiRef: string | null;
+  amount: number | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -102,26 +140,37 @@ async function apiFetch(path: string, token: string, opts: RequestInit = {}) {
   });
   if (!res.ok) {
     const b = await res.json().catch(() => ({}));
-    throw new Error(b.detail ?? `HTTP ${res.status}`);
+    throw new Error((b as { detail?: string }).detail ?? `HTTP ${res.status}`);
   }
   return res.json();
 }
 
 // ── Checkout flow ─────────────────────────────────────────────────────────────
 
-const STEPS = ['Confirm Booking', 'Scan & Pay', 'Track Payment'];
+const STEPS = ['Confirm Booking', 'Scan & Pay', 'Upload Proof', 'Done'];
 
 function CheckoutFlow({ token }: { token: string }) {
   const [step, setStep]               = useState(0);
   const [checkoutData, setCheckoutData] = useState<CheckoutData | null>(null);
   const [cartLoading, setCartLoading] = useState(true);
   const [registration, setRegistration] = useState<Registration | null>(null);
-  const [collector, setCollector]     = useState<Collector | null>(null);
-  const [payerUpi, setPayerUpi]       = useState('');
-  const [transaction, setTransaction] = useState<Transaction | null>(null);
+  const [paymentIntent, setPaymentIntent] = useState<PaymentIntentResp | null>(null);
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [verifying, setVerifying]     = useState(false);
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [error, setError]             = useState<string | null>(null);
   const [loading, setLoading]         = useState(false);
-  const pollRef                       = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sseAbortRef                   = useRef<AbortController | null>(null);
+
+  // Close SSE when the component unmounts
+  useEffect(() => () => { sseAbortRef.current?.abort(); }, []);
+
+  // Auto-redirect to My Tickets after successful confirmation
+  useEffect(() => {
+    if (verifyResult?.verdict !== 'CONFIRMED') return;
+    const t = setTimeout(() => { window.location.href = '/tickets'; }, 3000);
+    return () => clearTimeout(t);
+  }, [verifyResult]);
 
   useEffect(() => {
     fetch('/api/registrations/registrations/cart', { headers: { Authorization: `Bearer ${token}` } })
@@ -136,21 +185,6 @@ function CheckoutFlow({ token }: { token: string }) {
       })
       .catch(() => setCartLoading(false));
   }, [token]);
-
-  // Poll transaction status until verified
-  useEffect(() => {
-    if (!transaction || transaction.status === 'verified' || transaction.status === 'cancelled') return;
-    pollRef.current = setInterval(async () => {
-      try {
-        const updated: Transaction = await apiFetch(
-          `/api/payments/payments/${transaction.txn_ref}`, token
-        );
-        setTransaction(updated);
-        if (updated.status !== 'pending') clearInterval(pollRef.current!);
-      } catch { /* ignore poll errors */ }
-    }, 5000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [transaction?.txn_ref, transaction?.status]);
 
   if (cartLoading) return (
     <Container maxWidth="sm" sx={{ pt: 8, textAlign: 'center' }}><CircularProgress /></Container>
@@ -169,13 +203,13 @@ function CheckoutFlow({ token }: { token: string }) {
   const isFree = total === 0;
   const steps  = isFree ? ['Confirm Booking', 'Done'] : STEPS;
 
-  // Step 0: Confirm Booking → create registration (or resume existing)
+  // ── Step 0: Confirm Booking ────────────────────────────────────────────────
+
   async function handleConfirm() {
     setLoading(true); setError(null);
     try {
       let reg: Registration;
 
-      // Try to create a new registration
       const regRes = await fetch('/api/registrations/registrations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -191,14 +225,6 @@ function CheckoutFlow({ token }: { token: string }) {
 
       if (regRes.ok) {
         reg = await regRes.json();
-      } else if (regRes.status === 409) {
-        // Already registered — resume the existing registration
-        const myRegs: Registration[] = await apiFetch('/api/registrations/registrations/my', token);
-        const existing = myRegs.find(
-          r => r.event_id === checkoutData!.eventId && r.status !== 'cancelled'
-        );
-        if (!existing) throw new Error('Already registered but could not locate your registration.');
-        reg = existing;
       } else {
         const b = await regRes.json().catch(() => ({}));
         throw new Error((b as { detail?: string }).detail ?? `HTTP ${regRes.status}`);
@@ -209,14 +235,34 @@ function CheckoutFlow({ token }: { token: string }) {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
 
-      // If already confirmed (paid or free), go straight to success screen
-      if (isFree || reg.status === 'confirmed') { setStep(1); return; }
+      if (reg.status === 'confirmed') { setStep(1); return; }
 
-      // pending_payment — resolve collector and show QR
-      const col: Collector = await apiFetch(
-        `/api/payments/registry/events/${checkoutData!.eventId}/collector?amount=${total}`, token
-      );
-      setCollector(col);
+      // Create payment intent via centralized reconciliation service
+      const ticketCount = checkoutData!.tickets.reduce((s, t) => s + t.qty, 0);
+      const claims      = decodeJwtPayload(token);
+      const payerId     = (claims.preferred_username as string) || (claims.sub as string) || 'member';
+
+      const intent: PaymentIntentResp = await apiFetch(`${PAY_BASE}/createPayment`, token, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ctx_type: 'EVENT',
+          amount: total,
+          payer_id: payerId,
+          description: `${checkoutData!.eventTitle} - ${ticketCount} ticket${ticketCount !== 1 ? 's' : ''}`,
+          payment_category: 'event_ticket',
+          expiry_hours: 24,
+          payment_metadata: {
+            event_id: checkoutData!.eventId,
+            ticket_count: ticketCount,
+            registration_id: reg.id,
+          },
+        }),
+      });
+      setPaymentIntent(intent);
+
+      // Open SSE before user uploads proof so we never miss the event
+      openSse(intent.transaction_id);
       setStep(1);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Registration failed');
@@ -225,30 +271,103 @@ function CheckoutFlow({ token }: { token: string }) {
     }
   }
 
-  // Step 1: User has scanned QR and clicks "I've Paid" (payer UPI is optional)
-  async function handlePaid() {
-    if (!registration) return;
-    setLoading(true); setError(null);
+  // ── SSE listener ──────────────────────────────────────────────────────────
+
+  function openSse(transactionId: string) {
+    sseAbortRef.current?.abort();
+    const abort = new AbortController();
+    sseAbortRef.current = abort;
+
+    fetchEventSource(`${PAY_BASE}/events/subscribe`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: abort.signal,
+      openWhenHidden: true,
+      async onmessage(ev) {
+        if (ev.event !== 'payment_verified') return;
+        let data: Record<string, unknown>;
+        try { data = JSON.parse(ev.data); }
+        catch { return; }
+
+        if (data.transaction_id !== transactionId) return;
+
+        const result: VerifyResult = {
+          verdict:    String(data.verdict    ?? 'PENDING'),
+          confidence: String(data.confidence ?? ''),
+          upiRef:     (data.upi_ref as string | null) ?? null,
+          amount:     (data.amount as number | null) ?? null,
+        };
+
+        if (result.verdict === 'CONFIRMED') {
+          await markTicketPurchased(result);
+        } else {
+          setVerifyResult(result);
+          setVerifying(false);
+          setStep(3);
+        }
+      },
+      onerror(err) {
+        console.warn('SSE error:', err);
+        // returning undefined causes fetchEventSource to reconnect automatically
+      },
+    });
+  }
+
+  async function markTicketPurchased(result: VerifyResult) {
+    if (!registration || !paymentIntent) return;
     try {
-      const result = await apiFetch('/api/payments/payments/initiate', token, {
+      await apiFetch('/api/payments/payments/auto-confirm', token, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          event_id: checkoutData!.eventId,
-          registration_id: registration.id,
-          payer_upi: payerUpi.trim(),
+          event_id:              registration.event_id,
+          registration_id:       registration.id,
+          reconciliation_txn_id: paymentIntent.transaction_id,
+          upi_ref:               result.upiRef ?? 'RECONCILED',
+          amount:                result.amount ?? paymentIntent.amount,
         }),
       });
-      // Fetch full transaction object
-      const txn: Transaction = await apiFetch(`/api/payments/payments/${result.txn_ref}`, token);
-      setTransaction(txn);
-      setStep(2);
+    } catch { /* best-effort — reconciliation already confirmed; admin can resolve */ }
+
+    sseAbortRef.current?.abort();
+    setVerifyResult(result);
+    setVerifying(false);
+    setStep(3);
+  }
+
+  // ── Step 2: Upload screenshot ──────────────────────────────────────────────
+
+  async function handleScreenshotUpload() {
+    if (!screenshotFile || !paymentIntent) return;
+    setVerifying(true); setError(null);
+
+    const channelId = await fetchChannelId(token);
+    if (!channelId) {
+      setError('No payment channel is configured. Contact an admin.');
+      setVerifying(false);
+      return;
+    }
+
+    const fd = new FormData();
+    fd.append('file', screenshotFile);
+    fd.append('channel_id', channelId);
+    fd.append('txn_id', paymentIntent.transaction_id);
+    fd.append('search_days', '3');
+
+    try {
+      // The response body is ignored here — the SSE event carries the verdict.
+      // verifying stays true until the SSE handler resolves it.
+      await fetch(`${PAY_BASE}/verifyPaymentScreenshot`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Could not record payment');
-    } finally {
-      setLoading(false);
+      setVerifying(false);
+      setError(e instanceof Error ? e.message : 'Verification request failed. Please try again.');
     }
   }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <Container maxWidth="sm" sx={{ py: 4 }}>
@@ -283,13 +402,15 @@ function CheckoutFlow({ token }: { token: string }) {
             <Typography fontWeight={700} color="primary">{fmtAmount(total, checkoutData.currency)}</Typography>
           </Box>
           <Button fullWidth variant="contained" size="large" disabled={loading} onClick={handleConfirm}>
-            {loading ? <CircularProgress size={22} color="inherit" /> : isFree ? 'Register for Free' : 'Confirm & Proceed to Payment'}
+            {loading
+              ? <CircularProgress size={22} color="inherit" />
+              : isFree ? 'Register for Free' : 'Confirm & Proceed to Payment'}
           </Button>
         </Paper>
       )}
 
-      {/* ── Step 1b: Free event confirmed OR already-confirmed paid registration ── */}
-      {step === 1 && (isFree || registration?.status === 'confirmed') && (
+      {/* ── Step 1b: Free / already-confirmed ── */}
+      {step === 1 && registration?.status === 'confirmed' && (
         <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
           <CheckCircleIcon sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
           <Typography variant="h6" fontWeight={700}>Registration Confirmed!</Typography>
@@ -300,26 +421,23 @@ function CheckoutFlow({ token }: { token: string }) {
         </Paper>
       )}
 
-      {/* ── Step 1a: Pay via UPI ── */}
-      {step === 1 && !isFree && registration?.status !== 'confirmed' && collector && registration && (
+      {/* ── Step 1a: Scan & Pay ── */}
+      {step === 1 && registration?.status !== 'confirmed' && paymentIntent && (
         <Stack spacing={3}>
           <Alert severity="info" icon={<QrCode2Icon />}>
             Scan the QR or copy the UPI ID below to pay <strong>{fmtAmount(total)}</strong>.
-            Then enter your own UPI ID and click <strong>"I've Paid"</strong>.
+            Then click <strong>"I've Paid"</strong> to upload your confirmation screenshot.
           </Alert>
 
           <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
             <Typography fontWeight={700} mb={2}>Pay via UPI</Typography>
-
             <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-              {/* QR rendered client-side from UPI intent URI */}
               <Box sx={{ textAlign: 'center', flexShrink: 0 }}>
                 <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1, display: 'inline-block' }}>
-                  <QRCodeSVG
-                    value={collector.upi_intent_uri}
-                    size={160}
-                    level="M"
-                    includeMargin={false}
+                  <img
+                    src={paymentIntent.upi_qr_data}
+                    alt="UPI QR Code"
+                    style={{ width: 160, height: 160, display: 'block' }}
                   />
                 </Box>
                 <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
@@ -327,7 +445,6 @@ function CheckoutFlow({ token }: { token: string }) {
                 </Typography>
               </Box>
 
-              {/* Collector UPI details */}
               <Stack spacing={1.5} sx={{ flex: 1, minWidth: 180 }}>
                 <Box>
                   <Typography variant="caption" color="text.secondary">Amount</Typography>
@@ -337,110 +454,126 @@ function CheckoutFlow({ token }: { token: string }) {
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">Pay to UPI ID</Typography>
-                  <Box><CopyText value={collector.upi_id} mono /></Box>
-                  <Typography variant="caption" color="text.secondary">({collector.upi_name})</Typography>
+                  <Box><CopyText value={paymentIntent.upi_vpa} mono /></Box>
                 </Box>
                 <Box>
-                  <Typography variant="caption" color="text.secondary">Event</Typography>
-                  <Typography variant="body2" fontWeight={600}>{collector.event_title}</Typography>
+                  <Typography variant="caption" color="text.secondary">Transaction ID</Typography>
+                  <Box><CopyText value={paymentIntent.transaction_id} mono /></Box>
                 </Box>
               </Stack>
             </Box>
           </Paper>
 
-          {/* Payer UPI (optional) + submit */}
-          <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-            <Typography fontWeight={700} mb={1.5}>After Paying</Typography>
-            <Typography variant="body2" color="text.secondary" mb={2}>
-              Once you have transferred the amount, click the button below to notify the admin.
-              Optionally provide your UPI ID to make refunds easier.
-            </Typography>
-            <TextField
-              label="Your UPI ID (optional)"
-              value={payerUpi}
-              onChange={e => setPayerUpi(e.target.value)}
-              fullWidth size="small" sx={{ mb: 2 }}
-              placeholder="yourname@okicici"
-              helperText="Optional — helps us process refunds if needed"
-            />
-            <Button
-              fullWidth variant="contained" size="large" color="success"
-              disabled={loading}
-              onClick={handlePaid}
-            >
-              {loading ? <CircularProgress size={22} color="inherit" /> : "I've Paid — Notify Admin"}
-            </Button>
-          </Paper>
+          <Button fullWidth variant="contained" size="large" onClick={() => setStep(2)}>
+            I've Paid — Upload Screenshot
+          </Button>
         </Stack>
       )}
 
-      {/* ── Step 1a (no collector): fallback ── */}
-      {step === 1 && !isFree && !collector && (
+      {/* ── Step 1a fallback: reconciliation service unavailable ── */}
+      {step === 1 && !isFree && registration?.status !== 'confirmed' && !paymentIntent && (
         <Alert severity="warning" icon={<AccountBalanceIcon />}>
-          No payment collector has been assigned for this event yet. Contact an admin to complete your registration.
+          Could not connect to the payment service. Please try again or contact an admin.
         </Alert>
       )}
 
-      {/* ── Step 2: Tracking ── */}
-      {step === 2 && transaction && (
-        <Paper variant="outlined" sx={{ p: 4, borderRadius: 2 }}>
-          <Box sx={{ textAlign: 'center', mb: 3 }}>
-            {transaction.status === 'verified'
-              ? <VerifiedIcon sx={{ fontSize: 64, color: 'success.main' }} />
-              : <HourglassTopIcon sx={{ fontSize: 64, color: 'warning.main' }} />}
-          </Box>
+      {/* ── Step 2: Upload Proof ── */}
+      {step === 2 && paymentIntent && (
+        <Stack spacing={3}>
+          <Alert severity="info">
+            Upload a screenshot of your UPI payment confirmation. We'll match it against the
+            society bank notification email automatically — this takes up to 30 seconds.
+          </Alert>
 
-          <Typography variant="h6" fontWeight={700} textAlign="center" mb={0.5}>
-            {transaction.status === 'verified' ? 'Payment Verified!' : 'Payment Pending Verification'}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" textAlign="center" mb={3}>
-            {transaction.status === 'verified'
-              ? 'Your registration is confirmed. You can view your ticket now.'
-              : 'An admin will verify your payment shortly. This page auto-updates.'}
-          </Typography>
-
-          <Divider sx={{ mb: 2 }} />
-
-          <Stack spacing={1.5}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">Transaction ID</Typography>
-              <CopyText value={transaction.txn_ref} mono />
-            </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">Amount</Typography>
-              <Typography fontWeight={700}>{fmtAmount(transaction.amount)}</Typography>
-            </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">Status</Typography>
-              <StatusChip status={transaction.status} />
-            </Box>
-            {transaction.payment_utr && (
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="body2" color="text.secondary">UTR</Typography>
-                <CopyText value={transaction.payment_utr} mono />
-              </Box>
-            )}
-          </Stack>
-
-          <Box sx={{ display: 'flex', gap: 1.5, mt: 3 }}>
-            {transaction.status === 'pending' && (
-              <Button
-                variant="outlined" startIcon={<RefreshIcon />}
-                onClick={async () => {
-                  const updated: Transaction = await apiFetch(`/api/payments/payments/${transaction.txn_ref}`, token);
-                  setTransaction(updated);
-                }}
-              >
-                Refresh
-              </Button>
-            )}
-            <Button
-              variant="contained" fullWidth
-              onClick={() => { window.location.href = transaction.status === 'verified' ? '/tickets' : '/registrations'; }}
+          <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+            <Typography fontWeight={700} mb={2}>Payment Screenshot</Typography>
+            <Box
+              component="label"
+              sx={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5,
+                border: '2px dashed',
+                borderColor: screenshotFile ? 'success.main' : 'divider',
+                borderRadius: 2, p: 3, cursor: 'pointer',
+                transition: 'border-color 0.2s',
+                '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' },
+              }}
             >
-              {transaction.status === 'verified' ? 'View My Tickets' : 'View My Registrations'}
-            </Button>
-          </Box>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+                onChange={e => setScreenshotFile(e.target.files?.[0] ?? null)}
+              />
+              <UploadFileIcon sx={{ fontSize: 40, color: screenshotFile ? 'success.main' : 'text.secondary' }} />
+              <Typography variant="body2" color={screenshotFile ? 'success.main' : 'text.secondary'} textAlign="center">
+                {screenshotFile ? screenshotFile.name : 'Click to select screenshot (JPG, PNG, WebP)'}
+              </Typography>
+            </Box>
+          </Paper>
+
+          {verifying && (
+            <Alert severity="info" icon={<CircularProgress size={16} />}>
+              Verifying your payment against the bank email. Please wait…
+            </Alert>
+          )}
+
+          <Button
+            fullWidth variant="contained" size="large" color="success"
+            disabled={!screenshotFile || verifying}
+            onClick={handleScreenshotUpload}
+          >
+            {verifying
+              ? <CircularProgress size={22} color="inherit" />
+              : 'Submit Proof for Verification'}
+          </Button>
+
+          <Button variant="text" size="small" onClick={() => setStep(1)}>
+            ← Back to QR
+          </Button>
+        </Stack>
+      )}
+
+      {/* ── Step 3: Done ── */}
+      {step === 3 && verifyResult && (
+        <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
+          {verifyResult.verdict === 'CONFIRMED' ? (
+            <>
+              <CheckCircleIcon sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
+              <Typography variant="h6" fontWeight={700}>Payment Confirmed!</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 0.5 }}>
+                {verifyResult.upiRef && <>UTR: <strong>{verifyResult.upiRef}</strong><br /></>}
+                Redirecting to My Tickets in 3 seconds…
+              </Typography>
+              <Button variant="contained" sx={{ mt: 3 }}
+                onClick={() => { window.location.href = '/tickets'; }}>
+                View My Tickets
+              </Button>
+            </>
+          ) : verifyResult.verdict === 'AMOUNT_MISMATCH' ? (
+            <>
+              <ErrorOutlineIcon sx={{ fontSize: 64, color: 'error.main', mb: 2 }} />
+              <Typography variant="h6" fontWeight={700}>Amount Mismatch</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 3 }}>
+                The screenshot shows a different amount than expected (₹{verifyResult.amount}).
+                An admin will review your payment and update the status shortly.
+              </Typography>
+              <Button variant="outlined" onClick={() => { window.location.href = '/registrations'; }}>
+                View My Registrations
+              </Button>
+            </>
+          ) : (
+            <>
+              <HourglassTopIcon sx={{ fontSize: 64, color: 'warning.main', mb: 2 }} />
+              <Typography variant="h6" fontWeight={700}>Payment Under Review</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 3 }}>
+                We couldn't automatically verify your payment right now. An admin will review
+                it shortly and confirm your registration.
+              </Typography>
+              <Button variant="contained" onClick={() => { window.location.href = '/registrations'; }}>
+                View My Registrations
+              </Button>
+            </>
+          )}
         </Paper>
       )}
     </Container>
