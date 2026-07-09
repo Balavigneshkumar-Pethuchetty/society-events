@@ -1,4 +1,5 @@
 import io
+import json
 import uuid
 from datetime import datetime, timezone
 
@@ -33,7 +34,45 @@ _TICKET_QUERY = """
         ec.color_hex   AS event_image_color,
         u.name         AS user_name,
         u.email        AS user_email,
-        u.keycloak_sub
+        u.keycloak_sub,
+        (
+            SELECT json_agg(
+                json_build_object(
+                    'ticket_type_name', tt.name,
+                    'quantity', ri.quantity,
+                    'unit_price', ri.unit_price
+                ) ORDER BY tt.sort_order, tt.name
+            )::text
+            FROM registration_item ri
+            JOIN ticket_type tt ON tt.id = ri.ticket_type_id
+            WHERE ri.registration_id = r.id
+        ) AS ticket_items_json,
+        -- When this registration was actually paid/reconciled: prefer the centralized
+        -- reconciliation flow's audit trail (exact moment it flipped to 'verified', not
+        -- its `updated_at` which also moves on later refund transitions), falling back
+        -- to the legacy manual-payment flow's `payment.paid_at`. NULL for free tickets.
+        COALESCE(
+            (SELECT pal.at
+             FROM payment_transaction pt
+             JOIN payment_audit_log pal ON pal.txn_id = pt.id AND pal.to_status = 'verified'
+             WHERE pt.registration_id = r.id
+             ORDER BY pal.at DESC LIMIT 1),
+            (SELECT p.paid_at FROM payment p
+             WHERE p.registration_id = r.id AND p.paid_at IS NOT NULL
+             ORDER BY p.paid_at DESC LIMIT 1)
+        ) AS paid_at,
+        -- On a self/admin cancellation, the ticket row itself just flips to 'cancelled' —
+        -- whether the refund has actually been paid out lives on payment_transaction instead,
+        -- so surface it here too rather than leaving the resident with no way to tell
+        -- "still waiting on the committee" from "already refunded".
+        (SELECT pt.status FROM payment_transaction pt
+         WHERE pt.registration_id = r.id
+         ORDER BY pt.updated_at DESC LIMIT 1) AS refund_status,
+        (SELECT pal.at
+         FROM payment_transaction pt
+         JOIN payment_audit_log pal ON pal.txn_id = pt.id AND pal.to_status = 'refunded'
+         WHERE pt.registration_id = r.id
+         ORDER BY pal.at DESC LIMIT 1) AS refunded_at
     FROM ticket t
     JOIN registration r  ON r.id  = t.reg_id
     JOIN event e         ON e.id  = t.event_id
@@ -43,6 +82,7 @@ _TICKET_QUERY = """
 
 
 def _build_out(row) -> TicketOut:
+    raw_items = row.get("ticket_items_json")
     return TicketOut(
         id=row["id"],
         reg_id=row["reg_id"],
@@ -62,6 +102,10 @@ def _build_out(row) -> TicketOut:
         scanned_at=row.get("scanned_at"),
         user_name=row.get("user_name"),
         user_email=row.get("user_email"),
+        ticket_items=json.loads(raw_items) if raw_items else [],
+        paid_at=row.get("paid_at"),
+        refund_status=row.get("refund_status"),
+        refunded_at=row.get("refunded_at"),
     )
 
 
@@ -117,7 +161,7 @@ async def get_my_tickets(claims: dict = Depends(get_current_claims)):
         user_id = await _get_db_user_id(conn, sub)
         await _ensure_tickets_issued(conn, user_id)
         rows = await conn.fetch(
-            _TICKET_QUERY + " WHERE t.user_id = $1::uuid AND t.status != 'cancelled' ORDER BY e.start_time DESC",
+            _TICKET_QUERY + " WHERE t.user_id = $1::uuid ORDER BY e.start_time DESC",
             user_id,
         )
     return [_build_out(r) for r in rows]

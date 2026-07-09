@@ -11,7 +11,7 @@ interface UserServiceContextValue {
   isSyncing: boolean;
   syncError: string | null;
   refreshProfile: () => Promise<void>;
-  updateProfile: (data: { name?: string; phone?: string }) => Promise<void>;
+  updateProfile: (data: { name?: string; phone?: string | null }) => Promise<void>;
   addApartment: (apartment_id: string) => Promise<void>;
   removeApartment: (apartment_id: string) => Promise<void>;
   addUnit: (node_id: string) => Promise<void>;
@@ -52,7 +52,7 @@ export function UserServiceProvider({ children }: { children: React.ReactNode })
     setDbUser(u);
   }, [token]);
 
-  const updateProfile = useCallback(async (data: { name?: string; phone?: string }) => {
+  const updateProfile = useCallback(async (data: { name?: string; phone?: string | null }) => {
     if (!token) throw new Error('Not authenticated');
     const u = await userService.update(token, data);
     setDbUser(u);

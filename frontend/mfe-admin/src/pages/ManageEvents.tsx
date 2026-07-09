@@ -943,16 +943,6 @@ function EventForm({
   );
 }
 
-// ── Sub-page navigation cards ─────────────────────────────────────────────────
-
-const SUB_PAGES = [
-  { path: 'finance',       label: 'Finance & Expenses',    icon: '💰', color: '#10b981' },
-  { path: 'vendors',       label: 'Vendor Management',     icon: '🏪', color: '#f59e0b' },
-  { path: 'tickets',       label: 'Ticket Types',          icon: '🎫', color: '#0ea5e9' },
-  { path: 'tokens',        label: 'Free Tokens',           icon: '🔑', color: '#8b5cf6' },
-  { path: 'revenue',       label: 'Revenue Distribution',  icon: '📊', color: '#ec4899' },
-];
-
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface Props { token: string | null; id?: string }
@@ -1031,25 +1021,6 @@ export function ManageEvents({ token, id }: Props) {
       </Box>
 
       <Container maxWidth="lg" sx={{ py: 4 }}>
-        {/* Sub-page nav */}
-        <Box sx={{ mb: 4 }}>
-          <Typography fontSize={12} fontWeight={700} color="text.secondary"
-            textTransform="uppercase" letterSpacing={0.5} mb={1.5}>Management Tools</Typography>
-          <Grid container spacing={1.5}>
-            {SUB_PAGES.map(sp => (
-              <Grid item xs={6} sm={4} md={2} key={sp.path}>
-                <Card variant="outlined" sx={{ borderRadius: 2, cursor: 'pointer', transition: 'box-shadow .15s, transform .15s', '&:hover': { boxShadow: 3, transform: 'translateY(-2px)' } }}
-                  onClick={() => { window.location.href = `/manage/${sp.path}`; }}>
-                  <CardContent sx={{ p: 1.5, textAlign: 'center', '&:last-child': { pb: 1.5 } }}>
-                    <Typography fontSize={24} lineHeight={1.2}>{sp.icon}</Typography>
-                    <Typography fontSize={11} fontWeight={600} color="text.secondary" mt={0.5} lineHeight={1.3}>{sp.label}</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        </Box>
-
         {actionMsg && <Alert severity="success" onClose={() => setActionMsg(null)} sx={{ mb: 2 }}>{actionMsg}</Alert>}
         {error && <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 2 }} action={<Button size="small" onClick={() => void load()}>Retry</Button>}>{error}</Alert>}
 
@@ -1162,13 +1133,15 @@ export function ManageEvents({ token, id }: Props) {
                     {(ev.status === 'cancelled' || ev.status === 'completed') && (
                       <Typography fontSize={11} color="text.disabled" sx={{ px: 0.5 }}>No actions</Typography>
                     )}
-                    <Tooltip title="Complimentary tickets">
-                      <IconButton size="small" onClick={() => { window.location.href = `/manage/complimentary/${ev.id}`; }}>
-                        <LocalActivityIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="View in events page">
-                      <IconButton size="small" onClick={() => window.open('/events', '_blank')}>
+                    {ev.status !== 'completed' && ev.status !== 'cancelled' && (
+                      <Tooltip title="Complimentary tickets">
+                        <IconButton size="small" onClick={() => { window.location.href = `/manage/complimentary/${ev.id}`; }}>
+                          <LocalActivityIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    <Tooltip title="View details">
+                      <IconButton size="small" onClick={() => { window.location.href = `/manage/details/${ev.id}`; }}>
                         <OpenInNewIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -1194,11 +1167,15 @@ export function ManageEvents({ token, id }: Props) {
                   const hasLocation = ev.venue_lat != null && ev.venue_lng != null;
                   return (
                     <TableRow key={ev.id} hover sx={{ '&:last-child td': { borderBottom: 0 } }}>
-                      <TableCell sx={{ maxWidth: 220 }}>
-                        <Typography fontWeight={700} fontSize={14} noWrap>{ev.title}</Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
-                          <GroupIcon sx={{ fontSize: 11, color: 'text.secondary' }} />
-                          <Typography fontSize={12} color="text.secondary" noWrap>By {ev.organizer_name}</Typography>
+                      <TableCell sx={{ maxWidth: 220, overflow: 'hidden' }}>
+                        <Tooltip title={ev.title}>
+                          <Typography fontWeight={700} fontSize={14} noWrap>{ev.title}</Typography>
+                        </Tooltip>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25, minWidth: 0 }}>
+                          <GroupIcon sx={{ fontSize: 11, color: 'text.secondary', flexShrink: 0 }} />
+                          <Tooltip title={ev.organizer_name}>
+                            <Typography fontSize={12} color="text.secondary" noWrap sx={{ minWidth: 0 }}>By {ev.organizer_name}</Typography>
+                          </Tooltip>
                         </Box>
                       </TableCell>
                       <TableCell>
@@ -1213,11 +1190,13 @@ export function ManageEvents({ token, id }: Props) {
                           <Typography fontSize={12}>{fmtDate(ev.start_time)}</Typography>
                         </Box>
                       </TableCell>
-                      <TableCell sx={{ maxWidth: 160 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+                      <TableCell sx={{ maxWidth: 160, overflow: 'hidden' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, minWidth: 0 }}>
                           <LocationOnIcon sx={{ fontSize: 13, color: hasLocation ? '#6366f1' : 'text.disabled', mt: 0.2, flexShrink: 0 }} />
-                          <Box>
-                            <Typography fontSize={12} noWrap>{ev.venue}</Typography>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Tooltip title={ev.venue}>
+                              <Typography fontSize={12} noWrap sx={{ textOverflow: 'ellipsis', overflow: 'hidden' }}>{ev.venue}</Typography>
+                            </Tooltip>
                             {hasLocation && (
                               <Box component="a"
                                 href={mapsUrl(ev.venue_lat!, ev.venue_lng!)}
@@ -1229,15 +1208,17 @@ export function ManageEvents({ token, id }: Props) {
                           </Box>
                         </Box>
                       </TableCell>
-                      <TableCell>
-                        <Typography fontWeight={700} fontSize={14}>{ev.confirmed_tickets}</Typography>
-                        <Typography fontSize={11} color="text.secondary">{ev.capacity ? `/ ${ev.capacity}` : '∞'}</Typography>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                        <Stack direction="row" spacing={0.5} alignItems="baseline">
+                          <Typography fontWeight={700} fontSize={14}>{ev.confirmed_tickets}</Typography>
+                          <Typography fontSize={11} color="text.secondary">{ev.capacity ? `/ ${ev.capacity}` : '∞'}</Typography>
+                        </Stack>
                       </TableCell>
                       <TableCell>
                         <Chip label={ss.label} color={ss.color} size="small" sx={{ fontWeight: 700, fontSize: 11 }} />
                       </TableCell>
-                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                        <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap">
+                      <TableCell sx={{ whiteSpace: 'nowrap', minWidth: 230 }}>
+                        <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="nowrap">
                           {ev.status === 'draft' && (
                             <>
                               <Tooltip title="Edit draft">
@@ -1281,13 +1262,15 @@ export function ManageEvents({ token, id }: Props) {
                           {(ev.status === 'cancelled' || ev.status === 'completed') && (
                             <Typography fontSize={11} color="text.disabled" sx={{ px: 0.5 }}>No actions</Typography>
                           )}
-                          <Tooltip title="Complimentary tickets">
-                            <IconButton size="small" onClick={() => { window.location.href = `/manage/complimentary/${ev.id}`; }}>
-                              <LocalActivityIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="View in events page">
-                            <IconButton size="small" onClick={() => window.open('/events', '_blank')}>
+                          {ev.status !== 'completed' && ev.status !== 'cancelled' && (
+                            <Tooltip title="Complimentary tickets">
+                              <IconButton size="small" onClick={() => { window.location.href = `/manage/complimentary/${ev.id}`; }}>
+                                <LocalActivityIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          <Tooltip title="View details">
+                            <IconButton size="small" onClick={() => { window.location.href = `/manage/details/${ev.id}`; }}>
                               <OpenInNewIcon fontSize="small" />
                             </IconButton>
                           </Tooltip>

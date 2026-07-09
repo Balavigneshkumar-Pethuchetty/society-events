@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Chip, CircularProgress, Container,
-  Divider, Paper, Stack, Typography,
+  Dialog, DialogActions, DialogContent, DialogTitle,
+  Divider, Paper, Stack, TextField, Typography,
 } from '@mui/material';
 import CalendarTodayIcon      from '@mui/icons-material/CalendarToday';
 import CheckCircleIcon        from '@mui/icons-material/CheckCircle';
@@ -59,21 +60,29 @@ function statusInfo(reg: Registration): { label: string; color: 'success' | 'war
 
 // ── Registration card ─────────────────────────────────────────────────────────
 
-function RegCard({ reg, token, onCancelled }: { reg: Registration; token: string; onCancelled: () => void }) {
+function RegCard({ reg, token, onCancelled }: { reg: Registration; token: string; onCancelled: (message: string) => void }) {
   const { label, color, icon } = statusInfo(reg);
   const colorBar = reg.event_image_color ?? '#6366f1';
   const isConfirmed = reg.status === 'confirmed' || reg.status === 'attended';
-  const [cancelling, setCancelling] = useState(false);
+  const [cancelling, setCancelling]   = useState(false);
+  const [cancelOpen, setCancelOpen]   = useState(false);
+  const [refundUpi, setRefundUpi]     = useState('');
 
   async function handleCancel() {
-    if (!window.confirm(`Drop your registration for "${reg.event_title}"?`)) return;
     setCancelling(true);
     try {
       const res = await fetch(`/api/registrations/registrations/${reg.id}`, {
-        method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refund_upi_id: refundUpi.trim() || null }),
       });
       if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
-      onCancelled();
+      // 204 (no body, e.g. an unpaid registration) has nothing to parse for refund_requested.
+      const body: { refund_requested?: boolean } = res.status === 204 ? {} : await res.json();
+      setCancelOpen(false);
+      onCancelled(body.refund_requested
+        ? 'Registration dropped. A refund request has been sent to the committee for approval.'
+        : 'Registration dropped.');
     } catch {
       setCancelling(false);
     }
@@ -114,20 +123,20 @@ function RegCard({ reg, token, onCancelled }: { reg: Registration; token: string
             )}
             {reg.payment?.status === 'pending_screenshot' && (
               <Button size="small" variant="contained" startIcon={<CloudUploadIcon />}
-                onClick={() => { window.location.href = '/checkout'; }}>
+                onClick={() => { window.location.href = `/checkout?registration_id=${reg.id}`; }}>
                 Upload Payment
               </Button>
             )}
             {reg.payment?.status === 'rejected' && (
               <Button size="small" variant="outlined" color="error" startIcon={<CloudUploadIcon />}
-                onClick={() => { window.location.href = '/checkout'; }}>
+                onClick={() => { window.location.href = `/checkout?registration_id=${reg.id}`; }}>
                 Re-upload
               </Button>
             )}
             {!isConfirmed && (
-              <Button size="small" variant="outlined" color="error" disabled={cancelling}
-                startIcon={cancelling ? <CircularProgress size={14} color="inherit" /> : <DeleteOutlineIcon />}
-                onClick={handleCancel}>
+              <Button size="small" variant="outlined" color="error"
+                startIcon={<DeleteOutlineIcon />}
+                onClick={() => setCancelOpen(true)}>
                 Drop
               </Button>
             )}
@@ -140,6 +149,31 @@ function RegCard({ reg, token, onCancelled }: { reg: Registration; token: string
           </Alert>
         )}
       </Box>
+
+      <Dialog open={cancelOpen} onClose={() => !cancelling && setCancelOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Drop Registration</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: reg.total_amount > 0 ? 2 : 0 }}>
+            Drop your registration for "{reg.event_title}"?
+            {reg.total_amount > 0 && ' A refund request will be sent to the committee if a payment is on file for it.'}
+          </Typography>
+          {reg.total_amount > 0 && (
+            <TextField
+              label="UPI ID to send the refund to (optional)"
+              placeholder="e.g. yourname@okhdfcbank"
+              value={refundUpi} onChange={e => setRefundUpi(e.target.value)}
+              fullWidth size="small" disabled={cancelling}
+              helperText="Leave blank to let the committee use the UPI ID from your original payment, if any."
+            />
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setCancelOpen(false)} disabled={cancelling}>Keep Registration</Button>
+          <Button variant="contained" color="error" disabled={cancelling} onClick={handleCancel}>
+            {cancelling ? <CircularProgress size={18} color="inherit" /> : 'Drop It'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
   );
 }
@@ -154,6 +188,7 @@ export function BookingApp({ token }: BookingAppProps) {
   const [regs, setRegs]       = useState<Registration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
+  const [notice, setNotice]   = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!token) { setLoading(false); return; }
@@ -177,9 +212,16 @@ export function BookingApp({ token }: BookingAppProps) {
 
   const live      = regs.filter(r => r.status !== 'cancelled');
   const confirmed = live.filter(r => r.status === 'confirmed' || r.status === 'attended');
-  const pending   = live.filter(r => r.payment?.status === 'pending_screenshot');
-  const reviewing = live.filter(r => r.payment?.status === 'pending_review');
-  const rejected  = live.filter(r => r.payment?.status === 'rejected');
+  // The legacy `payment` row's status and the registration's own status are set by two
+  // independent systems (CLAUDE.md: legacy manual-payment flow vs. centralized
+  // reconciliation flow) — a registration confirmed via reconciliation never touches the
+  // legacy payment row, so payment?.status can be stuck at 'pending_screenshot' even
+  // though the registration itself is already confirmed. Exclude anything already
+  // confirmed/attended from these buckets so it doesn't show up in both places at once.
+  const unconfirmed = live.filter(r => r.status !== 'confirmed' && r.status !== 'attended');
+  const pending   = unconfirmed.filter(r => r.payment?.status === 'pending_screenshot');
+  const reviewing = unconfirmed.filter(r => r.payment?.status === 'pending_review');
+  const rejected  = unconfirmed.filter(r => r.payment?.status === 'rejected');
 
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
@@ -197,6 +239,7 @@ export function BookingApp({ token }: BookingAppProps) {
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {notice && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setNotice(null)}>{notice}</Alert>}
       {loading && <Box sx={{ display: 'flex', justifyContent: 'center', pt: 6 }}><CircularProgress /></Box>}
 
       {!loading && regs.length === 0 && (
@@ -219,7 +262,7 @@ export function BookingApp({ token }: BookingAppProps) {
               <Typography variant="subtitle2" color="warning.main" fontWeight={700} mb={1.5}>
                 Awaiting Payment Upload ({pending.length})
               </Typography>
-              <Stack spacing={1.5}>{pending.map(r => <RegCard key={r.id} reg={r} token={token!} onCancelled={load} />)}</Stack>
+              <Stack spacing={1.5}>{pending.map(r => <RegCard key={r.id} reg={r} token={token!} onCancelled={message => { setNotice(message); load(); }} />)}</Stack>
             </Box>
           )}
           {reviewing.length > 0 && (
@@ -227,7 +270,7 @@ export function BookingApp({ token }: BookingAppProps) {
               <Typography variant="subtitle2" color="info.main" fontWeight={700} mb={1.5}>
                 Under Review ({reviewing.length})
               </Typography>
-              <Stack spacing={1.5}>{reviewing.map(r => <RegCard key={r.id} reg={r} token={token!} onCancelled={load} />)}</Stack>
+              <Stack spacing={1.5}>{reviewing.map(r => <RegCard key={r.id} reg={r} token={token!} onCancelled={message => { setNotice(message); load(); }} />)}</Stack>
             </Box>
           )}
           {rejected.length > 0 && (
@@ -235,7 +278,7 @@ export function BookingApp({ token }: BookingAppProps) {
               <Typography variant="subtitle2" color="error.main" fontWeight={700} mb={1.5}>
                 Payment Rejected — Action Required ({rejected.length})
               </Typography>
-              <Stack spacing={1.5}>{rejected.map(r => <RegCard key={r.id} reg={r} token={token!} onCancelled={load} />)}</Stack>
+              <Stack spacing={1.5}>{rejected.map(r => <RegCard key={r.id} reg={r} token={token!} onCancelled={message => { setNotice(message); load(); }} />)}</Stack>
             </Box>
           )}
           {confirmed.length > 0 && (
@@ -243,7 +286,7 @@ export function BookingApp({ token }: BookingAppProps) {
               <Typography variant="subtitle2" color="success.main" fontWeight={700} mb={1.5}>
                 Confirmed ({confirmed.length})
               </Typography>
-              <Stack spacing={1.5}>{confirmed.map(r => <RegCard key={r.id} reg={r} token={token!} onCancelled={load} />)}</Stack>
+              <Stack spacing={1.5}>{confirmed.map(r => <RegCard key={r.id} reg={r} token={token!} onCancelled={message => { setNotice(message); load(); }} />)}</Stack>
             </Box>
           )}
         </Stack>

@@ -124,37 +124,40 @@ up: validate-ports ## Start all services (detached). ENV=dev|test|stage|prod
 	 fi; \
 	 echo ""; \
 	 echo "  $(CYAN)[$(ENV)] Services starting…$(RESET)"; \
-	 echo "  Env file     → $(ENV_FILE)"; \
-	 echo "  Local        → $$_local/"; \
-	 echo "  Keycloak     → https://auth.gm-global-techies-town.club/admin/"; \
+	 echo "  Env file           → $(ENV_FILE)"; \
+	 echo "  Local              → $$_local/"; \
+	 echo "  Keycloak           → https://auth.gm-global-techies-town.club/admin/"; \
 	 echo ""; \
 	 echo "  $(CYAN)Browser pages$(RESET)"; \
-	 echo "  App home         → $$_site/"; \
-	 echo "  Forgot password  → $$_site/forgot-password"; \
-	 echo "  Profile          → $$_site/profile"; \
-	 echo "  Events           → $$_site/events"; \
-	 echo "  Tickets          → $$_site/tickets"; \
-	 echo "  Checkout         → $$_site/checkout"; \
-	 echo "  Payments         → $$_site/payments"; \
-	 echo "  Event manager    → $$_site/manage"; \
-	 echo "  Admin panel      → $$_site/admin"; \
-	 echo "  Sponsor portal   → $$_site/sponsor"; \
-	 echo "  QR scanner       → $$_site/scanner"; \
-	 echo "  Entry log        → $$_site/entry-log"; \
+	 echo "  App home           → $$_site/"; \
+	 echo "  Forgot password    → $$_site/forgot-password"; \
+	 echo "  Profile            → $$_site/profile"; \
+	 echo "  Events             → $$_site/events"; \
+	 echo "  Tickets            → $$_site/tickets"; \
+	 echo "  Checkout           → $$_site/checkout"; \
+	 echo "  Payments           → $$_site/payments"; \
+	 echo "  Event manager      → $$_site/manage"; \
+	 echo "  Admin panel        → $$_site/admin"; \
+	 echo "  Sponsor portal     → $$_site/sponsor"; \
+	 echo "  QR scanner         → $$_site/scanner"; \
+	 echo "  Entry log          → $$_site/entry-log"; \
 	 echo ""; \
 	 echo "  $(CYAN)Admin / docs$(RESET)"; \
-	 echo "  Keycloak admin   → https://auth.gm-global-techies-town.club/admin/"; \
-	 echo "  pgAdmin          → $$_pgadmin"; \
-	 echo "  Splunk           → https://splunk.gm-global-techies-town.club  (start: make splunk-up)"; \
-	 echo "  User API docs    → $$_local/api/users/docs"; \
-	 echo "  Event API docs   → $$_local/api/events/docs"; \
-	 echo "  OTP Bridge docs  → $$_local/api/otp/docs"; \
+	 echo "  Keycloak admin     → https://auth.gm-global-techies-town.club/admin/"; \
+	 echo "  pgAdmin            → $$_pgadmin"; \
+	 echo "  Splunk             → https://splunk.gm-global-techies-town.club  (start: make splunk-up)"; \
+	 echo "  User API docs      → $$_local/api/users/docs"; \
+	 echo "  Event API docs     → $$_local/api/events/docs"; \
+	 echo "  OTP Bridge docs    → $$_local/api/otp/docs"; \
+	 echo "  Registration docs  → $$_local/api/registrations/docs"; \
+	 echo "  Ticket API docs    → $$_local/api/tickets/docs"; \
+	 echo "  Payment API docs   → $$_local/api/payments/docs"; \
 	 echo ""; \
 	 echo "  $(CYAN)MFE preview roots$(RESET)"; \
-	 echo "  Admin MFE        → $$_local/mfe-admin/"; \
-	 echo "  Events MFE       → $$_local/mfe-events/"; \
-	 echo "  Booking MFE      → $$_local/mfe-booking/"; \
-	 echo "  Payment MFE      → $$_local/mfe-payment/"; \
+	 echo "  Admin MFE          → $$_local/mfe-admin/"; \
+	 echo "  Events MFE         → $$_local/mfe-events/"; \
+	 echo "  Booking MFE        → $$_local/mfe-booking/"; \
+	 echo "  Payment MFE        → $$_local/mfe-payment/"; \
 	 echo "  Run 'make logs ENV=$(ENV)' to follow logs."; \
 	 echo ""
 

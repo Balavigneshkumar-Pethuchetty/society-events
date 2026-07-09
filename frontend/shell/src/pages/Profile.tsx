@@ -44,7 +44,9 @@ function PersonalInfoCard() {
     try {
       await updateProfile({
         name:  name.trim() || undefined,
-        phone: phone.trim() || undefined,
+        // null (not undefined) so an intentionally-cleared field actually gets saved as
+        // removed, rather than the key being dropped from the request and silently ignored.
+        phone: phone.trim() || null,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 3500);

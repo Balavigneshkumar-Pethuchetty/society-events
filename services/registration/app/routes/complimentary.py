@@ -69,11 +69,13 @@ async def create_complimentary_ticket(
         issuer_id = await _get_db_user_id(conn, sub)
 
         event = await conn.fetchrow(
-            "SELECT id, price_currency FROM event WHERE id = $1::uuid AND society_id = $2::uuid",
+            "SELECT id, price_currency, status FROM event WHERE id = $1::uuid AND society_id = $2::uuid",
             body.event_id, _SOCIETY,
         )
         if not event:
             raise HTTPException(status_code=404, detail="Event not found")
+        if event["status"] in ("completed", "cancelled"):
+            raise HTTPException(status_code=400, detail=f"Event is {event['status']} — complimentary tickets can no longer be issued")
 
         if body.inviter_type == "walk_in":
             # Named walk-in: no specific inviter — the guest just showed up and gave a name.
@@ -242,11 +244,13 @@ async def create_walk_in(
         logger_id = await _get_db_user_id(conn, sub)
 
         event = await conn.fetchrow(
-            "SELECT id FROM event WHERE id = $1::uuid AND society_id = $2::uuid",
+            "SELECT id, status FROM event WHERE id = $1::uuid AND society_id = $2::uuid",
             body.event_id, _SOCIETY,
         )
         if not event:
             raise HTTPException(status_code=404, detail="Event not found")
+        if event["status"] in ("completed", "cancelled"):
+            raise HTTPException(status_code=400, detail=f"Event is {event['status']} — walk-ins can no longer be logged")
 
         comp_id = await conn.fetchval(
             "INSERT INTO complimentary_ticket (event_id, inviter_type, ticket_count, notes, created_by) "

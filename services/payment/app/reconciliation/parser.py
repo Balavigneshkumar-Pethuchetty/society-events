@@ -132,3 +132,45 @@ async def extract_all_ai(
     except Exception as exc:
         print(f"[parser/ollama] error: {exc} — falling back to regex")
         return extract_all_regex(text)
+
+
+# ── Claude (Anthropic) AI parser ───────────────────────────────────────────────
+
+async def extract_all_claude(
+    text: str,
+    api_key: str,
+    model: str,
+) -> tuple[Optional[str], Optional[float], Optional[str]]:
+    """Call Claude to parse email. Returns (utr, amount, payer_vpa).
+
+    Falls back to regex on any error (missing/invalid key, rate limit, network) —
+    same fallback contract as extract_all_ai, so callers don't need provider-specific
+    error handling.
+    """
+    if not api_key:
+        print("[parser/claude] no API key configured — falling back to regex")
+        return extract_all_regex(text)
+
+    prompt = _USER_PROMPT_TPL.format(body=text[:3000])
+
+    try:
+        from anthropic import AsyncAnthropic
+
+        client = AsyncAnthropic(api_key=api_key)
+        resp = await client.messages.create(
+            model=model,
+            max_tokens=256,
+            system=_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = "".join(block.text for block in resp.content if getattr(block, "type", None) == "text")
+        parsed = json.loads(raw)
+
+        utr       = str(parsed["utr"]).upper()      if parsed.get("utr")       else None
+        amount    = float(parsed["amount"])         if parsed.get("amount")    else None
+        payer_vpa = str(parsed["payer_vpa"]).lower() if parsed.get("payer_vpa") else None
+        return utr, amount, payer_vpa
+
+    except Exception as exc:
+        print(f"[parser/claude] error: {exc} — falling back to regex")
+        return extract_all_regex(text)

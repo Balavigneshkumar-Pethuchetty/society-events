@@ -1,11 +1,7 @@
 import { Box, Typography } from '@mui/material';
 import { ManageEvents }         from './pages/ManageEvents';
-import { EventFinance }         from './pages/EventFinance';
 import { ComplimentaryTickets } from './pages/ComplimentaryTickets';
-import { VendorManagement }     from './pages/VendorManagement';
-import { RevenueDistribution }  from './pages/RevenueDistribution';
-import { TicketTypeSetup }      from './pages/TicketTypeSetup';
-import { FreeTokens }           from './pages/FreeTokens';
+import { EventDetails }         from './pages/EventDetails';
 
 function ComingSoon() {
   return (
@@ -27,12 +23,8 @@ export function ManageRoutes({ token = null, page, id }: ManageRoutesProps) {
   // Default landing (/manage) and events list/create (/manage/events, /manage/events/new)
   if (!page || page === 'events') return <ManageEvents token={token} id={id} />;
 
-  if (page === 'finance')       return <EventFinance />;
   if (page === 'complimentary') return <ComplimentaryTickets token={token} id={id} />;
-  if (page === 'vendors')       return <VendorManagement />;
-  if (page === 'revenue')       return <RevenueDistribution />;
-  if (page === 'tickets')       return <TicketTypeSetup token={token} id={id} />;
-  if (page === 'tokens')        return <FreeTokens />;
+  if (page === 'details')       return <EventDetails token={token} id={id} />;
 
   return <ComingSoon />;
 }

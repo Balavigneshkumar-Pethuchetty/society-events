@@ -2,19 +2,27 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Alert, Box, Button, Chip, CircularProgress, Container,
-  Dialog, DialogContent, DialogTitle, Divider,
-  IconButton, Paper, Stack, Typography,
+  Dialog, DialogActions, DialogContent, DialogTitle, Divider,
+  IconButton, Paper, Stack, TextField, Typography,
 } from '@mui/material';
+import AccountBalanceIcon     from '@mui/icons-material/AccountBalance';
 import CalendarTodayIcon      from '@mui/icons-material/CalendarToday';
 import CheckCircleIcon        from '@mui/icons-material/CheckCircle';
 import CloseIcon              from '@mui/icons-material/Close';
 import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
 import EventBusyIcon          from '@mui/icons-material/EventBusy';
+import HourglassTopIcon       from '@mui/icons-material/HourglassTop';
 import LocationOnIcon         from '@mui/icons-material/LocationOn';
 import QrCode2Icon            from '@mui/icons-material/QrCode2';
 import TaskAltIcon            from '@mui/icons-material/TaskAlt';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+interface TicketTypeLine {
+  ticket_type_name: string;
+  quantity: number;
+  unit_price: number;
+}
 
 interface Ticket {
   id: string;
@@ -33,6 +41,10 @@ interface Ticket {
   qr_token: string | null;
   issued_at: string;
   scanned_at: string | null;
+  ticket_items: TicketTypeLine[];
+  paid_at: string | null;
+  refund_status: string | null;   // refund_requested | refunded | ... | null
+  refunded_at: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -49,11 +61,25 @@ function fmtAmount(amount: number) {
   return `₹${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 0 })}`;
 }
 
+// Falls back to the plain "N ticket(s)" count for registrations made before per-type
+// breakdown was tracked, or for legacy flat-price events with no real ticket types.
+function ticketBreakdownText(ticket: Ticket): string {
+  if (ticket.ticket_items.length === 0) {
+    return `${ticket.ticket_count} ticket${ticket.ticket_count > 1 ? 's' : ''}`;
+  }
+  return ticket.ticket_items.map(i => `${i.quantity}× ${i.ticket_type_name}`).join(', ');
+}
+
 function statusChip(ticket: Ticket) {
   if (ticket.status === 'used')
     return <Chip label="Attended" color="success" size="small" icon={<TaskAltIcon />} />;
-  if (ticket.status === 'cancelled')
+  if (ticket.status === 'cancelled') {
+    if (ticket.refund_status === 'refunded')
+      return <Chip label="Refunded" color="success" size="small" icon={<AccountBalanceIcon />} />;
+    if (ticket.refund_status === 'refund_requested')
+      return <Chip label="Refund Pending" color="warning" size="small" icon={<HourglassTopIcon />} />;
     return <Chip label="Cancelled" color="error" size="small" />;
+  }
 
   const now = new Date();
   const start = new Date(ticket.event_start_time);
@@ -101,6 +127,16 @@ function QrDialog({ ticket, onClose }: { ticket: Ticket; onClose: () => void }) 
           </>
         )}
         <Divider sx={{ my: 2 }} />
+        {ticket.ticket_items.length > 0 && (
+          <Stack spacing={0.5} sx={{ mb: 2, textAlign: 'left' }}>
+            {ticket.ticket_items.map((item, i) => (
+              <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography variant="body2">{item.quantity}× {item.ticket_type_name}</Typography>
+                <Typography variant="body2" fontWeight={600}>{fmtAmount(item.quantity * item.unit_price)}</Typography>
+              </Box>
+            ))}
+          </Stack>
+        )}
         <Stack direction="row" justifyContent="center" spacing={3}>
           <Box textAlign="center">
             <Typography variant="caption" color="text.secondary">Tickets</Typography>
@@ -117,6 +153,11 @@ function QrDialog({ ticket, onClose }: { ticket: Ticket; onClose: () => void }) 
             </Typography>
           </Box>
         </Stack>
+        {ticket.paid_at && (
+          <Typography variant="caption" color="text.secondary" display="block" textAlign="center" mt={1.5}>
+            Paid & reconciled on {fmtDate(ticket.paid_at)}
+          </Typography>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -131,8 +172,10 @@ function TicketCard({
   token: string;
   onCancelled: (message: string) => void;
 }) {
-  const [qrOpen, setQrOpen]       = useState(false);
+  const [qrOpen, setQrOpen]         = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [refundUpi, setRefundUpi]   = useState('');
   const color = ticket.event_image_color ?? '#6366f1';
 
   const canCancel = ticket.status === 'active'
@@ -140,17 +183,16 @@ function TicketCard({
     && (ticket.cancel_freeze_at === null || new Date(ticket.cancel_freeze_at) > new Date());
 
   async function handleCancel() {
-    if (!window.confirm(
-      `Cancel your ticket for "${ticket.event_title}"?` +
-      (ticket.total_amount > 0 ? ' A refund request will be sent to the committee.' : '')
-    )) return;
     setCancelling(true);
     try {
       const res = await fetch(`/api/registrations/registrations/${ticket.reg_id}`, {
-        method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refund_upi_id: refundUpi.trim() || null }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body: { refund_requested: boolean } = await res.json();
+      setCancelOpen(false);
       onCancelled(body.refund_requested
         ? 'Ticket cancelled. A refund request has been sent to the committee for approval.'
         : 'Ticket cancelled.');
@@ -185,15 +227,45 @@ function TicketCard({
           <Divider sx={{ my: 1.5 }} />
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              {ticket.ticket_count} ticket{ticket.ticket_count > 1 ? 's' : ''} · {fmtAmount(ticket.total_amount)}
-            </Typography>
+            <Box>
+              {ticket.ticket_items.length > 1 ? (
+                <Stack spacing={0.25} mb={0.25}>
+                  {ticket.ticket_items.map((item, i) => (
+                    <Typography key={i} variant="body2" color="text.secondary">
+                      {item.quantity}× {item.ticket_type_name} ({fmtAmount(item.quantity * item.unit_price)})
+                    </Typography>
+                  ))}
+                </Stack>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  {ticketBreakdownText(ticket)} · {fmtAmount(ticket.total_amount)}
+                </Typography>
+              )}
+              {ticket.paid_at && (
+                <Typography variant="caption" color="text.secondary" display="block">
+                  Paid {fmtDate(ticket.paid_at)}
+                </Typography>
+              )}
+              {ticket.status === 'cancelled' && ticket.total_amount > 0 && (
+                <Typography variant="caption" display="block"
+                  color={ticket.refund_status === 'refunded' ? 'success.main' : 'warning.main'}>
+                  {ticket.refund_status === 'refunded'
+                    ? `Refunded${ticket.refunded_at ? ' ' + fmtDate(ticket.refunded_at) : ''}`
+                    : ticket.refund_status === 'refund_requested'
+                      ? 'Refund pending committee review'
+                      : 'Cancelled — no refund on file'}
+                </Typography>
+              )}
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ fontFamily: 'monospace' }}>
+                Ticket ID: {ticket.id.slice(0, 8).toUpperCase()}
+              </Typography>
+            </Box>
             <Stack direction="row" spacing={1}>
               {canCancel && (
                 <Button
-                  size="small" variant="outlined" color="error" disabled={cancelling}
-                  startIcon={cancelling ? <CircularProgress size={14} color="inherit" /> : <EventBusyIcon />}
-                  onClick={handleCancel}
+                  size="small" variant="outlined" color="error"
+                  startIcon={<EventBusyIcon />}
+                  onClick={() => setCancelOpen(true)}
                 >
                   Cancel{ticket.total_amount > 0 ? ' & Refund' : ''}
                 </Button>
@@ -215,6 +287,33 @@ function TicketCard({
       </Paper>
 
       {qrOpen && <QrDialog ticket={ticket} onClose={() => setQrOpen(false)} />}
+
+      <Dialog open={cancelOpen} onClose={() => !cancelling && setCancelOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Cancel Ticket</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: ticket.total_amount > 0 ? 2 : 0 }}>
+            Cancel your ticket for "{ticket.event_title}"?
+            {ticket.total_amount > 0 && ' A refund request will be sent to the committee.'}
+          </Typography>
+          {ticket.total_amount > 0 && (
+            <TextField
+              label="UPI ID to send the refund to (optional)"
+              placeholder="e.g. yourname@okhdfcbank"
+              value={refundUpi} onChange={e => setRefundUpi(e.target.value)}
+              fullWidth size="small" disabled={cancelling}
+              helperText="Leave blank to let the committee use the UPI ID from your original payment, if any."
+            />
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setCancelOpen(false)} disabled={cancelling}>Keep Ticket</Button>
+          <Button variant="contained" color="error" disabled={cancelling} onClick={handleCancel}>
+            {cancelling
+              ? <CircularProgress size={18} color="inherit" />
+              : ticket.total_amount > 0 ? 'Cancel Ticket & Refund It' : 'Cancel Ticket'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 }
@@ -253,6 +352,7 @@ export function TicketsApp({ token }: TicketsAppProps) {
 
   const active    = tickets.filter(t => t.status === 'active');
   const used      = tickets.filter(t => t.status === 'used');
+  const cancelled = tickets.filter(t => t.status === 'cancelled');
 
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
@@ -315,6 +415,22 @@ export function TicketsApp({ token }: TicketsAppProps) {
               </Typography>
               <Stack spacing={1.5}>
                 {used.map(t => (
+                  <TicketCard
+                    key={t.id} ticket={t} token={token!}
+                    onCancelled={message => { setNotice(message); load(); }}
+                  />
+                ))}
+              </Stack>
+            </Box>
+          )}
+
+          {cancelled.length > 0 && (
+            <Box>
+              <Typography variant="subtitle2" color="text.secondary" fontWeight={700} mb={1.5}>
+                Cancelled ({cancelled.length})
+              </Typography>
+              <Stack spacing={1.5}>
+                {cancelled.map(t => (
                   <TicketCard
                     key={t.id} ticket={t} token={token!}
                     onCancelled={message => { setNotice(message); load(); }}

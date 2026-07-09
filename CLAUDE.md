@@ -99,6 +99,41 @@ Keycloak (and its Cloudflare tunnel) now live in a **separate sibling project** 
 
 Be aware there is also a **separate, standalone** sibling project `~/payment_reconcilation_service` (its own docker-compose, own Postgres, own Ollama containers) doing functionally similar work (IMAP polling + LLM-based screenshot parsing for UPI reconciliation), but it is not the same codebase as this repo's `services/payment` — this repo's `services/payment` has its own independent IMAP/Ollama reconciliation code (`app/reconciliation/`) and is the one actually wired into this repo's docker-compose/nginx. When debugging payment reconciliation, confirm which of the two you're actually looking at before searching further.
 
+### OTP login: SMS transport is external, everything else is local
+
+`services/otp` owns OTP generation, Redis storage/TTL, attempt tracking, and
+the Keycloak token-exchange bridge — all local to this repo. The one thing it
+does **not** own is actually sending the SMS: `SMS_GATEWAY=auth_service` (the
+recommended default, see `services/otp/app/sms.py` for the other options) is
+a free, self-hosted transport hosted entirely in `~/auth-service` — a small
+fleet of committee members' Android phones running an open-source SMS
+gateway app, reached over Tailscale with automatic failover if one phone is
+offline. This repo just POSTs `{phone, message}` to
+`http://host.containers.internal:8000/api/sms/send` with an `X-API-Key`
+(`AUTH_SERVICE_API_KEY` in `.env`, must match auth-service's
+`OTP_SERVICE_API_KEY`) and gets back `{sent, via}`. To add/remove/rotate
+which phones are used, or to debug delivery failures, go to
+`~/auth-service`'s dashboard ("OTP & SMS Monitor" page) or see its
+`CLAUDE.md` — nothing about the phone fleet is configurable from this repo.
+
+**Hard dependency**: the Keycloak instance this repo points at (hosted in
+`~/auth-service`) must run with `--features=token-exchange`, or `/verify`
+fails with `RuntimeError: Identity provider token exchange failed` even
+though the OTP itself was sent and verified correctly. If you see that error,
+the fix is in `~/auth-service`, not here — see that repo's `CLAUDE.md` for
+the exact verification/fix steps.
+
+**Debugging a real transaction**: `GET /api/otp/transactions` (added to
+`services/otp/app/routes/monitor.py`) reconstructs a per-login rollup
+(generated/verified/failed/expiry timestamps, attempt count, SMS delivery
+success) from the Redis audit log — it's what `~/auth-service`'s "OTP
+Transactions" dashboard page proxies. It requires an `X-Auth-Service-Key`
+header (same shared secret as above) since it exposes real phone numbers
+(masked to last 4 digits) and login patterns, even though the OTP code
+itself is never recoverable (only an HMAC hash is ever stored). There's also
+a pre-existing, unauthenticated raw event-log view at `/api/otp/monitor` —
+useful for a live blow-by-blow, but not grouped into transactions.
+
 ### Cloudflare tunnel — public reachability lives entirely outside this repo
 
 None of this repo's `docker-compose.yml`/nginx config makes the site publicly reachable by itself — a single Cloudflare Tunnel, defined and run from `~/auth-service`, does that. If the public domain (`gm-global-techies-town.club` or any subdomain) is unreachable but `make ps` shows this repo's containers healthy, the problem is almost always in `~/auth-service`, not here.

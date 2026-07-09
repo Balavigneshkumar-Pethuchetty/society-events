@@ -3,6 +3,12 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+class TicketTypeLine(BaseModel):
+    ticket_type_name: str
+    quantity: int
+    unit_price: float
+
+
 class TicketOut(BaseModel):
     id: str
     reg_id: str
@@ -22,6 +28,10 @@ class TicketOut(BaseModel):
     scanned_at: Optional[datetime] = None
     user_name: Optional[str] = None
     user_email: Optional[str] = None
+    ticket_items: list[TicketTypeLine] = []
+    paid_at: Optional[datetime] = None
+    refund_status: Optional[str] = None   # payment_transaction status: refund_requested | refunded | ... | None
+    refunded_at: Optional[datetime] = None
 
 
 class EventTicketItem(BaseModel):

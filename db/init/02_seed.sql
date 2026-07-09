@@ -9,7 +9,7 @@
 -- CLEAR ALL DATA  (schema preserved; sequences reset)
 -- ---------------------------------------------------------------------------
 TRUNCATE TABLE
-    free_token, registration_item, ticket_type,
+    registration_item, ticket_type,
     distribution_entry, vendor_revenue_distribution,
     event_vendor, vendor,
     complimentary_ticket, event_expense,
@@ -832,36 +832,6 @@ INSERT INTO registration_item (id, registration_id, ticket_type_id, quantity, un
      '61100000-0000-0000-0000-000000000011',
      '0f300000-0000-0000-0000-000000000004',
      1, 150.00);   -- Kiran: 1 participant @ ₹150
-
--- ---------------------------------------------------------------------------
--- FREE_TOKEN
--- ---------------------------------------------------------------------------
-INSERT INTO free_token (id, event_id, ticket_type_id, token_code,
-                         issued_to_name, issued_to_email, issued_by,
-                         is_used, notes) VALUES
-    ('0f500000-0000-0000-0000-000000000001',
-     '51100000-0000-0000-0000-000000000001',
-     '0f300000-0000-0000-0000-000000000002',
-     'DIWALI-DIN-001',
-     'Dr. Suresh Pillai', 'suresh.pillai@gmail.com',
-     '31100000-0000-0000-0000-000000000002',
-     FALSE, 'VIP guest — chief guest for cultural performance'),
-
-    ('0f500000-0000-0000-0000-000000000002',
-     '51100000-0000-0000-0000-000000000001',
-     '0f300000-0000-0000-0000-000000000003',
-     'DIWALI-GAME-TECHCORP',
-     NULL, NULL,
-     '31100000-0000-0000-0000-000000000002',
-     FALSE, 'TechCorp sponsor team — 4 games passes'),
-
-    ('0f500000-0000-0000-0000-000000000003',
-     '51100000-0000-0000-0000-000000000002',
-     '0f300000-0000-0000-0000-000000000005',
-     'SPORTS-SPEC-PRESS-001',
-     'Kavitha Nambiar (The Hindu)', NULL,
-     '31100000-0000-0000-0000-000000000001',
-     TRUE, 'Press spectator — used at gate');
 
 -- ---------------------------------------------------------------------------
 -- Sponsor notification

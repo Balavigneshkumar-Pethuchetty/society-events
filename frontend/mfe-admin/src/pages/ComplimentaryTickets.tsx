@@ -40,7 +40,7 @@ async function apiFetch<T>(service: string, path: string, token: string, init?: 
 
 type InviterType = 'organizer' | 'committee_member' | 'sponsor' | 'walk_in';
 
-interface EventDetail { id: string; title: string }
+interface EventDetail { id: string; title: string; status: string }
 
 interface UserSummary { id: string; name: string; role: string }
 
@@ -170,6 +170,8 @@ export function ComplimentaryTickets({ token, id: eventId }: { token?: string | 
       </Box>
     );
   }
+
+  const eventClosed = event?.status === 'completed' || event?.status === 'cancelled';
 
   const eligibleUsers = inviterType === 'walk_in'
     ? []
@@ -368,6 +370,12 @@ export function ComplimentaryTickets({ token, id: eventId }: { token?: string | 
 
               <Grid item xs={12} md={5}>
                 <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Add New Entry</Typography>
+                {eventClosed ? (
+                  <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                    This event is {event?.status} — complimentary tickets can no longer be issued.
+                  </Alert>
+                ) : (
+                <>
                 <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, bgcolor: '#f8fafc' }}>
                   <Stack spacing={2.5}>
                     <FormControl fullWidth size="small">
@@ -434,6 +442,8 @@ export function ComplimentaryTickets({ token, id: eventId }: { token?: string | 
                   <Alert icon={<InfoOutlinedIcon />} severity="info" sx={{ mt: 2, borderRadius: 2 }}>
                     Creates a real, scannable gate ticket for this guest{inviterType !== 'walk_in' ? ' under the selected inviter' : ''}.
                   </Alert>
+                )}
+                </>
                 )}
               </Grid>
             </Grid>

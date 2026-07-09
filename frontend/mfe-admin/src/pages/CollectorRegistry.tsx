@@ -157,6 +157,7 @@ interface ReconSettings {
   imap_mailbox: string;
   poll_interval_s: number;
   use_ai_parser: boolean;
+  ai_provider: 'ollama' | 'claude';
   ollama_host: string;
   ollama_model: string;
   updated_at: string | null;
@@ -170,7 +171,7 @@ function ReconSettingsPanel({ token }: { token: string }) {
   const [loading, setLoading]   = useState(false);
   const [saving,  setSaving]    = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [testing,  setTesting]  = useState<'imap' | 'ollama' | null>(null);
+  const [testing,  setTesting]  = useState<'imap' | 'ollama' | 'claude' | null>(null);
   const [showPw,   setShowPw]   = useState(false);
   const [password, setPassword] = useState('');   // local field; empty = keep existing
   const [msg, setMsg]           = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
@@ -202,7 +203,7 @@ function ReconSettingsPanel({ token }: { token: string }) {
         imap_host: cfg.imap_host, imap_port: cfg.imap_port,
         imap_user: cfg.imap_user, imap_password: password,
         imap_mailbox: cfg.imap_mailbox, poll_interval_s: cfg.poll_interval_s,
-        use_ai_parser: cfg.use_ai_parser,
+        use_ai_parser: cfg.use_ai_parser, ai_provider: cfg.ai_provider,
         ollama_host: cfg.ollama_host, ollama_model: cfg.ollama_model,
       };
       const updated = await apiFetch('/api/payments/recon-settings', token, {
@@ -242,6 +243,18 @@ function ReconSettingsPanel({ token }: { token: string }) {
       setMsg({ type: r.model_available ? 'success' : 'info', text: `Ollama connected. ${modelOk}` });
     } catch (e: unknown) {
       setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Ollama test failed' });
+    } finally {
+      setTesting(null);
+    }
+  }
+
+  async function testClaude() {
+    setTesting('claude'); setMsg(null);
+    try {
+      const r = await apiFetch('/api/payments/recon-settings/test-claude', token, { method: 'POST' });
+      setMsg({ type: 'success', text: `Claude reachable. Model "${r.configured_model}" responded.` });
+    } catch (e: unknown) {
+      setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Claude test failed' });
     } finally {
       setTesting(null);
     }
@@ -373,16 +386,17 @@ function ReconSettingsPanel({ token }: { token: string }) {
 
               <Divider />
 
-              {/* ── Ollama AI parser section ── */}
+              {/* ── AI parser section (Ollama or Claude) ── */}
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                   <PsychologyIcon color="secondary" />
-                  <Typography fontWeight={700}>AI Parser (Ollama)</Typography>
+                  <Typography fontWeight={700}>AI Parser</Typography>
                   <Chip label="Optional" size="small" sx={{ fontSize: 11 }} />
                 </Box>
                 <Typography variant="caption" color="text.secondary" display="block" mb={2}>
-                  When enabled, a local Ollama LLM reads the email and extracts UTR, amount, and sender VPA
-                  for more accurate matching. Falls back to regex if Ollama is unreachable.
+                  When enabled, an AI model reads the email and extracts UTR, amount, and sender VPA
+                  for more accurate matching than regex alone. Falls back to regex automatically if
+                  the selected provider is unreachable or misconfigured.
                 </Typography>
                 <Stack spacing={2}>
                   <FormControlLabel
@@ -393,39 +407,75 @@ function ReconSettingsPanel({ token }: { token: string }) {
                         color="secondary"
                       />
                     }
-                    label="Use Ollama AI to parse bank emails"
+                    label="Use AI to parse bank emails"
                   />
                   <Collapse in={cfg.use_ai_parser}>
                     <Stack spacing={2} sx={{ mt: 1 }}>
                       <TextField
-                        label="Ollama Host URL"
-                        value={cfg.ollama_host}
-                        onChange={(e) => patch('ollama_host', e.target.value)}
+                        select
+                        label="Provider"
+                        value={cfg.ai_provider}
+                        onChange={(e) => patch('ai_provider', e.target.value as ReconSettings['ai_provider'])}
                         size="small"
                         fullWidth
-                        placeholder="http://localhost:11434"
-                      />
-                      <TextField
-                        label="Model"
-                        value={cfg.ollama_model}
-                        onChange={(e) => patch('ollama_model', e.target.value)}
-                        size="small"
-                        fullWidth
-                        placeholder="llama3"
-                        helperText="Run: ollama pull llama3"
-                      />
-                      <Box>
-                        <Button
-                          variant="outlined"
-                          color="secondary"
-                          size="small"
-                          onClick={testOllama}
-                          disabled={testing === 'ollama' || !cfg.ollama_host}
-                          startIcon={testing === 'ollama' ? <CircularProgress size={14} color="inherit" /> : <CheckCircleIcon />}
-                        >
-                          Test Ollama Connection
-                        </Button>
-                      </Box>
+                      >
+                        <MenuItem value="ollama">Ollama (local, self-hosted)</MenuItem>
+                        <MenuItem value="claude">Claude (Anthropic API)</MenuItem>
+                      </TextField>
+
+                      {cfg.ai_provider === 'ollama' ? (
+                        <>
+                          <TextField
+                            label="Ollama Host URL"
+                            value={cfg.ollama_host}
+                            onChange={(e) => patch('ollama_host', e.target.value)}
+                            size="small"
+                            fullWidth
+                            placeholder="http://localhost:11434"
+                          />
+                          <TextField
+                            label="Model"
+                            value={cfg.ollama_model}
+                            onChange={(e) => patch('ollama_model', e.target.value)}
+                            size="small"
+                            fullWidth
+                            placeholder="llama3"
+                            helperText="Run: ollama pull llama3"
+                          />
+                          <Box>
+                            <Button
+                              variant="outlined"
+                              color="secondary"
+                              size="small"
+                              onClick={testOllama}
+                              disabled={testing === 'ollama' || !cfg.ollama_host}
+                              startIcon={testing === 'ollama' ? <CircularProgress size={14} color="inherit" /> : <CheckCircleIcon />}
+                            >
+                              Test Ollama Connection
+                            </Button>
+                          </Box>
+                        </>
+                      ) : (
+                        <>
+                          <Typography variant="caption" color="text.secondary">
+                            The API key is configured server-side (ANTHROPIC_API_KEY in this
+                            service's environment) — there's nothing to enter here. Use the button
+                            below to confirm the key is set and the account has credit.
+                          </Typography>
+                          <Box>
+                            <Button
+                              variant="outlined"
+                              color="secondary"
+                              size="small"
+                              onClick={testClaude}
+                              disabled={testing === 'claude'}
+                              startIcon={testing === 'claude' ? <CircularProgress size={14} color="inherit" /> : <CheckCircleIcon />}
+                            >
+                              Test Claude API Key
+                            </Button>
+                          </Box>
+                        </>
+                      )}
                     </Stack>
                   </Collapse>
                 </Stack>

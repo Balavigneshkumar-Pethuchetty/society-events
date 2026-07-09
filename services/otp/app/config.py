@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     # Which phone number to send FROM (must match the SIM in the gateway phone)
     http_sms_from: str = ""         # e.g. +919876543210
 
+    # Auth-service SMS gateway (sms_gateway=auth_service)
+    # Committee-phone failover via Tailscale, free and self-hosted — see
+    # auth-service's sms_gateways table for the phone priority list. Recommended
+    # default: no cloud cost, no USB modem, and fails over across multiple phones.
+    auth_service_sms_url: str = "http://host.containers.internal:8000/api/sms/send"
+    auth_service_api_key: str = ""  # shared secret — same value as auth-service's OTP_SERVICE_API_KEY
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

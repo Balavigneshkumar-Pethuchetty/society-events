@@ -20,8 +20,11 @@ interface Transaction {
   id: string; txn_ref: string; event_id: string; event_title: string;
   registration_id: string | null; amount: number; currency: string;
   payee_upi: string | null; payer_upi: string | null;
-  status: string; payment_utr: string | null; created_at: string;
+  status: string; payment_utr: string | null; refund_utr: string | null;
+  created_at: string; updated_at: string;
   user_name: string | null; user_email: string | null;
+  screenshot_url: string | null;
+  refund_screenshot_url: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -63,9 +66,11 @@ function CopyText({ value }: { value: string }) {
 }
 
 function StatusChip({ status }: { status: string }) {
-  if (status === 'pending')   return <Chip label="Pending" color="warning" size="small" icon={<HourglassTopIcon />} />;
-  if (status === 'verified')  return <Chip label="Approved" color="success" size="small" icon={<VerifiedIcon />} />;
-  if (status === 'cancelled') return <Chip label="Rejected" color="error" size="small" />;
+  if (status === 'pending')          return <Chip label="Pending" color="warning" size="small" icon={<HourglassTopIcon />} />;
+  if (status === 'verified')         return <Chip label="Approved" color="success" size="small" icon={<VerifiedIcon />} />;
+  if (status === 'cancelled')        return <Chip label="Rejected" color="error" size="small" />;
+  if (status === 'refund_requested') return <Chip label="Refund Pending" color="warning" size="small" icon={<HourglassTopIcon />} />;
+  if (status === 'refunded')         return <Chip label="Refunded" color="success" size="small" icon={<VerifiedIcon />} />;
   return <Chip label={status} size="small" />;
 }
 
@@ -226,9 +231,50 @@ function TxnRow({
   onApprove: (t: Transaction) => void;
   onReject: (t: Transaction) => void;
 }) {
+  // Tracks which of the two screenshots (original payment vs. outgoing refund transfer)
+  // is open in the full-view dialog — null means closed.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
   return (
     <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+        {(txn.screenshot_url || txn.refund_screenshot_url) && (
+          <Stack direction="row" spacing={1}>
+            {txn.screenshot_url && (
+              <Box textAlign="center">
+                <Box
+                  component="img"
+                  src={txn.screenshot_url}
+                  alt="Payment screenshot"
+                  onClick={() => setPreviewUrl(txn.screenshot_url)}
+                  sx={{
+                    width: 64, height: 64, objectFit: 'cover', borderRadius: 1.5,
+                    cursor: 'pointer', border: '1px solid', borderColor: 'divider',
+                    '&:hover': { opacity: 0.85 },
+                  }}
+                />
+                <Typography variant="caption" color="text.secondary" display="block">Payment</Typography>
+              </Box>
+            )}
+            {txn.refund_screenshot_url && (
+              <Box textAlign="center">
+                <Box
+                  component="img"
+                  src={txn.refund_screenshot_url}
+                  alt="Refund transfer screenshot"
+                  onClick={() => setPreviewUrl(txn.refund_screenshot_url)}
+                  sx={{
+                    width: 64, height: 64, objectFit: 'cover', borderRadius: 1.5,
+                    cursor: 'pointer', border: '1px solid', borderColor: 'divider',
+                    '&:hover': { opacity: 0.85 },
+                  }}
+                />
+                <Typography variant="caption" color="text.secondary" display="block">Refund</Typography>
+              </Box>
+            )}
+          </Stack>
+        )}
+
         <Box sx={{ flex: 1, minWidth: 200 }}>
           <Typography fontWeight={700} fontSize={14}>{txn.event_title}</Typography>
           <Typography variant="body2" color="text.secondary">
@@ -251,8 +297,15 @@ function TxnRow({
                 Ref: <strong>{txn.payment_utr}</strong>
               </Typography>
             )}
+            {txn.refund_utr && (
+              <Typography variant="caption" color="text.secondary">
+                Refund UTR: <strong>{txn.refund_utr}</strong>
+              </Typography>
+            )}
           </Box>
-          <Typography variant="caption" color="text.secondary">{fmtDate(txn.created_at)}</Typography>
+          <Typography variant="caption" color="text.secondary">
+            {txn.status === 'refunded' ? `Refunded ${fmtDate(txn.updated_at)}` : fmtDate(txn.created_at)}
+          </Typography>
         </Box>
 
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
@@ -271,6 +324,20 @@ function TxnRow({
           )}
         </Box>
       </Box>
+
+      {previewUrl && (
+        <Dialog open onClose={() => setPreviewUrl(null)} maxWidth="md" fullWidth>
+          <DialogContent sx={{ p: 0, position: 'relative', bgcolor: 'common.black' }}>
+            <IconButton
+              onClick={() => setPreviewUrl(null)}
+              sx={{ position: 'absolute', top: 8, right: 8, color: 'common.white', bgcolor: 'rgba(0,0,0,0.5)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
+            >
+              <CloseIcon />
+            </IconButton>
+            <Box component="img" src={previewUrl} alt="Screenshot full view" sx={{ width: '100%', display: 'block' }} />
+          </DialogContent>
+        </Dialog>
+      )}
     </Paper>
   );
 }
@@ -303,14 +370,18 @@ export function ReconciliationConsole({ token, role }: { token?: string | null; 
 
   if (!token) return <Box sx={{ p: 4, textAlign: 'center' }}><Typography color="text.secondary">Not authenticated.</Typography></Box>;
 
-  const pending   = txns.filter(t => t.status === 'pending');
-  const approved  = txns.filter(t => t.status === 'verified');
-  const rejected  = txns.filter(t => t.status === 'cancelled');
+  const pending       = txns.filter(t => t.status === 'pending');
+  const approved      = txns.filter(t => t.status === 'verified');
+  const rejected      = txns.filter(t => t.status === 'cancelled');
+  const refundPending = txns.filter(t => t.status === 'refund_requested');
+  const refunded      = txns.filter(t => t.status === 'refunded');
 
   const tabs = [
-    { label: `Pending Approval (${pending.length})`,  data: pending },
-    { label: `Approved (${approved.length})`,          data: approved },
-    { label: `Rejected (${rejected.length})`,          data: rejected },
+    { label: `Pending Approval (${pending.length})`,       data: pending },
+    { label: `Approved (${approved.length})`,               data: approved },
+    { label: `Rejected (${rejected.length})`,               data: rejected },
+    { label: `Refund Pending (${refundPending.length})`,    data: refundPending },
+    { label: `Refunded (${refunded.length})`,               data: refunded },
   ];
 
   return (
@@ -342,6 +413,16 @@ export function ReconciliationConsole({ token, role }: { token?: string | null; 
               <Box textAlign="center">
                 <Typography fontWeight={800} fontSize={28} color="error.main">{rejected.length}</Typography>
                 <Typography variant="caption" color="text.secondary">Rejected</Typography>
+              </Box>
+              <Divider orientation="vertical" flexItem />
+              <Box textAlign="center">
+                <Typography fontWeight={800} fontSize={28} color="warning.main">{refundPending.length}</Typography>
+                <Typography variant="caption" color="text.secondary">Refund Pending</Typography>
+              </Box>
+              <Divider orientation="vertical" flexItem />
+              <Box textAlign="center">
+                <Typography fontWeight={800} fontSize={28} color="success.main">{refunded.length}</Typography>
+                <Typography variant="caption" color="text.secondary">Refunded</Typography>
               </Box>
             </Box>
             <Button variant="outlined" size="small" onClick={load} disabled={loading}>

@@ -21,12 +21,8 @@ function DevHome() {
         Try these routes to preview pages:
       </Typography>
       {[
-        '/manage/finance/test-event',
         '/manage/complimentary/test-event',
-        '/manage/vendors/test-event',
-        '/manage/revenue/test-event',
-        '/manage/tickets/test-event',
-        '/manage/tokens/test-event',
+        '/manage/details/test-event',
         '/admin/users',
         '/admin/sponsors',
         '/admin/refunds',

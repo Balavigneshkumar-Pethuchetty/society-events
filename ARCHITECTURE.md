@@ -47,7 +47,7 @@ Event lifecycle + content. Does **not** own registrations, tickets, or payments.
 Owns the booking lifecycle end to end: cart → registration → payment review → complimentary tickets → cancellation.
 
 - **Cart**: one saved cart per user (`PUT`/`GET`/`DELETE /registrations/cart`), cleared on successful registration.
-- **Registration**: create (free events auto-confirm; paid events start `pending_payment`), list own, get one, cancel. A user may hold **multiple** registrations for the same event (no uniqueness constraint — e.g. buying an extra ticket for a guest is allowed). Cancelling a **confirmed** registration is blocked for residents unless the event's `cancel_freeze_at` is unset (always allowed until start) or still in the future; cancelling also cancels the linked `ticket` row and, if a `payment_transaction` was `verified`, flips it to `refund_requested` for the admin refund queue.
+- **Registration**: create (free events auto-confirm; paid events start `pending_payment`), list own, get one, cancel. A user may hold **multiple** registrations for the same event (no uniqueness constraint — e.g. buying an extra ticket for a guest is allowed). Cancelling a **confirmed** registration is blocked for residents unless the event's `cancel_freeze_at` is unset (always allowed until start) or still in the future; cancelling also cancels the linked `ticket` row and, if a `payment_transaction` was `verified`, flips it to `refund_requested` for the admin refund queue. Cancellation optionally accepts a `refund_upi_id` (the frontend prompts for it) — stored on the transaction, falling back to `payer_upi` from the original payment when omitted.
 - **Manual payment (legacy flow)**: UPI QR generation with the amount pre-filled, screenshot upload (`pending_review`), admin `PATCH /registrations/{id}/review` (approve/reject).
 - **Complimentary tickets** (`/complimentary/*`, i.e. `/api/registrations/complimentary/*`): admin/committee issue a **real** registration + ticket (QR-scannable, shows up in the normal gate-scan flow) to a named guest on behalf of an organizer/committee member/sponsor, or log an anonymous walk-in headcount (no ticket). Guests without an account get a lightweight placeholder `users` row (`role='guest'`, no `keycloak_sub`, can never log in). Revoke is a soft-cancel (keeps the row for audit, cancels the linked registration+ticket). Named tickets with an email on file can be emailed (QR embedded inline) via Gmail SMTP — see `app/email.py`.
 
@@ -66,7 +66,7 @@ Ticket issuance, QR display, gate entry.
 UPI payment reconciliation and refunds — **not** a Razorpay/card gateway; there is no such integration anywhere in this codebase.
 
 - **Transactions** (`/payments`): initiate, auto-confirm (called by the frontend once a payment is externally verified — see the note below), get/list, manual verify/approve/reject, flag a verified transaction for refund.
-- **Refund queue** (`/refunds`): list transactions in `refund_requested` status; admin/committee log the refund UTR to close it out.
+- **Refund queue** (`/refunds`): list transactions in `refund_requested` status; admin/committee log the refund UTR to close it out. `GET /refunds/{txn_ref}/qr` generates a scannable `upi://pay` QR (pre-filled payee UPI ID, amount, reference) so the admin can pay from their own UPI app instead of hand-copying details.
 - **Reconciliation** (`/reconciliation`, `/recon-settings`): this service has its **own** IMAP-polling + Ollama-LLM screenshot-parsing implementation (`app/reconciliation/`, `aioimaplib` dependency) and its own settings UI (IMAP host/creds, Ollama host/model, test-connection endpoints).
 - **Committee registry** (`/registry`): assigns a committee member + UPI ID as the payment collector for a given event; exposes that collector's QR.
 - **Audit** (`/audit`): reconciliation status-change log.
@@ -89,9 +89,9 @@ Resident-facing apps (`mfe-events`, `mfe-booking`, `mfe-payment`, `mfe-tickets`)
 
 | Page | Status |
 |---|---|
-| `ManageEvents.tsx` | Real |
-| `TicketTypeSetup.tsx` | Real |
+| `ManageEvents.tsx` | Real — ticket-type CRUD for an event lives inline here, in the `TicketTypesTab` shown inside the Edit Event dialog. |
 | `ComplimentaryTickets.tsx` | Real |
+| `EventDetails.tsx` | Real for Purchases/Attendance/Complimentary tabs (registration-service, ticket-service). **Mock** for the Finance & Expenses / Vendors / Revenue tabs — no `event_expense`/`vendor`/`vendor_revenue_distribution` routes exist on any service yet; those tabs render clearly-labeled sample data. |
 | `CollectorRegistry.tsx` | Real |
 | `ReconciliationConsole.tsx` | Real |
 | `RefundTasks.tsx` | Real |
@@ -99,10 +99,6 @@ Resident-facing apps (`mfe-events`, `mfe-booking`, `mfe-payment`, `mfe-tickets`)
 | `UserApproval.tsx` | Real |
 | `BuildingStructure.tsx` | Real |
 | `UnitManagement.tsx` | Real |
-| **`FreeTokens.tsx`** | **Mock** — hardcoded token list, no API calls. Duplicates what `ComplimentaryTickets.tsx` now does for real; prefer that page. |
-| **`EventFinance.tsx`** | **Mock** — no API calls. |
-| **`VendorManagement.tsx`** | **Mock** — no API calls; no `vendor`-table routes exist on any service. |
-| **`RevenueDistribution.tsx`** | **Mock** — no API calls. |
 | **`SponsorDashboard.tsx`** | **Mock** — no API calls. |
 | **`SponsorManagement.tsx`** | **Mock** — no API calls. |
 | **`SponsorshipRefunds.tsx`** | **Mock** — no API calls. |

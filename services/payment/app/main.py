@@ -1,4 +1,5 @@
 import asyncio
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -6,12 +7,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import close_pool, get_pool, wait_for_db
 from app.middleware.splunk import SplunkLoggingMiddleware
 from app.reconciliation import inbox as reconciliation_inbox
-from app.routes import audit, payments, reconciliation, refunds, registry, settings as recon_settings
+from app.routes import audit, payments, reconciliation, refunds, registry, settings as recon_settings, testing
 
 _OPENAPI_URL     = "openapi.json"
 _OAUTH2_REDIRECT = "/docs/oauth2-redirect"
@@ -74,6 +76,13 @@ app.include_router(reconciliation.router,  prefix="/reconciliation",  tags=["rec
 app.include_router(registry.router,        prefix="/registry",        tags=["registry"])
 app.include_router(audit.router,           prefix="/audit",           tags=["audit"])
 app.include_router(recon_settings.router,  prefix="/recon-settings",  tags=["reconciliation-settings"])
+
+if settings.is_testing:
+    app.include_router(testing.router, prefix="/test", tags=["testing"])
+
+_uploads_dir = settings.uploads_dir
+os.makedirs(_uploads_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=_uploads_dir), name="uploads")
 
 
 @app.get("/health", tags=["ops"])

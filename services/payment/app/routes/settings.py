@@ -1,9 +1,10 @@
-"""Reconciliation settings — IMAP + Ollama config stored in DB (admin only)."""
+"""Reconciliation settings — IMAP + Ollama/Claude config stored in DB (admin only)."""
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth import require_role
+from app.config import settings as app_settings
 from app.database import get_pool
 from app.models import ReconSettingsIn, ReconSettingsOut
 
@@ -11,7 +12,7 @@ router = APIRouter()
 
 _SELECT = """
     SELECT imap_host, imap_port, imap_user, imap_password,
-           imap_mailbox, poll_interval_s, use_ai_parser,
+           imap_mailbox, poll_interval_s, use_ai_parser, ai_provider,
            ollama_host, ollama_model, updated_at
     FROM payment_reconciliation_settings WHERE id = 1
 """
@@ -38,6 +39,7 @@ async def get_settings(
         imap_mailbox=d["imap_mailbox"],
         poll_interval_s=d["poll_interval_s"],
         use_ai_parser=d["use_ai_parser"],
+        ai_provider=d["ai_provider"],
         ollama_host=d["ollama_host"],
         ollama_model=d["ollama_model"],
         updated_at=d["updated_at"],
@@ -66,13 +68,14 @@ async def save_settings(
                 imap_mailbox    = $5,
                 poll_interval_s = $6,
                 use_ai_parser   = $7,
-                ollama_host     = $8,
-                ollama_model    = $9,
+                ai_provider     = $8,
+                ollama_host     = $9,
+                ollama_model    = $10,
                 updated_at      = now()
                WHERE id = 1""",
             body.imap_host, body.imap_port, body.imap_user, password,
             body.imap_mailbox, body.poll_interval_s, body.use_ai_parser,
-            body.ollama_host, body.ollama_model,
+            body.ai_provider, body.ollama_host, body.ollama_model,
         )
         row = await conn.fetchrow(_SELECT)
     d = dict(row)
@@ -84,6 +87,7 @@ async def save_settings(
         imap_mailbox=d["imap_mailbox"],
         poll_interval_s=d["poll_interval_s"],
         use_ai_parser=d["use_ai_parser"],
+        ai_provider=d["ai_provider"],
         ollama_host=d["ollama_host"],
         ollama_model=d["ollama_model"],
         updated_at=d["updated_at"],
@@ -160,3 +164,33 @@ async def test_ollama(
             }
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Ollama error: {exc}")
+
+
+# ── POST /settings/test-claude ─────────────────────────────────────────────────
+
+@router.post("/test-claude", summary="Test the Claude (Anthropic) API key from .env")
+async def test_claude(
+    claims: dict = Depends(require_role("admin", "committee_member")),
+):
+    if not app_settings.anthropic_api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="ANTHROPIC_API_KEY is not set in this service's .env",
+        )
+
+    try:
+        from anthropic import AsyncAnthropic
+
+        client = AsyncAnthropic(api_key=app_settings.anthropic_api_key)
+        resp = await client.messages.create(
+            model=app_settings.claude_model,
+            max_tokens=8,
+            messages=[{"role": "user", "content": "ping"}],
+        )
+        return {
+            "status": "ok",
+            "configured_model": app_settings.claude_model,
+            "reachable": bool(resp.content),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Claude error: {exc}")

@@ -57,6 +57,10 @@ class ScanBody(BaseModel):
     token: str = Field(..., min_length=1)
 
 
+class CancelBody(BaseModel):
+    refund_upi_id: Optional[str] = None
+
+
 # ── Cart ──────────────────────────────────────────────────────────────────────
 
 class CartTicket(BaseModel):

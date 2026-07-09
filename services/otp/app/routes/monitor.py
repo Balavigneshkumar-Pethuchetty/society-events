@@ -8,12 +8,81 @@ pulled directly from Redis.  Auto-refreshes every 3 seconds via fetch.
 """
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from app.config import settings
 from app.otp_store import get_audit_log, get_stats
 
 router = APIRouter()
+
+
+def _require_auth_service_key(x_auth_service_key: str = Header(default="")) -> None:
+    """Gate for cross-project calls (auth-service's dashboard proxy) — same
+    shared secret already used for the auth_service SMS gateway integration."""
+    if not settings.auth_service_api_key or x_auth_service_key != settings.auth_service_api_key:
+        raise HTTPException(401, "invalid key")
+
+
+# ── Per-transaction rollup (for auth-service's OTP Transactions dashboard) ────
+#
+# The audit log is a flat event stream (otp_sent / otp_failed / otp_verified /
+# ...). This reconstructs one row per OTP challenge by walking the log in
+# chronological order and grouping events for the same (masked) phone between
+# an otp_sent and its resolution. The OTP value itself is never available —
+# only an HMAC hash is ever stored (see otp_store.py) — so it can't appear here
+# even if requested; that's a deliberate, unrecoverable-by-design property.
+
+@router.get("/transactions", dependencies=[Depends(_require_auth_service_key)])
+async def transactions(limit: int = 200):
+    log = list(reversed(await get_audit_log(limit)))  # chronological order
+    now = time.time()
+    ttl = settings.otp_ttl_seconds
+
+    open_by_phone: dict[str, dict] = {}
+    done: list[dict] = []
+
+    def close(phone: str, status: str):
+        tx = open_by_phone.pop(phone, None)
+        if tx:
+            tx["status"] = status
+            done.append(tx)
+
+    for e in log:
+        phone, etype, ts, detail = e.get("phone"), e.get("type"), e.get("ts"), e.get("detail", "")
+
+        if etype == "otp_sent":
+            close(phone, "expired")  # a resend supersedes any still-open challenge
+            open_by_phone[phone] = {
+                "phone": phone,
+                "generated_at": ts,
+                "expires_at": ts + ttl,
+                "verified_at": None,
+                "failed_at": None,
+                "attempts": 0,
+                "sms_delivery_failed": False,
+                "status": "pending",
+            }
+        elif etype == "otp_failed" and phone in open_by_phone:
+            tx = open_by_phone[phone]
+            tx["attempts"] += 1
+            tx["failed_at"] = ts
+            tx["last_error"] = detail
+            if "too many incorrect attempts" in detail.lower():
+                close(phone, "locked")
+        elif etype == "otp_verified" and phone in open_by_phone:
+            open_by_phone[phone]["verified_at"] = ts
+            close(phone, "verified")
+        elif etype == "otp_sms_failed" and phone in open_by_phone:
+            open_by_phone[phone]["sms_delivery_failed"] = True
+
+    # Anything still open has either lapsed (past its TTL) or is genuinely
+    # still awaiting the user's input.
+    for phone, tx in list(open_by_phone.items()):
+        close(phone, "pending" if tx["expires_at"] > now else "expired")
+
+    done.sort(key=lambda t: t["generated_at"], reverse=True)
+    return {"transactions": done[:limit]}
 
 # ── Data endpoint (polled by the browser) ────────────────────────────────────
 

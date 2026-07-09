@@ -72,6 +72,8 @@ class TransactionOut(BaseModel):
     updated_at: datetime
     user_name: Optional[str] = None
     user_email: Optional[str] = None
+    screenshot_url: Optional[str] = None
+    refund_screenshot_url: Optional[str] = None
 
 
 # ── Refunds ───────────────────────────────────────────────────────────────────
@@ -109,6 +111,7 @@ class ReconSettingsIn(BaseModel):
     imap_mailbox:     str  = "INBOX"
     poll_interval_s:  int  = 300
     use_ai_parser:    bool = False
+    ai_provider:      str  = "ollama"   # "ollama" or "claude" — which backend use_ai_parser selects
     ollama_host:      str  = "http://localhost:11434"
     ollama_model:     str  = "llama3"
 
@@ -121,6 +124,7 @@ class ReconSettingsOut(BaseModel):
     imap_mailbox:     str
     poll_interval_s:  int
     use_ai_parser:    bool
+    ai_provider:      str
     ollama_host:      str
     ollama_model:     str
     updated_at:       Optional[datetime]

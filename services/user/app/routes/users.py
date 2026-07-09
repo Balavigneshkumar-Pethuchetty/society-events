@@ -268,7 +268,16 @@ async def update_me(
     claims: dict = Depends(get_current_claims),
     pool: Pool = Depends(get_pool),
 ):
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    updates: dict = {}
+    if body.name is not None:
+        updates["name"] = body.name
+    if "phone" in body.model_fields_set:
+        # "" (or explicit null) clears the phone number entirely — frees it up for another
+        # resident to register with — distinct from the field being omitted from the request
+        # altogether, which leaves whatever's on file untouched. Stored as SQL NULL rather
+        # than "" so the UNIQUE constraint doesn't collide the next time someone clears theirs.
+        updates["phone"] = body.phone.strip() if body.phone and body.phone.strip() else None
+
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
@@ -276,6 +285,14 @@ async def update_me(
     values = list(updates.values())
 
     async with pool.acquire() as conn:
+        if updates.get("phone"):
+            taken = await conn.fetchval(
+                "SELECT 1 FROM users WHERE phone = $1 AND keycloak_sub != $2",
+                updates["phone"], claims["sub"],
+            )
+            if taken:
+                raise HTTPException(status_code=409, detail="Phone number already registered to another user")
+
         row = await conn.fetchrow(
             f"""
             UPDATE users SET {', '.join(set_parts)}
@@ -477,12 +494,18 @@ async def list_users(
     offset: int = Query(0, ge=0),
     pool: Pool = Depends(get_pool),
 ):
+    # Guest placeholder rows (complimentary-ticket recipients with no real account,
+    # role='guest', is_active=FALSE) exist only to satisfy FKs on registration/ticket —
+    # they must never surface as pending user approvals. Hide them unless a caller
+    # explicitly asks for role=guest.
     conditions = ["1=1"]
     params: list = []
 
     if role is not None:
         params.append(role)
         conditions.append(f"u.role = ${len(params)}")
+    else:
+        conditions.append("u.role != 'guest'")
     if active is not None:
         params.append(active)
         conditions.append(f"u.is_active = ${len(params)}")
@@ -544,7 +567,9 @@ async def list_users(
 )
 async def get_admin_stats(pool: Pool = Depends(get_pool)):
     async with pool.acquire() as conn:
-        total_pending = await conn.fetchval("SELECT COUNT(*) FROM users WHERE is_active = FALSE")
+        total_pending = await conn.fetchval(
+            "SELECT COUNT(*) FROM users WHERE is_active = FALSE AND role != 'guest'"
+        )
         counts = {r["action"]: r["cnt"] for r in await conn.fetch(
             "SELECT action, COUNT(*) AS cnt FROM admin_actions GROUP BY action"
         )}

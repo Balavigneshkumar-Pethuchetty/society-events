@@ -113,7 +113,9 @@ export const userService = {
   me: (token: string) =>
     apiFetch<DbUser>('/users/me', token),
 
-  update: (token: string, data: { name?: string; phone?: string }) =>
+  // phone: null explicitly clears the number on file (frees it up for another resident to
+  // register with) — omitting the key entirely leaves it untouched.
+  update: (token: string, data: { name?: string; phone?: string | null }) =>
     apiFetch<DbUser>('/users/me', token, {
       method: 'PUT',
       body: JSON.stringify(data),

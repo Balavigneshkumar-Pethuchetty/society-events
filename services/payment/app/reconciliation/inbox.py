@@ -8,8 +8,9 @@ import email as email_lib
 from datetime import datetime, timezone
 from typing import Optional
 
+from app.config import settings
 from app.database import get_pool
-from app.reconciliation.parser import extract_all_ai, extract_all_regex
+from app.reconciliation.parser import extract_all_ai, extract_all_claude, extract_all_regex
 
 # In-memory state visible to /reconciliation/status
 _last_run_at: Optional[datetime] = None
@@ -24,7 +25,7 @@ async def _load_settings() -> dict:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """SELECT imap_host, imap_port, imap_user, imap_password,
-                      imap_mailbox, poll_interval_s, use_ai_parser,
+                      imap_mailbox, poll_interval_s, use_ai_parser, ai_provider,
                       ollama_host, ollama_model
                FROM payment_reconciliation_settings WHERE id = 1"""
         )
@@ -76,6 +77,7 @@ async def _scan_once(cfg: dict) -> dict:
     new_utrs: list[str] = []
 
     use_ai    = cfg.get("use_ai_parser", False)
+    provider  = cfg.get("ai_provider", "ollama")
     ol_host   = cfg.get("ollama_host", "http://localhost:11434")
     ol_model  = cfg.get("ollama_model", "llama3")
 
@@ -85,7 +87,11 @@ async def _scan_once(cfg: dict) -> dict:
         raw  = msg_data[1] if len(msg_data) > 1 else b""
         body = _extract_body(email_lib.message_from_bytes(raw))
 
-        if use_ai:
+        if use_ai and provider == "claude":
+            utr, amount, payer_vpa = await extract_all_claude(
+                body, settings.anthropic_api_key, settings.claude_model
+            )
+        elif use_ai:
             utr, amount, payer_vpa = await extract_all_ai(body, ol_host, ol_model)
         else:
             utr, amount, payer_vpa = extract_all_regex(body)

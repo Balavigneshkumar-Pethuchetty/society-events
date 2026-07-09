@@ -538,24 +538,6 @@ CREATE TABLE IF NOT EXISTS registration_item (
     UNIQUE (registration_id, ticket_type_id)
 );
 
--- ---------------------------------------------------------------------------
--- FREE_TOKEN  (organizer issues free-entry tokens; usable by anyone)
--- issued_to_name / issued_to_email are optional — walk-in tokens need neither.
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS free_token (
-    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_id            UUID        NOT NULL REFERENCES event(id) ON DELETE CASCADE,
-    ticket_type_id      UUID        REFERENCES ticket_type(id) ON DELETE SET NULL,
-    token_code          VARCHAR(50) NOT NULL UNIQUE,   -- short unique code shown to recipient
-    issued_to_name      VARCHAR(255),
-    issued_to_email     VARCHAR(255),
-    issued_by           UUID        NOT NULL REFERENCES users(id),
-    is_used             BOOLEAN     NOT NULL DEFAULT FALSE,
-    used_at             TIMESTAMPTZ,
-    notes               TEXT,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
 -- =============================================================================
 -- INDEXES — vendor + ticket tables
 -- =============================================================================
@@ -585,11 +567,6 @@ CREATE INDEX IF NOT EXISTS idx_ticktype_sort        ON ticket_type(event_id, sor
 -- registration_item
 CREATE INDEX IF NOT EXISTS idx_regitem_registration ON registration_item(registration_id);
 CREATE INDEX IF NOT EXISTS idx_regitem_ticktype     ON registration_item(ticket_type_id);
-
--- free_token
-CREATE INDEX IF NOT EXISTS idx_freetoken_event      ON free_token(event_id);
-CREATE INDEX IF NOT EXISTS idx_freetoken_code       ON free_token(token_code);
-CREATE INDEX IF NOT EXISTS idx_freetoken_used       ON free_token(is_used);
 
 -- =============================================================================
 -- FINANCE SUMMARY VIEW  (per-event income, expenses, and complimentary count)
@@ -626,10 +603,7 @@ SELECT
          WHERE es4.event_id = e.id), 0)                        AS sponsor_count,
     COALESCE(
         (SELECT SUM(ct.ticket_count) FROM complimentary_ticket ct
-         WHERE ct.event_id = e.id), 0)                         AS complimentary_tickets,
-    COALESCE(
-        (SELECT COUNT(*) FROM free_token ft
-         WHERE ft.event_id = e.id), 0)                         AS free_tokens_issued
+         WHERE ct.event_id = e.id), 0)                         AS complimentary_tickets
 FROM event e
 LEFT JOIN registration r ON r.event_id = e.id AND r.status = 'confirmed'
 GROUP BY e.id, e.title, e.status
@@ -711,9 +685,11 @@ CREATE TABLE IF NOT EXISTS payment_reconciliation_settings (
     imap_mailbox     VARCHAR(100) NOT NULL DEFAULT 'INBOX',
     poll_interval_s  INT          NOT NULL DEFAULT 300,
     use_ai_parser    BOOLEAN      NOT NULL DEFAULT FALSE,
+    ai_provider      VARCHAR(20)  NOT NULL DEFAULT 'ollama',
     ollama_host      VARCHAR(255) NOT NULL DEFAULT 'http://localhost:11434',
     ollama_model     VARCHAR(100) NOT NULL DEFAULT 'llama3',
     updated_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    CONSTRAINT single_settings_row CHECK (id = 1)
+    CONSTRAINT single_settings_row CHECK (id = 1),
+    CONSTRAINT ai_provider_check CHECK (ai_provider IN ('ollama', 'claude'))
 );
 INSERT INTO payment_reconciliation_settings (id) VALUES (1) ON CONFLICT DO NOTHING;

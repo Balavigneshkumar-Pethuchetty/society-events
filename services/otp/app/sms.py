@@ -1,11 +1,15 @@
 """
 SMS gateway abstraction — swap gateway by setting SMS_GATEWAY in .env.
 
-  fast2sms   Fast2SMS cloud API — no phone/hardware needed (recommended)
-  gammu      USB modem / Android phone connected via cable (Gammu CLI)
-  httpsms    Android "SMS Gateway" app over Wi-Fi — no USB cable needed
-  log        Print OTP to stdout (dev / demo mode)
-  disabled   Silent no-op (CI or environments where SMS is irrelevant)
+  auth_service  Committee-phone failover via auth-service + Tailscale — free,
+                self-hosted, no hardware cable, fails over across multiple
+                phones (recommended default — see docs/mobile-otp-setup.md)
+  fast2sms      Fast2SMS cloud API — no phone/hardware needed, costs money
+  gammu         USB modem / Android phone connected via cable (Gammu CLI)
+  httpsms       Single Android "SMS Gateway" app over Wi-Fi — no USB cable,
+                no failover across multiple phones
+  log           Print OTP to stdout (dev / demo mode)
+  disabled      Silent no-op (CI or environments where SMS is irrelevant)
 
 The gateway is intentionally swappable: change SMS_GATEWAY + relevant vars
 in .env and run `make restart-otp-service` — no code changes required.
@@ -24,6 +28,8 @@ logger = logging.getLogger(__name__)
 async def send_sms(phone: str, message: str) -> bool:
     """Dispatch to the configured gateway. Returns True on success."""
     gw = settings.sms_gateway.lower()
+    if gw == "auth_service":
+        return await _auth_service_sms(phone, message)
     if gw == "fast2sms":
         return await _fast2sms(phone, message)
     if gw == "gammu":
@@ -35,6 +41,44 @@ async def send_sms(phone: str, message: str) -> bool:
         return True
     # disabled
     return True
+
+
+# ── Auth-service gateway (committee-phone failover via Tailscale) ─────────────
+#
+# auth-service (the centralized Keycloak/tunnel provider this app registers
+# with) hosts a small fleet of committee members' Android phones running the
+# open-source "SMS Gateway for Android" app, reached over a private Tailscale
+# network with automatic failover if one phone is offline. auth-service
+# exposes this as a simple authenticated HTTP endpoint; this project doesn't
+# need to know anything about Tailscale or which phones exist.
+#
+# Setup: in auth-service, add/rotate phones via its `sms_gateways` table
+# (see its dashboard or POST /api/sms-gateways). Then here, add to .env:
+#   SMS_GATEWAY=auth_service
+#   AUTH_SERVICE_API_KEY=<same value as auth-service's OTP_SERVICE_API_KEY>
+# Run: make restart-otp-service
+
+async def _auth_service_sms(phone: str, message: str) -> bool:
+    if not settings.auth_service_api_key:
+        logger.error("[SMS-AUTHSVC] AUTH_SERVICE_API_KEY not configured")
+        return False
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                settings.auth_service_sms_url,
+                json={"phone": phone, "message": message},
+                headers={"X-API-Key": settings.auth_service_api_key},
+            )
+            data = r.json()
+            if r.status_code == 200 and data.get("sent"):
+                logger.info("[SMS-AUTHSVC] Sent to %s via %s", phone, data.get("via"))
+                return True
+            logger.error("[SMS-AUTHSVC] Failed for %s: %s", phone, data)
+            return False
+    except Exception as exc:
+        logger.error("[SMS-AUTHSVC] Error: %s", exc)
+        return False
 
 
 # ── Fast2SMS (cloud API — no hardware needed, India only) ─────────────────────

@@ -156,6 +156,8 @@ services:
       INTERNAL_API_KEY:           ${INTERNAL_API_KEY}
       SOCIETY_NAME:               ${SOCIETY_NAME:-GM Global Techies Town}
       SMS_GATEWAY:                ${SMS_GATEWAY:-log}
+      AUTH_SERVICE_SMS_URL:       ${AUTH_SERVICE_SMS_URL:-http://host.containers.internal:8000/api/sms/send}
+      AUTH_SERVICE_API_KEY:       ${AUTH_SERVICE_API_KEY:-}
       FAST2SMS_API_KEY:           ${FAST2SMS_API_KEY:-}
       HTTP_SMS_URL:               ${HTTP_SMS_URL:-}
       HTTP_SMS_API_KEY:           ${HTTP_SMS_API_KEY:-}
@@ -320,6 +322,16 @@ services:
       RECONCILIATION_INTERVAL_SECONDS: ${RECONCILIATION_INTERVAL_SECONDS:-300}
       SPLUNK_HEC_URL:            http://host.containers.internal:8088/services/collector/event
       SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
+      RECONCILIATION_SERVICE_BASE_URL:   ${RECONCILIATION_SERVICE_BASE_URL:-http://host.containers.internal:8001}
+      RECONCILIATION_SERVICE_SECRET_KEY: ${PAYMENT_RECONCILIATION_SECRET_KEY}
+      RECONCILIATION_SERVICE_AUDIENCE:   payment-service
+      # Claude API — alternative to Ollama for the IMAP email parser; selected via
+      # ai_provider in payment_reconciliation_settings (PUT /settings), not here.
+      ANTHROPIC_API_KEY:         ${ANTHROPIC_API_KEY:-}
+      CLAUDE_MODEL:              ${CLAUDE_MODEL:-claude-sonnet-4-6}
+      PAYMENT_SERVICE_ENV:       ${PAYMENT_SERVICE_ENV:-production}
+    volumes:
+      - payment_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -465,6 +477,8 @@ volumes:
     name: ${COMPOSE_PROJECT_NAME:-society}_nginx_logs
   registration_uploads:
     name: ${COMPOSE_PROJECT_NAME:-society}_registration_uploads
+  payment_uploads:
+    name: ${COMPOSE_PROJECT_NAME:-society}_payment_uploads
 
 # ─── Network ─────────────────────────────────────────────────────────────────
 networks:

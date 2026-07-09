@@ -8,14 +8,14 @@ from typing import Optional
 import aiofiles
 import qrcode
 import qrcode.image.svg
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response as FastAPIResponse
 
 from app.auth import get_current_claims, require_role
 from app.config import settings
 from app.database import get_pool
 from app.models import (
-    PaymentReviewBody, RegistrationCreate, RegistrationOut, PaymentOut,
+    CancelBody, PaymentReviewBody, RegistrationCreate, RegistrationOut, PaymentOut,
 )
 
 router = APIRouter()
@@ -74,6 +74,7 @@ _REG_QUERY = """
     SELECT
         r.id::text,
         r.event_id::text,
+        r.user_id::text,
         r.ticket_count,
         r.total_amount,
         r.display_currency,
@@ -165,6 +166,20 @@ async def create_registration(
             body.event_id, user_id, ticket_count, total_amount,
             event["price_currency"], reg_status,
         )
+
+        # Persist the per-ticket-type breakdown (only possible for events with real
+        # ticket_type rows — the legacy single flat-price flow has no type to reference,
+        # so those selections have ticket_type_id=None and are skipped here). ticket-service
+        # reads this back to show residents/admins what tiers/quantities made up the order,
+        # instead of just the aggregate ticket_count/total_amount on `registration`.
+        for t in body.tickets:
+            if t.ticket_type_id:
+                await conn.execute(
+                    """INSERT INTO registration_item (registration_id, ticket_type_id, quantity, unit_price)
+                       VALUES ($1::uuid, $2::uuid, $3, $4)
+                       ON CONFLICT (registration_id, ticket_type_id) DO NOTHING""",
+                    reg_id, t.ticket_type_id, t.quantity, t.unit_price,
+                )
 
         if not is_free:
             await conn.fetchval(
@@ -262,6 +277,7 @@ async def get_payment_qr(
 @router.delete("/{reg_id}", summary="Cancel a registration")
 async def cancel_registration(
     reg_id: str,
+    body: Optional[CancelBody] = Body(default=None),
     claims: dict = Depends(get_current_claims),
 ):
     sub = claims.get("sub", "")
@@ -315,10 +331,12 @@ async def cancel_registration(
                 reg_id,
             )
             if txn:
+                refund_upi_id = (body.refund_upi_id.strip() if body and body.refund_upi_id else None) or None
                 await conn.execute(
-                    "UPDATE payment_transaction SET status = 'refund_requested', updated_at = now() "
+                    "UPDATE payment_transaction SET status = 'refund_requested', "
+                    "refund_upi_id = COALESCE($2, payer_upi), updated_at = now() "
                     "WHERE id = $1::uuid",
-                    txn["id"],
+                    txn["id"], refund_upi_id,
                 )
                 await conn.execute(
                     "INSERT INTO payment_audit_log (txn_id, from_status, to_status, updated_by, note) "
