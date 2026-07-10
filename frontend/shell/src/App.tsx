@@ -179,7 +179,7 @@ function LoadingScreen() {
           '@keyframes spin': { to: { transform: 'rotate(360deg)' } },
         }}
       />
-      <Typography fontWeight={500}>Connecting to Society Events…</Typography>
+      <Typography fontWeight={500}>Connecting to GMGT Society Management…</Typography>
       <Typography fontSize={13} sx={{ color: 'rgba(203,213,225,0.8)' }}>
         Redirecting to login if needed
       </Typography>
@@ -316,7 +316,7 @@ function AppShell() {
   const { name: societyName, city } = useSociety();
 
   useEffect(() => {
-    document.title = `${societyName} Events`;
+    document.title = `${societyName} Society Management`;
   }, [societyName]);
 
   if (isLoading) return <LoadingScreen />;

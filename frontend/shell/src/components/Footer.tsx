@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Box, Container, Divider, Grid, Typography } from '@mui/material';
 import { useSociety } from '../contexts/SocietyContext';
 import { NAV_BG } from '../theme';
+import { ROADMAP } from '../data/roadmap';
 
 const QUICK_LINKS = [
   { label: 'Home',             to: '/' },
@@ -11,12 +12,11 @@ const QUICK_LINKS = [
   { label: 'My Registrations', to: '/registrations' },
 ];
 
-const CATEGORIES = [
-  { emoji: '🎆', label: 'Festival',   slug: 'festival' },
-  { emoji: '🏆', label: 'Sports',     slug: 'sports' },
-  { emoji: '💜', label: 'Wellness',   slug: 'wellness' },
-  { emoji: '🏛', label: 'Governance', slug: 'governance' },
-  { emoji: '⭐', label: 'Kids',       slug: 'kids' },
+// Events is the one live service; the rest come from the shared roadmap so
+// the footer never drifts out of sync with the Landing/Home "coming soon" lists.
+const SERVICES = [
+  { label: 'Events & Ticketing', to: '/events', live: true },
+  ...ROADMAP.map((r) => ({ label: r.title, to: undefined, live: false })),
 ];
 
 const linkSx = {
@@ -54,7 +54,7 @@ export function Footer() {
               <Typography fontWeight={700} fontSize={16} color="#fff">{name}</Typography>
             </Box>
             <Typography variant="body2" sx={{ color: 'rgba(203,213,225,0.65)', lineHeight: 1.75, maxWidth: 300 }}>
-              The official event platform for residents of <strong style={{ color: 'rgba(203,213,225,0.85)' }}>{name}</strong>.
+              The official society management platform for residents of <strong style={{ color: 'rgba(203,213,225,0.85)' }}>{name}</strong>.
               Discover, register, and celebrate community life together.
             </Typography>
             <Box sx={{ display: 'flex', gap: 1.5, mt: 2 }}>
@@ -79,21 +79,32 @@ export function Footer() {
             </Box>
           </Grid>
 
-          {/* Event Categories */}
+          {/* Services — the one live service plus what's coming next */}
           <Grid item xs={6} sm={4} md={3}>
-            <Typography sx={headingSx}>Event Categories</Typography>
+            <Typography sx={headingSx}>Services</Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {CATEGORIES.map((c) => (
-                <Box
-                  key={c.slug}
-                  component={Link}
-                  to={`/events?category=${c.slug}`}
-                  sx={{ ...linkSx, display: 'flex', alignItems: 'center', gap: 0.75 }}
-                >
-                  <span style={{ fontSize: 14 }}>{c.emoji}</span>
-                  {c.label}
-                </Box>
-              ))}
+              {SERVICES.map((s) =>
+                s.live ? (
+                  <Box key={s.label} component={Link} to={s.to!} sx={linkSx}>
+                    {s.label}
+                  </Box>
+                ) : (
+                  <Box key={s.label} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, fontSize: 14, color: 'rgba(203,213,225,0.4)' }}>
+                    {s.label}
+                    <Box
+                      component="span"
+                      sx={{
+                        fontSize: 9, fontWeight: 700, letterSpacing: 0.5, lineHeight: 1.6,
+                        px: 0.6, borderRadius: 4,
+                        border: '1px dashed rgba(203,213,225,0.3)',
+                        color: 'rgba(203,213,225,0.5)',
+                      }}
+                    >
+                      SOON
+                    </Box>
+                  </Box>
+                ),
+              )}
             </Box>
           </Grid>
 

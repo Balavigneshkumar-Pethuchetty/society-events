@@ -16,6 +16,23 @@ import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSociety } from '../contexts/SocietyContext';
+import { ROADMAP } from '../data/roadmap';
+
+// The one live service today, shown alongside the roadmap so the overview
+// section reads as "one growing platform" rather than "an events app plus
+// some ideas." Keep this in sync with FEATURES below — this is the summary,
+// FEATURES is the drill-down.
+const LIVE_SERVICE = {
+  icon: <EventIcon sx={{ fontSize: 30 }} />,
+  color: '#6366f1',
+  title: 'Events & Ticketing',
+  desc: 'Browse, book and attend community events with digital QR-code entry.',
+};
+
+const SERVICES_OVERVIEW = [
+  { ...LIVE_SERVICE, status: 'live' as const },
+  ...ROADMAP.map((r) => ({ ...r, status: 'soon' as const })),
+];
 
 const FEATURES = [
   {
@@ -57,10 +74,10 @@ const FEATURES = [
 ];
 
 const STATS = [
-  { value: '30+', label: 'Events per year' },
   { value: '500+', label: 'Resident families' },
-  { value: '5', label: 'Event categories' },
+  { value: '6', label: 'Society services' },
   { value: '24h', label: 'Approval turnaround' },
+  { value: '100%', label: 'Digital & secure' },
 ];
 
 const CATEGORIES = [
@@ -126,8 +143,9 @@ export function Landing() {
           <Typography sx={{ fontSize: { xs: 14, md: 17 }, color: '#a5b4fc', mb: 1, fontWeight: 500, letterSpacing: 0.5 }}>
             {city}
           </Typography>
-          <Typography sx={{ fontSize: { xs: 15, md: 18 }, color: '#c7d2fe', mb: 5, maxWidth: 520, mx: 'auto' }}>
-            Your society's resident events &amp; community portal — browse, book and attend events, all in one place.
+          <Typography sx={{ fontSize: { xs: 15, md: 18 }, color: '#c7d2fe', mb: 5, maxWidth: 560, mx: 'auto' }}>
+            The one platform for everything your society runs — events today, with visitor management,
+            vendor tracking, parking, and AI-powered security on the way.
           </Typography>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" alignItems="center" sx={{ mb: 2 }}>
@@ -288,16 +306,96 @@ export function Landing() {
         </Container>
       </Box>
 
-      {/* ── Event Categories ─────────────────────────────────────────── */}
-      <Box sx={{ bgcolor: '#f8fafc', py: 5, px: 3, borderBottom: '1px solid', borderColor: 'divider' }}>
+      {/* ── Services overview (live + roadmap, front and center) ───────── */}
+      <Box sx={{ py: { xs: 7, md: 10 }, px: 3, bgcolor: 'background.default' }}>
         <Container maxWidth="lg">
-          <Typography variant="h6" fontWeight={700} textAlign="center" mb={0.75}>
-            Events for every resident
+          <Chip
+            label="THE PLATFORM"
+            size="small"
+            sx={{
+              display: 'flex', mx: 'auto', mb: 2, fontWeight: 700, fontSize: 11,
+              letterSpacing: 1, bgcolor: 'rgba(99,102,241,0.1)', color: '#6366f1',
+            }}
+          />
+          <Typography variant="h4" fontWeight={800} textAlign="center" mb={1} sx={{ fontSize: { xs: 24, md: 32 } }}>
+            One app for everything your society runs
           </Typography>
-          <Typography textAlign="center" color="text.secondary" fontSize={14} mb={3}>
-            Five categories covering everything your community loves
+          <Typography textAlign="center" color="text.secondary" fontSize={16} mb={6} maxWidth={560} mx="auto">
+            Events &amp; Ticketing is live today. Five more services are already on the roadmap for {name}.
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', justifyContent: 'center' }}>
+
+          <Grid container spacing={3}>
+            {SERVICES_OVERVIEW.map((s) => (
+              <Grid item xs={12} sm={6} md={4} key={s.title}>
+                <Card
+                  variant="outlined"
+                  sx={{
+                    height: '100%',
+                    borderRadius: 2,
+                    position: 'relative',
+                    borderStyle: s.status === 'live' ? 'solid' : 'dashed',
+                    transition: 'box-shadow 0.25s, transform 0.25s',
+                    '&:hover': {
+                      boxShadow: s.status === 'live' ? 6 : 4,
+                      transform: `translateY(-${s.status === 'live' ? 4 : 3}px)`,
+                    },
+                  }}
+                >
+                  <Chip
+                    label={s.status === 'live' ? 'Live' : 'Coming Soon'}
+                    size="small"
+                    sx={{
+                      position: 'absolute', top: 14, right: 14,
+                      fontSize: 10, fontWeight: 700, height: 22,
+                      bgcolor: s.status === 'live' ? 'rgba(16,185,129,0.15)' : 'rgba(148,163,184,0.15)',
+                      color: s.status === 'live' ? '#059669' : 'text.secondary',
+                    }}
+                  />
+                  <CardContent sx={{ p: 3.5 }}>
+                    <Box
+                      sx={{
+                        width: 52, height: 52, borderRadius: 2, mb: 2.5,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        ...(s.status === 'live'
+                          ? { bgcolor: s.color, color: '#fff' }
+                          : { border: `2px solid ${s.color}`, color: s.color }),
+                      }}
+                    >
+                      {s.icon}
+                    </Box>
+                    <Typography fontWeight={700} fontSize={17} mb={1}>{s.title}</Typography>
+                    <Typography fontSize={14} color="text.secondary" lineHeight={1.6}>{s.desc}</Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+
+          <Typography textAlign="center" fontSize={13} color="text.secondary" mt={4}>
+            Have an idea for your society? Let your committee know.
+          </Typography>
+        </Container>
+      </Box>
+
+      {/* ── Events service detail (what's live today) ──────────────────── */}
+      <Box sx={{ py: { xs: 7, md: 10 }, px: 3, bgcolor: '#f8fafc', borderTop: '1px solid', borderColor: 'divider' }}>
+        <Container maxWidth="lg">
+          <Chip
+            label="LIVE NOW"
+            size="small"
+            sx={{
+              display: 'flex', mx: 'auto', mb: 2, fontWeight: 700, fontSize: 11,
+              letterSpacing: 1, bgcolor: 'rgba(16,185,129,0.12)', color: '#059669',
+            }}
+          />
+          <Typography variant="h4" fontWeight={800} textAlign="center" mb={1} sx={{ fontSize: { xs: 24, md: 32 } }}>
+            Inside Events &amp; Ticketing
+          </Typography>
+          <Typography textAlign="center" color="text.secondary" fontSize={16} mb={4} maxWidth={500} mx="auto">
+            Everything below is already live and ready to use.
+          </Typography>
+
+          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', justifyContent: 'center', mb: 6 }}>
             {CATEGORIES.map((c) => (
               <Chip
                 key={c.label}
@@ -313,18 +411,6 @@ export function Landing() {
               />
             ))}
           </Box>
-        </Container>
-      </Box>
-
-      {/* ── Features grid ────────────────────────────────────────────── */}
-      <Box sx={{ py: { xs: 7, md: 10 }, px: 3, bgcolor: 'background.default' }}>
-        <Container maxWidth="lg">
-          <Typography variant="h4" fontWeight={800} textAlign="center" mb={1} sx={{ fontSize: { xs: 24, md: 32 } }}>
-            Everything your community needs
-          </Typography>
-          <Typography textAlign="center" color="text.secondary" fontSize={16} mb={6} maxWidth={500} mx="auto">
-            Built specifically for housing society event management — from browsing to entry.
-          </Typography>
 
           <Grid container spacing={3}>
             {FEATURES.map((f) => (
@@ -334,6 +420,7 @@ export function Landing() {
                   sx={{
                     height: '100%',
                     borderRadius: 2,
+                    bgcolor: 'background.paper',
                     transition: 'box-shadow 0.25s, transform 0.25s',
                     '&:hover': { boxShadow: 6, transform: 'translateY(-4px)' },
                   }}
@@ -360,13 +447,13 @@ export function Landing() {
       </Box>
 
       {/* ── How it works ─────────────────────────────────────────────── */}
-      <Box sx={{ py: { xs: 7, md: 10 }, px: 3, bgcolor: '#f8fafc', borderTop: '1px solid', borderColor: 'divider' }}>
+      <Box sx={{ py: { xs: 7, md: 10 }, px: 3, bgcolor: 'background.default', borderTop: '1px solid', borderColor: 'divider' }}>
         <Container maxWidth="md">
           <Typography variant="h4" fontWeight={800} textAlign="center" mb={1} sx={{ fontSize: { xs: 24, md: 32 } }}>
             Get started in minutes
           </Typography>
           <Typography textAlign="center" color="text.secondary" fontSize={15} mb={7}>
-            Three simple steps to your first event booking
+            Three simple steps to get started — the same simple flow every future service will follow
           </Typography>
 
           <Grid container spacing={4} alignItems="flex-start">
@@ -416,7 +503,7 @@ export function Landing() {
             Join the {name} community
           </Typography>
           <Typography sx={{ color: '#c7d2fe', fontSize: 15, mb: 5, maxWidth: 420, mx: 'auto' }}>
-            Already a resident? Register your account and start booking events today.
+            Already a resident? Register your account and get started today.
           </Typography>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" alignItems="center" sx={{ mb: 2 }}>
@@ -483,7 +570,7 @@ export function Landing() {
       {/* ── Footer ───────────────────────────────────────────────────── */}
       <Box sx={{ py: 2.5, px: 3, bgcolor: '#0f172a', textAlign: 'center' }}>
         <Typography sx={{ fontSize: 12, color: 'rgba(148,163,184,0.6)' }}>
-          © {new Date().getFullYear()} {name} · {city} · Society Events Portal
+          © {new Date().getFullYear()} {name} · {city} · Society Management Portal
         </Typography>
       </Box>
 

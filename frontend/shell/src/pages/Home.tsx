@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   Accordion, AccordionDetails, AccordionSummary,
   Box, Button, Card, CardActionArea, CardContent,
-  Container, Grid, Typography,
+  Chip, Container, Grid, Typography,
 } from '@mui/material';
 import EventIcon from '@mui/icons-material/Event';
 import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
@@ -17,6 +17,7 @@ import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import { useAuth } from '../contexts/AuthContext';
 import { useSociety } from '../contexts/SocietyContext';
 import { useUserService } from '../contexts/UserServiceContext';
+import { ROADMAP } from '../data/roadmap';
 
 type Slot = { icon: React.ReactNode; title: string; desc: string; path: string; cta: string; color: string };
 
@@ -54,9 +55,9 @@ function useMfeSlots(role: string): Slot[] {
 }
 
 const ROLE_WELCOME: Record<string, string> = {
-  admin:            'You have full admin access. You can also browse and register for events.',
-  committee_member: 'You can create and manage events — and register for them just like any resident.',
-  resident:         'Register for events and track your tickets.',
+  admin:            'You have full admin access across your society\'s services — starting with events, and growing.',
+  committee_member: 'Create and manage events, and register for them just like any resident.',
+  resident:         'Your society, in one place — events and tickets today, with more services on the way.',
   security_guard:   'Use the QR scanner below to verify resident tickets at the gate.',
   sponsor:          'Track your sponsorships, monitor event funding, and manage refund requests.',
 };
@@ -147,6 +148,52 @@ export function Home() {
                     <Typography fontSize={14} color="text.secondary" sx={{ flex: 1 }}>{s.desc}</Typography>
                     <Typography fontSize={13} fontWeight={600} color="primary.main">{s.cta} →</Typography>
                   </CardActionArea>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </Container>
+      </Box>
+
+      {/* More services on the way */}
+      <Box sx={{ py: 6, px: { xs: 2, sm: 3 }, bgcolor: '#f8fafc', borderTop: '1px solid', borderColor: 'divider' }}>
+        <Container maxWidth="lg">
+          <Typography variant="h6" fontWeight={700} sx={{ mb: 0.5 }}>
+            More is on the way for {name}
+          </Typography>
+          <Typography fontSize={14} color="text.secondary" sx={{ mb: 3 }}>
+            Events &amp; Ticketing is live today. Here's what's coming next.
+          </Typography>
+          <Grid container spacing={2.5}>
+            {ROADMAP.map((r) => (
+              <Grid item xs={12} sm={6} md={4} key={r.title}>
+                <Card
+                  variant="outlined"
+                  sx={{ height: '100%', borderRadius: 2, borderStyle: 'dashed', position: 'relative' }}
+                >
+                  <Chip
+                    label="Coming Soon"
+                    size="small"
+                    sx={{
+                      position: 'absolute', top: 12, right: 12,
+                      fontSize: 10, fontWeight: 700, height: 22,
+                      bgcolor: 'rgba(148,163,184,0.15)', color: 'text.secondary',
+                    }}
+                  />
+                  <CardContent sx={{ p: 3 }}>
+                    <Box
+                      sx={{
+                        width: 44, height: 44, borderRadius: 1.5,
+                        border: `2px solid ${r.color}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: r.color, mb: 2,
+                      }}
+                    >
+                      {r.icon}
+                    </Box>
+                    <Typography fontWeight={700} fontSize={15} mb={0.5}>{r.title}</Typography>
+                    <Typography fontSize={13} color="text.secondary" lineHeight={1.55}>{r.desc}</Typography>
+                  </CardContent>
                 </Card>
               </Grid>
             ))}

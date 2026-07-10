@@ -165,7 +165,7 @@ export function MobileLogin() {
         <Box sx={{ textAlign: { xs: 'center', md: 'left' }, minWidth: 0 }}>
           <Typography sx={{ fontSize: { xs: 44, md: 64 }, lineHeight: 1, mb: '22px' }}>🏛</Typography>
           <Typography sx={{ color: '#a5b4fc', fontSize: '0.92rem', fontWeight: 700, letterSpacing: '0.5px', mb: '12px' }}>
-            Resident Events &amp; Community Portal
+            Resident Society Management Portal
           </Typography>
           <Typography sx={{ color: '#fff', fontWeight: 900, fontSize: { xs: '2.1rem', md: '3.4rem' }, lineHeight: 1.05 }}>
             GM Global Techies Town
@@ -252,7 +252,7 @@ export function MobileLogin() {
                   color: '#94a3b8', fontSize: '0.78rem', fontWeight: 700,
                   letterSpacing: '0.5px', textTransform: 'uppercase', mb: '4px',
                 }}>
-                  Society Events
+                  GMGT
                 </Typography>
                 <Typography sx={{ color: '#f8fafc', fontSize: '1.28rem', fontWeight: 800, lineHeight: 1.2 }}>
                   {step === 'phone' ? 'Sign in with Mobile OTP' : 'Verify OTP'}
