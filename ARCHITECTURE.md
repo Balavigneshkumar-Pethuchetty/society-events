@@ -6,7 +6,7 @@ see [CLAUDE.md](CLAUDE.md) — this file focuses on **what each service/page act
 
 ## Overview
 
-**6 backend microservices** (all Python/FastAPI) + **1 shell + 5 micro-frontends**, behind a
+**5 backend microservices** (all Python/FastAPI) + **1 shell + 5 micro-frontends**, behind a
 single nginx gateway. All backend services share one PostgreSQL database (`society_events`);
 see CLAUDE.md's "single-tenant, shared-database" note for why cross-service direct table
 writes are the norm here, not a bug.
@@ -15,7 +15,6 @@ writes are the norm here, not a bug.
 |---|---|---|
 | user-service | 3001 | `/api/users/` |
 | event-service | 3002 | `/api/events/` |
-| otp-service | 3003 | `/api/otp/` |
 | registration-service | 3005 | `/api/registrations/` (includes `/complimentary/*`) |
 | ticket-service | 3006 | `/api/tickets/` |
 | payment-service | 3007 | `/api/payments/` |
@@ -73,10 +72,6 @@ UPI payment reconciliation and refunds — **not** a Razorpay/card gateway; ther
 
 **Important gotcha**: the resident-facing checkout UI (`frontend/mfe-payment/src/PaymentApp.tsx`) does **not** call this service for the live QR/screenshot-verification/SSE flow — it calls an entirely separate, external domain (`https://pay.gm-global-techies-town.club`, hardcoded as `PAY_BASE`), which is the **different, standalone** sibling project `~/payment_reconcilation_service` (see CLAUDE.md). The checkout flow only calls back into *this* repo's payment-service for `auto-confirm` (after the external SSE reports success) and for listing payment history. If you're debugging the live checkout/verification experience, you are very likely debugging the wrong codebase if you're only looking at `services/payment` in this repo.
 
-### otp-service (3003)
-
-Mobile OTP login/registration bridge — Redis for OTP+session storage, Keycloak Admin API for RFC 8693 token exchange (impersonation). `POST /send`, `/verify`, `/refresh`, `/logout`; `POST /register/send-otp`, `/register/confirm` for phone-based signup. See the README's step-by-step OTP setup walkthrough for the full flow.
-
 ## Frontend
 
 `frontend/shell` (host, port 3000) + 5 independently-buildable module-federation remotes: `mfe-events` (4001), `mfe-booking` (4002), `mfe-payment` (4003), `mfe-admin` (4004), `mfe-tickets` (4005). See CLAUDE.md for the federation/routing convention (URL path → `page`/`id` props → remote dispatcher).
@@ -91,7 +86,7 @@ Resident-facing apps (`mfe-events`, `mfe-booking`, `mfe-payment`, `mfe-tickets`)
 |---|---|
 | `ManageEvents.tsx` | Real — ticket-type CRUD for an event lives inline here, in the `TicketTypesTab` shown inside the Edit Event dialog. |
 | `ComplimentaryTickets.tsx` | Real |
-| `EventDetails.tsx` | Real for Purchases/Attendance/Complimentary tabs (registration-service, ticket-service). **Mock** for the Finance & Expenses / Vendors / Revenue tabs — no `event_expense`/`vendor`/`vendor_revenue_distribution` routes exist on any service yet; those tabs render clearly-labeled sample data. |
+| `EventDetails.tsx` | Real for all six tabs — Purchases/Attendance/Complimentary (registration-service, ticket-service) and Finance & Expenses / Vendors / Revenue (payment-service's `funds.py`, added below). Also has Download Excel/PDF and Copy Share Link on the Finance tab. |
 | `CollectorRegistry.tsx` | Real |
 | `ReconciliationConsole.tsx` | Real |
 | `RefundTasks.tsx` | Real |
@@ -99,8 +94,21 @@ Resident-facing apps (`mfe-events`, `mfe-booking`, `mfe-payment`, `mfe-tickets`)
 | `UserApproval.tsx` | Real |
 | `BuildingStructure.tsx` | Real |
 | `UnitManagement.tsx` | Real |
-| **`SponsorDashboard.tsx`** | **Mock** — no API calls. |
-| **`SponsorManagement.tsx`** | **Mock** — no API calls. |
-| **`SponsorshipRefunds.tsx`** | **Mock** — no API calls. |
+| `SponsorDashboard.tsx` | Real — a sponsor's own view of their sponsorships + refund requests (`payment-service`'s `sponsors.py`). |
+| `SponsorManagement.tsx` | Real — sponsor directory CRUD + link sponsor to event. |
+| `SponsorshipRefunds.tsx` | Real for the "Sponsorship Refunds" tab (approve/reject/mark-processed). The "Resident Payment Refunds" tab alongside it is still a non-functional placeholder tab — that flow lives at `/pay-refunds` (`RefundTasks.tsx`) instead. |
 
-The `sponsor`/`event_sponsorship`/`sponsorship_refund`/`event_expense`/`vendor` tables exist in `db/init/01_schema.sql`, but **no service has any route touching them** — they're schema-only, same situation `complimentary_ticket` was in before this session's work made it real.
+`payment-service` owns two new route groups beyond payments/refunds/reconciliation/registry:
+- **`funds.py`** (`/api/payments/funds/*`): per-event expenses (`event_expense`), the shared vendor directory + per-event assignment (`vendor`/`event_vendor`), revenue distribution pools (`vendor_revenue_distribution`/`distribution_entry`), a finance summary wrapping the `v_event_finance` view, and Excel/PDF export — both an authenticated download and a public, unauthenticated, token-based share link (`fund_export_link` table, same pattern as `ticket-service`'s public QR endpoint).
+- **`sponsors.py`** (`/api/payments/sponsors/*`): sponsor directory CRUD, per-event sponsorships (`event_sponsorship`), and the sponsorship refund workflow (`sponsorship_refund`, pending→approved/rejected→processed).
+
+### Event-organizer isolation model (event-service + payment-service)
+
+Per-event management and fund/sponsorship data is scoped to **an event's organizer + explicitly-approved members only — absolute isolation, no admin/committee_member bypass**:
+
+- `event_permission` table (event_id, user_id, granted_by, granted_at, revoked_at) is the delegation mechanism. `GET/POST /events/{id}/permissions` (list/grant) and `DELETE /events/{id}/permissions/{user_id}` (revoke) are organizer-only — approved members don't get to grant further access. Surfaced as a "Manage Access" dialog in both `ManageEvents.tsx` and `mfe-events`' `MyEvents`.
+- `require_event_access()` (identical dependency duplicated in `event-service` and `payment-service`'s `auth.py`, since payment-service reads `event`/`event_permission` directly from its own DB connection — this repo's established cross-service direct-table-read pattern) replaces the old `require_role_or_organizer("admin","committee_member")` bypass on: all of `events.py`'s management routes (update/publish/cancel/complete/delete/announcements/ticket-types) and every per-event route in `funds.py`/`sponsors.py` (expenses, vendors, revenue-distribution, export, share-link, sponsorship create/update, refund approve/reject/process).
+- **Deliberately left at admin/committee_member** (not per-event data, out of scope): the sponsor *directory* CRUD, `GET /sponsors/{id}/sponsorships` (a sponsor's own cross-event view), `GET /sponsors/refunds` (global queue), and pre-existing cross-event operational consoles (`PaymentApprovals.tsx`, `RefundTasks.tsx`, `ReconciliationConsole.tsx`, `CollectorRegistry.tsx`).
+- **Backfill**: migration `021_event_permission_backfill.sql` granted every admin/committee_member `event_permission` on every event that existed before this shipped, so existing access wasn't suddenly revoked. Events created after that migration are isolated from creation — visible only to their organizer until explicitly shared.
+- **Deletion**: `DELETE /events/{id}` now also allows `completed` (previously draft-only), for the organizer/an approved member. Pre-launch decision (no production data yet): deletion **fully cascades** — registrations, tickets, payment records, expenses, sponsorships, everything tied to the event is removed together (migration `022_event_delete_cascade_payments.sql` changed `payment_transaction.event_id`'s FK from RESTRICT to CASCADE, which was the last thing blocking it).
+- `mfe-events`' `MyEvents` also has a per-event "Funds" view (finance summary, expense log, export/share-link) so an organizer has somewhere to see their own event's money without needing `/manage` access.

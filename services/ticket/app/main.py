@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.openapi.docs import get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
+from fastapi.openapi.docs import get_swagger_ui_oauth2_redirect_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse
 
@@ -9,6 +9,7 @@ from app.config import settings
 from app.database import wait_for_db, close_pool, get_pool
 from app.routes import tickets
 from app.middleware.splunk import SplunkLoggingMiddleware
+from app.swagger_theme import themed_swagger_ui_html
 
 _OPENAPI_URL     = "openapi.json"
 _OAUTH2_REDIRECT = "/docs/oauth2-redirect"
@@ -40,7 +41,7 @@ async def oauth2_redirect() -> HTMLResponse:
 
 @app.get("/docs", include_in_schema=False)
 async def swagger_ui() -> HTMLResponse:
-    return get_swagger_ui_html(
+    return themed_swagger_ui_html(
         openapi_url=_OPENAPI_URL,
         title="Ticket Service",
         oauth2_redirect_url=_OAUTH2_REDIRECT,

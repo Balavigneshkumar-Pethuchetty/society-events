@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     splunk_hec_url: str = ""
     splunk_hec_token: str = ""
 
+    # auth-service (~/auth-service) — shared SMS/Telegram transport for
+    # notifying event organizers, same contract as user-service's OTP calls.
+    auth_service_url: str = "http://host.containers.internal:8000"
+    auth_service_api_key: str = ""
+
     # Claude API (Anthropic) — alternative to Ollama for the IMAP email parser (FR-05).
     # Selected per-deployment via the ai_provider column in payment_reconciliation_settings
     # (admin-configurable, see PUT /settings); this key is an infra-level secret so it lives

@@ -217,16 +217,16 @@ function TreeItem({
           pl: 1.5 + depth * 2.5,
           cursor: 'pointer',
           bgcolor: isSelected ? '#6366f1' : 'transparent',
-          color: isSelected ? '#fff' : '#1e293b',
+          color: isSelected ? '#fff' : 'text.primary',
           borderRadius: 0,
           transition: 'background .12s',
-          '&:hover': { bgcolor: isSelected ? '#6366f1' : '#f1f5f9' },
+          '&:hover': { bgcolor: isSelected ? '#6366f1' : 'action.hover' },
         }}
       >
         {/* Expand/collapse toggle */}
         <Box
           onClick={e => { e.stopPropagation(); if (hasChildren) onToggle(node.id); }}
-          sx={{ display: 'flex', alignItems: 'center', width: 20, flexShrink: 0, color: isSelected ? '#c7d2fe' : '#94a3b8' }}
+          sx={{ display: 'flex', alignItems: 'center', width: 20, flexShrink: 0, color: isSelected ? '#c7d2fe' : 'text.secondary' }}
         >
           {hasChildren
             ? (isExpanded ? <ExpandMoreIcon sx={{ fontSize: 18 }} /> : <ChevronRightIcon sx={{ fontSize: 18 }} />)
@@ -241,8 +241,8 @@ function TreeItem({
 
         <Box sx={{
           fontSize: 11, px: 0.75, py: 0.2, borderRadius: 1,
-          bgcolor: isSelected ? 'rgba(255,255,255,.2)' : '#e2e8f0',
-          color: isSelected ? '#e0e7ff' : '#64748b',
+          bgcolor: isSelected ? 'rgba(255,255,255,.2)' : 'action.selected',
+          color: isSelected ? '#e0e7ff' : 'text.secondary',
           flexShrink: 0,
         }}>
           {node.level_name}
@@ -508,10 +508,10 @@ export function BuildingStructure({ token = null }: BuildingStructureProps) {
       <Box sx={{ display: 'flex', minHeight: 'calc(100vh - 64px)' }}>
         <AdminSidebar active="Building" mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
 
-        <Box sx={{ flex: 1, bgcolor: '#f1f5f9', p: { xs: 2, md: 4 }, overflow: 'auto' }}>
+        <Box sx={{ flex: 1, bgcolor: 'background.default', p: { xs: 2, md: 4 }, overflow: 'auto' }}>
           {/* Header */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 4 }}>
-            <IconButton onClick={() => setSidebarOpen(true)} sx={{ display: { md: 'none' }, color: '#475569' }}>
+            <IconButton onClick={() => setSidebarOpen(true)} sx={{ display: { md: 'none' }, color: 'text.secondary' }}>
               <MenuIcon />
             </IconButton>
             <Box sx={{ textAlign: 'center', flex: 1 }}>
@@ -536,7 +536,7 @@ export function BuildingStructure({ token = null }: BuildingStructureProps) {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
               <Button
                 variant="outlined" onClick={() => setNumLevels(n => Math.max(1, n - 1))}
-                sx={{ minWidth: 40, height: 36, borderColor: '#cbd5e1', color: '#475569', fontSize: 20, fontWeight: 400, lineHeight: 1 }}>
+                sx={{ minWidth: 40, height: 36, borderColor: 'divider', color: 'text.secondary', fontSize: 20, fontWeight: 400, lineHeight: 1 }}>
                 −
               </Button>
               <Typography fontWeight={700} fontSize={24} sx={{ minWidth: 28, textAlign: 'center' }}>
@@ -544,7 +544,7 @@ export function BuildingStructure({ token = null }: BuildingStructureProps) {
               </Typography>
               <Button
                 variant="outlined" onClick={() => setNumLevels(n => Math.min(8, n + 1))}
-                sx={{ minWidth: 40, height: 36, borderColor: '#cbd5e1', color: '#475569', fontSize: 20, fontWeight: 400, lineHeight: 1 }}>
+                sx={{ minWidth: 40, height: 36, borderColor: 'divider', color: 'text.secondary', fontSize: 20, fontWeight: 400, lineHeight: 1 }}>
                 +
               </Button>
             </Box>
@@ -576,7 +576,7 @@ export function BuildingStructure({ token = null }: BuildingStructureProps) {
 
             {/* Actions */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4, gap: 2 }}>
-              <Button variant="outlined" disabled sx={{ color: '#475569', borderColor: '#cbd5e1', px: 3 }}>
+              <Button variant="outlined" disabled sx={{ color: 'text.secondary', borderColor: 'divider', px: 3 }}>
                 ← Back
               </Button>
               <Button
@@ -601,10 +601,10 @@ export function BuildingStructure({ token = null }: BuildingStructureProps) {
     <Box sx={{ display: 'flex', minHeight: 'calc(100vh - 64px)' }}>
       <AdminSidebar active="Building" mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
 
-      <Box sx={{ flex: 1, bgcolor: '#f1f5f9', p: { xs: 2, md: 4 }, overflow: 'auto' }}>
+      <Box sx={{ flex: 1, bgcolor: 'background.default', p: { xs: 2, md: 4 }, overflow: 'auto' }}>
         {/* Header */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 4 }}>
-          <IconButton onClick={() => setSidebarOpen(true)} sx={{ display: { md: 'none' }, color: '#475569' }}>
+          <IconButton onClick={() => setSidebarOpen(true)} sx={{ display: { md: 'none' }, color: 'text.secondary' }}>
             <MenuIcon />
           </IconButton>
           <Box sx={{ textAlign: 'center', flex: 1 }}>
@@ -708,13 +708,13 @@ export function BuildingStructure({ token = null }: BuildingStructureProps) {
                 <Button
                   fullWidth variant="outlined" startIcon={<DownloadIcon />}
                   onClick={handleSampleCSV}
-                  sx={{ textTransform: 'none', borderColor: '#cbd5e1', color: '#475569', fontSize: 13 }}>
+                  sx={{ textTransform: 'none', borderColor: 'divider', color: 'text.secondary', fontSize: 13 }}>
                   Sample CSV
                 </Button>
                 <Button
                   fullWidth variant="outlined" startIcon={<DownloadIcon />}
                   onClick={handleSampleExcel}
-                  sx={{ textTransform: 'none', borderColor: '#cbd5e1', color: '#475569', fontSize: 13 }}>
+                  sx={{ textTransform: 'none', borderColor: 'divider', color: 'text.secondary', fontSize: 13 }}>
                   Sample Excel
                 </Button>
               </Box>
@@ -743,13 +743,13 @@ export function BuildingStructure({ token = null }: BuildingStructureProps) {
                 <Button
                   fullWidth variant="outlined" startIcon={<DownloadIcon />}
                   onClick={handleExportCSV} disabled={nodes.length === 0}
-                  sx={{ textTransform: 'none', borderColor: '#cbd5e1', color: '#475569', fontSize: 13 }}>
+                  sx={{ textTransform: 'none', borderColor: 'divider', color: 'text.secondary', fontSize: 13 }}>
                   Export CSV
                 </Button>
                 <Button
                   fullWidth variant="outlined" startIcon={<DownloadIcon />}
                   onClick={handleExportExcel} disabled={nodes.length === 0}
-                  sx={{ textTransform: 'none', borderColor: '#cbd5e1', color: '#475569', fontSize: 13 }}>
+                  sx={{ textTransform: 'none', borderColor: 'divider', color: 'text.secondary', fontSize: 13 }}>
                   Export Excel
                 </Button>
               </Box>
@@ -785,7 +785,7 @@ export function BuildingStructure({ token = null }: BuildingStructureProps) {
           <Button
             variant="outlined"
             onClick={() => { setStep(0); setSelectedId(null); }}
-            sx={{ borderColor: '#cbd5e1', color: '#475569', px: 3 }}>
+            sx={{ borderColor: 'divider', color: 'text.secondary', px: 3 }}>
             ← Back
           </Button>
           <Button

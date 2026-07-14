@@ -11,19 +11,19 @@ For a per-service feature breakdown (exact endpoints owned by each backend servi
 make up                      # start all services (builds if needed)
 make down                    # stop containers (data preserved in volumes)
 make restart                 # rebuild and restart all
-make reset                   # ⚠ wipe volumes + restart fresh (re-run make setup-otp after)
+make reset                   # ⚠ wipe volumes + restart fresh
 make ps                      # health status of all containers
 make logs                    # follow all logs
 
 # Individual service rebuild+restart (after code changes)
-make restart-user-service | restart-event-service | restart-otp-service
+make restart-user-service | restart-event-service
 make restart-mfe-admin | restart-mfe-events | restart-mfe-booking | restart-mfe-payment
 make restart-nginx           # picks up nginx.conf changes
 # registration-service, ticket-service, payment-service have no dedicated make target —
 # use: docker compose build <service> && docker compose up -d <service>
 
 # Logs (per service)
-make logs-nginx | logs-db | logs-user | logs-events | logs-otp | logs-mfe-admin | logs-mfe-booking | logs-mfe-events | logs-mfe-payment
+make logs-nginx | logs-db | logs-user | logs-events | logs-mfe-admin | logs-mfe-booking | logs-mfe-events | logs-mfe-payment
 
 # Database
 make shell-db                 # psql in society_events
@@ -38,9 +38,6 @@ make frontend                 # shell app on http://localhost:3000
 make frontend-install         # npm install only for all frontend packages
 # Each MFE can also be run standalone from its own directory:
 #   cd frontend/mfe-admin && npm run dev   (see vite.config.ts for its dev port)
-
-# OTP / mobile login setup (one-time per fresh environment)
-make setup-otp                # secret → DB migration → Keycloak client → service, idempotent
 ```
 
 There is no test suite in this repository (no pytest, no frontend test scripts) — don't invent test commands.
@@ -65,7 +62,6 @@ Every backend service connects to the **same** PostgreSQL database (`society_eve
 |---|---|---|---|
 | user-service | 3001 | `/api/users/` | users, roles, apartments/units, building structure |
 | event-service | 3002 | `/api/events/` | event CRUD, categories, ticket types |
-| otp-service | 3003 | `/api/otp/` | mobile OTP login bridge (Redis + Keycloak token exchange) |
 | registration-service | 3005 | `/api/registrations/` | registrations, cart, manual-payment review, complimentary tickets, ticket cancellation |
 | ticket-service | 3006 | `/api/tickets/` | ticket issuance/QR, gate scan/entry, event roster |
 | payment-service | 3007 | `/api/payments/` | centralized UPI payment reconciliation (`payment_transaction`), refund queue |
@@ -98,41 +94,6 @@ The shell does not use nested React Router routes for admin/manage sections — 
 Keycloak (and its Cloudflare tunnel) now live in a **separate sibling project** (`~/auth-service`), not in this repository — `KEYCLOAK_URL`/`KEYCLOAK_PUBLIC_URL` point at `https://auth.gm-global-techies-town.club`.
 
 Be aware there is also a **separate, standalone** sibling project `~/payment_reconcilation_service` (its own docker-compose, own Postgres, own Ollama containers) doing functionally similar work (IMAP polling + LLM-based screenshot parsing for UPI reconciliation), but it is not the same codebase as this repo's `services/payment` — this repo's `services/payment` has its own independent IMAP/Ollama reconciliation code (`app/reconciliation/`) and is the one actually wired into this repo's docker-compose/nginx. When debugging payment reconciliation, confirm which of the two you're actually looking at before searching further.
-
-### OTP login: SMS transport is external, everything else is local
-
-`services/otp` owns OTP generation, Redis storage/TTL, attempt tracking, and
-the Keycloak token-exchange bridge — all local to this repo. The one thing it
-does **not** own is actually sending the SMS: `SMS_GATEWAY=auth_service` (the
-recommended default, see `services/otp/app/sms.py` for the other options) is
-a free, self-hosted transport hosted entirely in `~/auth-service` — a small
-fleet of committee members' Android phones running an open-source SMS
-gateway app, reached over Tailscale with automatic failover if one phone is
-offline. This repo just POSTs `{phone, message}` to
-`http://host.containers.internal:8000/api/sms/send` with an `X-API-Key`
-(`AUTH_SERVICE_API_KEY` in `.env`, must match auth-service's
-`OTP_SERVICE_API_KEY`) and gets back `{sent, via}`. To add/remove/rotate
-which phones are used, or to debug delivery failures, go to
-`~/auth-service`'s dashboard ("OTP & SMS Monitor" page) or see its
-`CLAUDE.md` — nothing about the phone fleet is configurable from this repo.
-
-**Hard dependency**: the Keycloak instance this repo points at (hosted in
-`~/auth-service`) must run with `--features=token-exchange`, or `/verify`
-fails with `RuntimeError: Identity provider token exchange failed` even
-though the OTP itself was sent and verified correctly. If you see that error,
-the fix is in `~/auth-service`, not here — see that repo's `CLAUDE.md` for
-the exact verification/fix steps.
-
-**Debugging a real transaction**: `GET /api/otp/transactions` (added to
-`services/otp/app/routes/monitor.py`) reconstructs a per-login rollup
-(generated/verified/failed/expiry timestamps, attempt count, SMS delivery
-success) from the Redis audit log — it's what `~/auth-service`'s "OTP
-Transactions" dashboard page proxies. It requires an `X-Auth-Service-Key`
-header (same shared secret as above) since it exposes real phone numbers
-(masked to last 4 digits) and login patterns, even though the OTP code
-itself is never recoverable (only an HMAC hash is ever stored). There's also
-a pre-existing, unauthenticated raw event-log view at `/api/otp/monitor` —
-useful for a live blow-by-blow, but not grouped into transactions.
 
 ### Cloudflare tunnel — public reachability lives entirely outside this repo
 

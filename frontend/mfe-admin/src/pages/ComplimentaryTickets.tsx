@@ -249,7 +249,7 @@ export function ComplimentaryTickets({ token, id: eventId }: { token?: string | 
 
   return (
     <Box component="main">
-      <Box sx={{ bgcolor: '#fff', borderBottom: '1px solid', borderColor: 'divider', px: 3, py: 3 }}>
+      <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', px: 3, py: 3 }}>
         <Container maxWidth="lg">
           <Button size="small" startIcon={<ArrowBackIcon />} sx={{ mb: 1 }}
             onClick={() => { window.location.href = '/manage'; }}>
@@ -298,7 +298,7 @@ export function ComplimentaryTickets({ token, id: eventId }: { token?: string | 
                 <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
                   <Table>
                     <TableHead>
-                      <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                      <TableRow sx={{ bgcolor: 'action.hover' }}>
                         {['Guest / Invited By', 'Type', 'Tickets', 'Status', 'Issued By', ''].map((h) => (
                           <TableCell key={h} sx={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'text.secondary', letterSpacing: 0.4 }}>{h}</TableCell>
                         ))}
@@ -376,7 +376,7 @@ export function ComplimentaryTickets({ token, id: eventId }: { token?: string | 
                   </Alert>
                 ) : (
                 <>
-                <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, bgcolor: '#f8fafc' }}>
+                <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, bgcolor: 'action.hover' }}>
                   <Stack spacing={2.5}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Entry Type</InputLabel>

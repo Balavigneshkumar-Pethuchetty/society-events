@@ -26,6 +26,8 @@ import SearchIcon        from '@mui/icons-material/Search';
 import DirectionsIcon    from '@mui/icons-material/Directions';
 import LocalActivityIcon from '@mui/icons-material/LocalActivity';
 import SaveIcon          from '@mui/icons-material/Save';
+import GroupAddIcon      from '@mui/icons-material/GroupAddOutlined';
+import MyLocationIcon    from '@mui/icons-material/MyLocation';
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
@@ -120,6 +122,29 @@ async function nominatimSearch(q: string): Promise<NominatimResult[]> {
   return res.json();
 }
 
+async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
+  const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`;
+  const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.display_name ?? null;
+}
+
+function getCurrentPosition(): Promise<{ lat: number; lng: number } | null> {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    // enableHighAccuracy asks the OS to use GPS/Wi-Fi positioning over coarse IP-based
+    // lookup where available — helps on phones/laptops with Wi-Fi scanning, does nothing
+    // on a desktop with no such hardware (there the OS has no better signal to give us,
+    // so it'll still resolve to an ISP-level approximation; drag the pin to correct it).
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve(null),
+      { timeout: 8000, enableHighAccuracy: true },
+    );
+  });
+}
+
 function LocationTab({
   venue, venueAddress, venueLat, venueLng,
   onChange,
@@ -135,6 +160,7 @@ function LocationTab({
   const [searching,   setSearching]   = useState(false);
   const [locating,    setLocating]    = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
+  const [locatingMe,  setLocatingMe]  = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const lat = parseFloat(venueLat);
@@ -143,14 +169,40 @@ function LocationTab({
   const hasAddress   = venueAddress.trim().length > 0;
   const needsGeocode = hasAddress && !hasCoords;
 
-  const handleMapPositionChange = (newLat: number, newLng: number) => {
+  const handleMapPositionChange = async (newLat: number, newLng: number) => {
     onChange({ venueLat: String(newLat), venueLng: String(newLng) });
+    // Fill in the address from the dropped pin too, but never clobber something the
+    // organizer already typed themselves.
+    if (!venueAddress.trim()) {
+      const display = await reverseGeocode(newLat, newLng);
+      if (display) onChange({ venueAddress: display });
+    }
   };
 
+  const useCurrentLocation = useCallback(async () => {
+    setLocatingMe(true);
+    setLocateError(null);
+    const pos = await getCurrentPosition();
+    if (pos) {
+      await handleMapPositionChange(pos.lat, pos.lng);
+    } else {
+      setLocateError('Couldn\'t detect your location — search for an address above, or open the map and drag the pin to the right spot.');
+    }
+    setLocatingMe(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [venueAddress]);
+
   // ── Auto-geocode on first render when address exists but no coords ──────────
+  // If there's neither an address nor coords yet (a brand-new event), try defaulting the
+  // map to the organizer's current location so it opens immediately instead of requiring a
+  // search first. If location access is denied/unavailable, useCurrentLocation surfaces a
+  // warning and leaves hasCoords false — the "enter an address" prompt covers that case
+  // instead of silently pinning a wrong default location.
   useEffect(() => {
     if (needsGeocode) {
       void geocodeAddress(venueAddress);
+    } else if (!hasCoords && !hasAddress) {
+      void useCurrentLocation();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);  // run once on mount only
@@ -355,22 +407,39 @@ function LocationTab({
 
       {/* ── Interactive map (drag pin or click to set location) ─────────── */}
       <Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-          <Typography fontSize={12} fontWeight={700} color="text.secondary"
-            textTransform="uppercase" letterSpacing={0.5}>
-            Map — drag the pin or click to set location
-          </Typography>
-          {hasCoords && (
-            <Typography fontSize={11} color="text.secondary" fontFamily="monospace">
-              {lat.toFixed(5)}, {lng.toFixed(5)}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1, flexWrap: 'wrap', gap: 1 }}>
+          <Box>
+            <Typography fontSize={12} fontWeight={700} color="text.secondary"
+              textTransform="uppercase" letterSpacing={0.5}>
+              Map — drag the pin or click to set location
             </Typography>
-          )}
+            <Typography fontSize={11} color="text.secondary">
+              "Use current location" is often approximate on desktops (no GPS) — always drag the pin to the exact spot.
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Button size="small" variant="text"
+              startIcon={locatingMe ? <CircularProgress size={12} /> : <MyLocationIcon sx={{ fontSize: 14 }} />}
+              onClick={() => void useCurrentLocation()} disabled={locatingMe}
+              sx={{ fontSize: 11, textTransform: 'none', fontWeight: 600 }}>
+              Use current location
+            </Button>
+            {hasCoords && (
+              <Typography fontSize={11} color="text.secondary" fontFamily="monospace">
+                {lat.toFixed(5)}, {lng.toFixed(5)}
+              </Typography>
+            )}
+          </Stack>
         </Box>
 
-        {hasCoords ? (
-          <Box sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+        {locatingMe ? (
+          <Box sx={{ height: 320, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover', borderRadius: 2 }}>
+            <CircularProgress size={28} />
+          </Box>
+        ) : hasCoords ? (
+          <Box sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid', borderColor: 'divider' }}>
             <Suspense fallback={
-              <Box sx={{ height: 320, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#f1f5f9' }}>
+              <Box sx={{ height: 320, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover' }}>
                 <CircularProgress size={28} />
               </Box>
             }>
@@ -378,7 +447,7 @@ function LocationTab({
                 key={`${lat.toFixed(4)}-${lng.toFixed(4)}`}
                 lat={lat}
                 lng={lng}
-                onPositionChange={handleMapPositionChange}
+                onPositionChange={(la, ln) => void handleMapPositionChange(la, ln)}
                 height={320}
               />
             </Suspense>
@@ -387,7 +456,7 @@ function LocationTab({
           <Alert severity="info" icon={<LocationOnIcon fontSize="inherit" />} sx={{ borderRadius: 1.5 }}>
             {hasAddress
               ? 'Click "Find on Map" above to geocode the address — then drag the pin to fine-tune.'
-              : 'Enter an address and click "Find on Map". The interactive map will appear here so you can drag the pin to the exact spot.'}
+              : 'Enter an address and click "Find on Map", or "Use current location" above, to open the map.'}
           </Alert>
         )}
       </Box>
@@ -410,8 +479,8 @@ function LocationTab({
                 startIcon={<DirectionsIcon sx={{ fontSize: 14 }} />}
                 endIcon={<OpenInNewIcon sx={{ fontSize: 11 }} />}
                 href={m.href} target="_blank" rel="noopener noreferrer"
-                sx={{ fontSize: 12, textTransform: 'none', borderColor: '#e2e8f0', color: '#475569',
-                  '&:hover': { borderColor: '#6366f1', color: '#6366f1', bgcolor: '#f0f0ff' } }}>
+                sx={{ fontSize: 12, textTransform: 'none', borderColor: 'divider', color: 'text.secondary',
+                  '&:hover': { borderColor: '#6366f1', color: '#6366f1', bgcolor: 'action.hover' } }}>
                 {m.label}
               </Button>
             ))}
@@ -536,8 +605,8 @@ function TicketTypesTab({
           {[...types].sort((a, b) => a.sort_order - b.sort_order).map(t => (
             <Box key={t.id} sx={{
               display: 'flex', alignItems: 'center', gap: 1.5,
-              p: 1.5, border: '1px solid #e2e8f0', borderRadius: 1.5,
-              opacity: t.is_active ? 1 : 0.55, bgcolor: '#fafafa',
+              p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 1.5,
+              opacity: t.is_active ? 1 : 0.55, bgcolor: 'action.hover',
             }}>
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -581,7 +650,7 @@ function TicketTypesTab({
 
       {/* Inline add/edit form */}
       {showForm && (
-        <Box sx={{ mt: 2, p: 2, border: '1px solid #e2e8f0', borderRadius: 1.5, bgcolor: '#f8fafc' }}>
+        <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1.5, bgcolor: 'action.hover' }}>
           <Typography fontWeight={700} fontSize={13} mb={1.5}>
             {editId ? 'Edit Ticket Type' : 'New Ticket Type'}
           </Typography>
@@ -793,18 +862,14 @@ function EventForm({
             <TextField label="Venue / Location Name *" size="small" fullWidth value={form.venue}
               onChange={e => patch({ venue: e.target.value })}
               placeholder="e.g. Society Clubhouse, Rooftop Garden Block A" />
-            <Grid container spacing={2}>
-              <Grid item xs={6}>
-                <TextField label="Start Date & Time *" type="datetime-local" size="small" fullWidth
-                  InputLabelProps={{ shrink: true }} value={form.start_time}
-                  onChange={e => patch({ start_time: e.target.value })} />
-              </Grid>
-              <Grid item xs={6}>
-                <TextField label="End Date & Time *" type="datetime-local" size="small" fullWidth
-                  InputLabelProps={{ shrink: true }} value={form.end_time}
-                  onChange={e => patch({ end_time: e.target.value })} />
-              </Grid>
-            </Grid>
+            <Stack direction="row" spacing={2}>
+              <TextField label="Start Date & Time *" type="datetime-local" size="small" fullWidth sx={{ flex: 1 }}
+                InputLabelProps={{ shrink: true }} value={form.start_time}
+                onChange={e => patch({ start_time: e.target.value })} />
+              <TextField label="End Date & Time *" type="datetime-local" size="small" fullWidth sx={{ flex: 1 }}
+                InputLabelProps={{ shrink: true }} value={form.end_time}
+                onChange={e => patch({ end_time: e.target.value })} />
+            </Stack>
             <TextField
               label="Ticket Cancellation Freeze Time (optional)"
               type="datetime-local" size="small" fullWidth
@@ -812,21 +877,17 @@ function EventForm({
               onChange={e => { freezeTouchedRef.current = true; patch({ cancel_freeze_at: e.target.value }); }}
               helperText="Defaults to 1 day before the start time; clear it to let residents cancel a confirmed ticket any time before the event starts. Must be before the start time."
             />
-            <Grid container spacing={2}>
-              <Grid item xs={4}>
-                <TextField label="Capacity (blank = unlimited)" type="number" size="small" fullWidth
-                  value={form.capacity} onChange={e => patch({ capacity: e.target.value })} />
-              </Grid>
-              <Grid item xs={8}>
-                <TextField label="Category" select size="small" fullWidth value={form.category_id}
-                  onChange={e => patch({ category_id: e.target.value })}>
-                  <MenuItem value=""><em>None</em></MenuItem>
-                  {categories.map(c => (
-                    <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
-                  ))}
-                </TextField>
-              </Grid>
-            </Grid>
+            <Stack direction="row" spacing={2}>
+              <TextField label="Capacity (blank = unlimited)" type="number" size="small" fullWidth sx={{ flex: 1 }}
+                value={form.capacity} onChange={e => patch({ capacity: e.target.value })} />
+              <TextField label="Category" select size="small" fullWidth sx={{ flex: 2 }} value={form.category_id}
+                onChange={e => patch({ category_id: e.target.value })}>
+                <MenuItem value=""><em>None</em></MenuItem>
+                {categories.map(c => (
+                  <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+                ))}
+              </TextField>
+            </Stack>
           </Stack>
         )}
 
@@ -943,6 +1004,93 @@ function EventForm({
   );
 }
 
+// ── Manage Access dialog (approved-member delegation, organizer-only) ────────
+
+interface ApprovedMember {
+  id: string; user_id: string; user_name: string; user_email: string | null;
+  granted_by_name: string; granted_at: string;
+}
+
+function ManageAccessDialog({
+  open, onClose, eventId, token,
+}: { open: boolean; onClose: () => void; eventId: string; token: string }) {
+  const [members, setMembers] = useState<ApprovedMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [email,   setEmail]   = useState('');
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true); setError(null);
+    eventsApiFetch<ApprovedMember[]>(`/events/${eventId}/permissions`, token)
+      .then(setMembers)
+      .catch((e: unknown) => setError((e as Error).message))
+      .finally(() => setLoading(false));
+  }, [eventId, token]);
+
+  useEffect(() => { if (open) void load(); }, [open, load]);
+
+  const grant = async () => {
+    if (!email.trim()) return;
+    setSaving(true); setError(null);
+    try {
+      await eventsApiFetch(`/events/${eventId}/permissions`, token, { method: 'POST', body: JSON.stringify({ email }) });
+      setEmail('');
+      void load();
+    } catch (e: unknown) { setError((e as Error).message); }
+    finally { setSaving(false); }
+  };
+
+  const revoke = async (userId: string) => {
+    try {
+      await eventsApiFetch(`/events/${eventId}/permissions/${userId}`, token, { method: 'DELETE' });
+      void load();
+    } catch (e: unknown) { setError((e as Error).message); }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700 }}>Manage Access</DialogTitle>
+      <DialogContent dividers>
+        <Typography fontSize={13} color="text.secondary" mb={2}>
+          Approved members can manage this event — edit, publish, ticket types — the same as
+          you, but only this one event.
+        </Typography>
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}><CircularProgress size={22} /></Box>
+        ) : (
+          <Stack spacing={1} sx={{ mb: 2 }}>
+            {members.length === 0 && (
+              <Typography fontSize={13} color="text.secondary">No approved members yet.</Typography>
+            )}
+            {members.map(m => (
+              <Box key={m.id} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+                <Box>
+                  <Typography fontWeight={600} fontSize={13}>{m.user_name}</Typography>
+                  <Typography fontSize={11} color="text.secondary">{m.user_email}</Typography>
+                </Box>
+                <Tooltip title="Revoke access">
+                  <IconButton size="small" color="error" onClick={() => void revoke(m.user_id)}>
+                    <DeleteIcon sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            ))}
+          </Stack>
+        )}
+        <Stack direction="row" spacing={1}>
+          <TextField size="small" fullWidth label="Email address" value={email} onChange={e => setEmail(e.target.value)} />
+          <Button variant="contained" disabled={saving || !email.trim()} onClick={() => void grant()}>Grant</Button>
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface Props { token: string | null; id?: string }
@@ -956,6 +1104,7 @@ export function ManageEvents({ token, id }: Props) {
   const [editTarget, setEditTarget] = useState<EventItem | undefined>(undefined);
   const [actionMsg,  setActionMsg]  = useState<string | null>(null);
   const [confirm,    setConfirm]    = useState<{ label: string; action: () => Promise<void> } | null>(null);
+  const [accessTarget, setAccessTarget] = useState<EventItem | undefined>(undefined);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -992,7 +1141,11 @@ export function ManageEvents({ token, id }: Props) {
   const publish  = (e: EventItem) => action(`Publish "${e.title}"? It will become visible to all members.`, async () => { await eventsApiFetch(`/events/${e.id}/publish`, token!, { method: 'PATCH' }); setActionMsg(`"${e.title}" published.`); void load(); });
   const cancel   = (e: EventItem) => action(`Cancel "${e.title}"? This will close registrations and notify members.`, async () => { await eventsApiFetch(`/events/${e.id}/cancel`, token!, { method: 'PATCH' }); setActionMsg(`"${e.title}" cancelled.`); void load(); });
   const complete = (e: EventItem) => action(`Mark "${e.title}" as completed?`, async () => { await eventsApiFetch(`/events/${e.id}/complete`, token!, { method: 'PATCH' }); setActionMsg(`"${e.title}" completed.`); void load(); });
-  const remove   = (e: EventItem) => action(`Delete draft "${e.title}"? This cannot be undone.`, async () => { await eventsApiFetch(`/events/${e.id}`, token!, { method: 'DELETE' }); setActionMsg(`"${e.title}" deleted.`); void load(); });
+  const remove   = (e: EventItem) => action(
+    e.status === 'completed'
+      ? `Delete "${e.title}"? This removes the event and its announcements/ticket-types/complimentary-ticket log, plus all registrations, tickets, and payment records for it. This cannot be undone.`
+      : `Delete draft "${e.title}"? This cannot be undone.`,
+    async () => { await eventsApiFetch(`/events/${e.id}`, token!, { method: 'DELETE' }); setActionMsg(`"${e.title}" deleted.`); void load(); });
   const openEdit = (e: EventItem) => { setEditTarget(e); setFormOpen(true); };
   const handleFormClose = () => { setFormOpen(false); setEditTarget(undefined); };
   const handleFormSaved = () => { void load(); };
@@ -1004,8 +1157,8 @@ export function ManageEvents({ token, id }: Props) {
   }
 
   return (
-    <Box component="main" sx={{ bgcolor: '#f8fafc', minHeight: 'calc(100vh - 64px)' }}>
-      <Box sx={{ bgcolor: '#fff', borderBottom: '1px solid', borderColor: 'divider', px: 3, py: 2.5 }}>
+    <Box component="main" sx={{ bgcolor: 'background.default', minHeight: 'calc(100vh - 64px)' }}>
+      <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', px: 3, py: 2.5 }}>
         <Container maxWidth="lg">
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Box sx={{ flex: 1 }}>
@@ -1056,7 +1209,7 @@ export function ManageEvents({ token, id }: Props) {
                   {ev.category_name && (
                     <Box sx={{ mb: 1 }}>
                       <Chip label={ev.category_name} size="small"
-                        sx={{ bgcolor: ev.category_color ? `${ev.category_color}22` : '#f1f5f9', color: ev.category_color ?? '#475569', fontWeight: 600, fontSize: 11 }} />
+                        sx={{ bgcolor: ev.category_color ? `${ev.category_color}22` : 'action.hover', color: ev.category_color ?? 'text.secondary', fontWeight: 600, fontSize: 11 }} />
                     </Box>
                   )}
 
@@ -1130,8 +1283,15 @@ export function ManageEvents({ token, id }: Props) {
                         </Button>
                       </>
                     )}
-                    {(ev.status === 'cancelled' || ev.status === 'completed') && (
+                    {ev.status === 'cancelled' && (
                       <Typography fontSize={11} color="text.disabled" sx={{ px: 0.5 }}>No actions</Typography>
+                    )}
+                    {ev.status === 'completed' && (
+                      <Tooltip title="Delete event (removes registrations, tickets & payments)">
+                        <IconButton size="small" color="error" onClick={() => remove(ev)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                     )}
                     {ev.status !== 'completed' && ev.status !== 'cancelled' && (
                       <Tooltip title="Complimentary tickets">
@@ -1140,6 +1300,11 @@ export function ManageEvents({ token, id }: Props) {
                         </IconButton>
                       </Tooltip>
                     )}
+                    <Tooltip title="Manage access">
+                      <IconButton size="small" onClick={() => setAccessTarget(ev)}>
+                        <GroupAddIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
                     <Tooltip title="View details">
                       <IconButton size="small" onClick={() => { window.location.href = `/manage/details/${ev.id}`; }}>
                         <OpenInNewIcon fontSize="small" />
@@ -1155,7 +1320,7 @@ export function ManageEvents({ token, id }: Props) {
           <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', display: { xs: 'none', sm: 'block' } }}>
             <Table>
               <TableHead>
-                <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                <TableRow sx={{ bgcolor: 'action.hover' }}>
                   {['Event', 'Category', 'Date', 'Location', 'Registrations', 'Status', 'Actions'].map(h => (
                     <TableCell key={h} sx={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'text.secondary', py: 1.5 }}>{h}</TableCell>
                   ))}
@@ -1181,7 +1346,7 @@ export function ManageEvents({ token, id }: Props) {
                       <TableCell>
                         {ev.category_name ? (
                           <Chip label={ev.category_name} size="small"
-                            sx={{ bgcolor: ev.category_color ? `${ev.category_color}22` : '#f1f5f9', color: ev.category_color ?? '#475569', fontWeight: 600, fontSize: 11 }} />
+                            sx={{ bgcolor: ev.category_color ? `${ev.category_color}22` : 'action.hover', color: ev.category_color ?? 'text.secondary', fontWeight: 600, fontSize: 11 }} />
                         ) : <Typography fontSize={12} color="text.secondary">—</Typography>}
                       </TableCell>
                       <TableCell sx={{ minWidth: 140 }}>
@@ -1259,8 +1424,15 @@ export function ManageEvents({ token, id }: Props) {
                               </Button>
                             </>
                           )}
-                          {(ev.status === 'cancelled' || ev.status === 'completed') && (
+                          {ev.status === 'cancelled' && (
                             <Typography fontSize={11} color="text.disabled" sx={{ px: 0.5 }}>No actions</Typography>
+                          )}
+                          {ev.status === 'completed' && (
+                            <Tooltip title="Delete event (removes registrations, tickets & payments)">
+                              <IconButton size="small" color="error" onClick={() => remove(ev)}>
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
                           )}
                           {ev.status !== 'completed' && ev.status !== 'cancelled' && (
                             <Tooltip title="Complimentary tickets">
@@ -1269,6 +1441,11 @@ export function ManageEvents({ token, id }: Props) {
                               </IconButton>
                             </Tooltip>
                           )}
+                          <Tooltip title="Manage access">
+                            <IconButton size="small" onClick={() => setAccessTarget(ev)}>
+                              <GroupAddIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                           <Tooltip title="View details">
                             <IconButton size="small" onClick={() => { window.location.href = `/manage/details/${ev.id}`; }}>
                               <OpenInNewIcon fontSize="small" />
@@ -1299,6 +1476,13 @@ export function ManageEvents({ token, id }: Props) {
         <ConfirmDialog message={confirm.label}
           onConfirm={async () => { try { await confirm.action(); } catch (e: unknown) { setError((e as Error).message); } finally { setConfirm(null); } }}
           onCancel={() => setConfirm(null)} />
+      )}
+
+      {accessTarget && token && (
+        <ManageAccessDialog
+          open={!!accessTarget} eventId={accessTarget.id} token={token}
+          onClose={() => setAccessTarget(undefined)}
+        />
       )}
     </Box>
   );

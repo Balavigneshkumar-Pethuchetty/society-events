@@ -124,58 +124,17 @@ services:
       SOCIETY_CITY:              ${SOCIETY_CITY:-Bengaluru}
       SPLUNK_HEC_URL:            http://host.containers.internal:8088/services/collector/event
       SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
+      AUTH_SERVICE_URL:          ${AUTH_SERVICE_URL:-http://host.containers.internal:8000}
+      AUTH_SERVICE_API_KEY:      ${AUTH_SERVICE_API_KEY:-}
+      OTP_BRIDGE_CLIENT_ID:      ${OTP_BRIDGE_CLIENT_ID:-otp-bridge}
+      OTP_BRIDGE_CLIENT_SECRET:  ${OTP_BRIDGE_CLIENT_SECRET:-}
+    volumes:
+      - user_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3001/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    networks:
-      - society_net
-
-  # ─── OTP Bridge Service (port 3003) ──────────────────────────────────────
-  otp-service:
-    build:
-      context: ./services/otp
-      dockerfile: Dockerfile
-    container_name: society_otp_service
-    restart: always
-    environment:
-      REDIS_URL:                  redis://redis:${REDIS_PORT}
-      REDIS_PASSWORD:             ${REDIS_PASSWORD}
-      KEYCLOAK_URL:               ${KEYCLOAK_URL:-https://auth.gm-global-techies-town.club}
-      KEYCLOAK_REALM:             society-events
-      KEYCLOAK_ADMIN_USER:        ${KEYCLOAK_ADMIN_USER:-admin}
-      KEYCLOAK_ADMIN_PASSWORD:    ${KEYCLOAK_ADMIN_PASSWORD}
-      OTP_BRIDGE_CLIENT_ID:       otp-bridge
-      OTP_BRIDGE_CLIENT_SECRET:   ${OTP_BRIDGE_CLIENT_SECRET}
-      USER_SERVICE_URL:           http://user-service:3001
-      INTERNAL_API_KEY:           ${INTERNAL_API_KEY}
-      SOCIETY_NAME:               ${SOCIETY_NAME:-GM Global Techies Town}
-      SMS_GATEWAY:                ${SMS_GATEWAY:-log}
-      AUTH_SERVICE_SMS_URL:       ${AUTH_SERVICE_SMS_URL:-http://host.containers.internal:8000/api/sms/send}
-      AUTH_SERVICE_API_KEY:       ${AUTH_SERVICE_API_KEY:-}
-      FAST2SMS_API_KEY:           ${FAST2SMS_API_KEY:-}
-      HTTP_SMS_URL:               ${HTTP_SMS_URL:-}
-      HTTP_SMS_API_KEY:           ${HTTP_SMS_API_KEY:-}
-      HTTP_SMS_FROM:              ${HTTP_SMS_FROM:-}
-      GAMMU_CONFIG:               /etc/gammurc
-      OTP_TTL_SECONDS:            300
-      OTP_MAX_ATTEMPTS:           3
-      OTP_RATE_LIMIT_SECONDS:     60
-    # Uncomment and set USB_MODEM_DEVICE in .env when using Gammu with a physical modem:
-    # devices:
-    #   - ${USB_MODEM_DEVICE:-/dev/ttyUSB0}:/dev/ttyUSB0
-    depends_on:
-      redis:
-        condition: service_healthy
-      user-service:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:3003/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -241,6 +200,8 @@ services:
       SOCIETY_ID:                11100000-0000-0000-0000-000000000001
       SPLUNK_HEC_URL:            http://host.containers.internal:8088/services/collector/event
       SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
+      AUTH_SERVICE_URL:          ${AUTH_SERVICE_URL:-http://host.containers.internal:8000}
+      AUTH_SERVICE_API_KEY:      ${AUTH_SERVICE_API_KEY:-}
       SOCIETY_UPI_ID:            ${SOCIETY_UPI_ID:-}
       SOCIETY_UPI_NAME:          ${SOCIETY_UPI_NAME:-}
       SOCIETY_BANK_NAME:         ${SOCIETY_BANK_NAME:-}
@@ -322,6 +283,8 @@ services:
       RECONCILIATION_INTERVAL_SECONDS: ${RECONCILIATION_INTERVAL_SECONDS:-300}
       SPLUNK_HEC_URL:            http://host.containers.internal:8088/services/collector/event
       SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
+      AUTH_SERVICE_URL:          ${AUTH_SERVICE_URL:-http://host.containers.internal:8000}
+      AUTH_SERVICE_API_KEY:      ${AUTH_SERVICE_API_KEY:-}
       RECONCILIATION_SERVICE_BASE_URL:   ${RECONCILIATION_SERVICE_BASE_URL:-http://host.containers.internal:8001}
       RECONCILIATION_SERVICE_SECRET_KEY: ${PAYMENT_RECONCILIATION_SECRET_KEY}
       RECONCILIATION_SERVICE_AUDIENCE:   payment-service
@@ -356,7 +319,7 @@ services:
         VITE_MODE: ${VITE_MODE:-production}
         VITE_APP_ENV: ${VITE_APP_ENV:-prod}
         VITE_GOOGLE_LOGIN: ${VITE_GOOGLE_LOGIN:-}
-        VITE_MOBILE_LOGIN: ${VITE_MOBILE_LOGIN:-}
+        VITE_PHONE_LOGIN: ${VITE_PHONE_LOGIN:-}
     container_name: society_frontend
     restart: always
     # No host port — served by nginx at /
@@ -479,6 +442,8 @@ volumes:
     name: ${COMPOSE_PROJECT_NAME:-society}_registration_uploads
   payment_uploads:
     name: ${COMPOSE_PROJECT_NAME:-society}_payment_uploads
+  user_uploads:
+    name: ${COMPOSE_PROJECT_NAME:-society}_user_uploads
 
 # ─── Network ─────────────────────────────────────────────────────────────────
 networks:

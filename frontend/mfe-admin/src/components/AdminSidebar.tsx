@@ -5,6 +5,7 @@ import CloseIcon from '@mui/icons-material/Close';
 const SIDEBAR: { label: string; path: string; section?: string; adminOnly?: boolean }[] = [
   { label: 'Dashboard',            path: '/admin',                      adminOnly: true },
   { label: 'Users',                path: '/admin/users',                adminOnly: true },
+  { label: 'Leave Requests',       path: '/admin/leave-requests',       adminOnly: true },
   { label: 'Building',             path: '/admin/building',             adminOnly: true },
   { label: 'Units',                path: '/admin/units',                adminOnly: true },
   { label: 'Events',               path: '/admin/events',               adminOnly: true },
@@ -33,7 +34,7 @@ function SidebarContent({ active, onNavigate, role }: { active: string; onNaviga
         <React.Fragment key={label}>
           {section && (
             <Box sx={{ px: 2.5, pt: 1.5, pb: 0.5 }}>
-              <Typography fontSize={10} fontWeight={700} color="#94a3b8" textTransform="uppercase" letterSpacing={1}>
+              <Typography fontSize={10} fontWeight={700} color="text.secondary" textTransform="uppercase" letterSpacing={1}>
                 {section}
               </Typography>
               <Divider sx={{ mt: 0.5 }} />
@@ -43,12 +44,12 @@ function SidebarContent({ active, onNavigate, role }: { active: string; onNaviga
             onClick={() => { navigate(path); onNavigate?.(); }}
             sx={{
               px: 2.5, py: 1.25, fontSize: 14, cursor: 'pointer',
-              color: label === active ? '#6366f1' : '#475569',
+              color: label === active ? '#6366f1' : 'text.secondary',
               fontWeight: label === active ? 700 : 400,
-              bgcolor: label === active ? '#ede9fe' : 'transparent',
+              bgcolor: label === active ? 'action.selected' : 'transparent',
               borderRight: label === active ? '3px solid #6366f1' : '3px solid transparent',
               transition: 'all .15s',
-              '&:hover': { bgcolor: label === active ? '#ede9fe' : '#f1f5f9', color: label === active ? '#6366f1' : '#0f172a' },
+              '&:hover': { bgcolor: label === active ? 'action.selected' : 'action.hover', color: label === active ? '#6366f1' : 'text.primary' },
             }}
           >
             {label}
@@ -75,11 +76,11 @@ export function AdminSidebar({ active, mobileOpen, onMobileClose, role }: AdminS
         open={mobileOpen}
         onClose={onMobileClose}
         ModalProps={{ keepMounted: true }}
-        PaperProps={{ sx: { width: 240, bgcolor: '#f8fafc' } }}
+        PaperProps={{ sx: { width: 240, bgcolor: 'background.paper' } }}
         sx={{ display: { xs: 'block', md: 'none' } }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Typography fontWeight={700} fontSize={14} color="#475569">Admin Menu</Typography>
+          <Typography fontWeight={700} fontSize={14} color="text.secondary">Admin Menu</Typography>
           <IconButton size="small" onClick={onMobileClose} aria-label="Close menu">
             <CloseIcon fontSize="small" />
           </IconButton>
@@ -95,7 +96,7 @@ export function AdminSidebar({ active, mobileOpen, onMobileClose, role }: AdminS
           display: { xs: 'none', md: 'block' },
           borderRight: '1px solid',
           borderColor: 'divider',
-          bgcolor: '#f8fafc',
+          bgcolor: 'background.paper',
           minHeight: 'calc(100vh - 64px)',
         }}
       >

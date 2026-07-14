@@ -1,13 +1,20 @@
+import datetime
+import hashlib
+import os
+import secrets
+import uuid as uuid_lib
 from uuid import UUID
 from typing import Optional
 from urllib.parse import urlparse
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from asyncpg import Pool
+import aiofiles
 import httpx
 
 from app.database import get_pool
 from app.auth import get_current_claims, require_role
 from app.config import settings
+from app.otp_bridge import get_oidc_token_for_user
 from app.models import (
     UserResponse,
     UserUpdateRequest,
@@ -20,6 +27,18 @@ from app.models import (
     AdminStatsResponse,
     AdminBreakdown,
     AdminActionResponse,
+    PhoneVerifyRequestBody,
+    PhoneVerifyRequestResponse,
+    PhoneVerifyConfirmRequest,
+    PhoneVerifyConfirmResponse,
+    TelegramLinkStatusResponse,
+    PhoneLoginRequest,
+    PhoneLoginRequestResponse,
+    PhoneLoginVerifyRequest,
+    PhoneLoginVerifyResponse,
+    PhoneLoginRefreshRequest,
+    PhoneLoginRefreshResponse,
+    PhoneLoginLogoutRequest,
 )
 
 router = APIRouter()
@@ -120,10 +139,14 @@ async def forgot_password(body: ForgotPasswordRequest, pool: Pool = Depends(get_
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 _USER_COLS = """
-    u.id, u.username, u.name, u.email, u.phone, u.role,
+    u.id, u.username, u.name, u.email, u.phone, u.avatar_url,
+    u.email_verified, u.phone_verified, u.role,
     u.keycloak_sub, u.identity_provider, u.is_active, u.created_at,
     u.structure_node_id
 """
+
+_AVATAR_TYPES = {"image/jpeg", "image/png", "image/webp"}
+_AVATAR_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
 
 _USER_JOIN = ""  # no apartment join — apartments fetched separately via user_apartments
 
@@ -162,6 +185,9 @@ def _row_to_user(row, apartments: list, unit_node_ids: list = []) -> UserRespons
         name=row["name"],
         email=row["email"],
         phone=row["phone"],
+        avatar_url=row["avatar_url"],
+        email_verified=row["email_verified"],
+        phone_verified=row["phone_verified"],
         role=row["role"],
         keycloak_sub=row["keycloak_sub"],
         identity_provider=row["identity_provider"],
@@ -188,6 +214,7 @@ async def sync_user(
     first = claims.get("given_name", "")
     last = claims.get("family_name", "")
     name = f"{first} {last}".strip() or claims.get("preferred_username", email)
+    email_verified = bool(claims.get("email_verified", False))
 
     if not sub:
         raise HTTPException(status_code=400, detail="Token missing 'sub' claim")
@@ -197,16 +224,19 @@ async def sync_user(
     async with pool.acquire() as conn:
         # Check if this phone-registered user already exists (keycloak_sub match)
         # If so, just refresh name/email without touching phone or username.
+        # email_verified mirrors Keycloak's own flag on every login — it can only
+        # go stale within the current session between token refreshes (~60s).
         upsert = await conn.fetchrow(
             """
-            INSERT INTO users (name, email, keycloak_sub, role, is_active, identity_provider)
-            VALUES ($1, $2, $3, 'resident', FALSE, 'keycloak')
+            INSERT INTO users (name, email, keycloak_sub, role, is_active, identity_provider, email_verified)
+            VALUES ($1, $2, $3, 'resident', FALSE, 'keycloak', $4)
             ON CONFLICT (keycloak_sub) DO UPDATE
                 SET name  = EXCLUDED.name,
-                    email = COALESCE(EXCLUDED.email, users.email)
+                    email = COALESCE(EXCLUDED.email, users.email),
+                    email_verified = EXCLUDED.email_verified
             RETURNING id, (xmax = 0) AS is_new
             """,
-            name, email, sub,
+            name, email, sub, email_verified,
         )
         if upsert is None:
             raise HTTPException(status_code=500, detail="Sync upsert returned no row")
@@ -221,12 +251,13 @@ async def sync_user(
             for admin in admin_ids:
                 await conn.execute(
                     """
-                    INSERT INTO notification (user_id, type, title, message)
-                    VALUES ($1, 'new_registration', $2, $3)
+                    INSERT INTO notification (user_id, type, title, message, related_id)
+                    VALUES ($1, 'new_registration', $2, $3, $4)
                     """,
                     admin["id"],
                     "New User Registration",
                     f"{name} ({email}) has registered and is awaiting approval.",
+                    user_id,
                 )
 
         row = await conn.fetchrow(
@@ -281,9 +312,6 @@ async def update_me(
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    set_parts = [f"{col} = ${i + 2}" for i, col in enumerate(updates)]
-    values = list(updates.values())
-
     async with pool.acquire() as conn:
         if updates.get("phone"):
             taken = await conn.fetchval(
@@ -292,6 +320,19 @@ async def update_me(
             )
             if taken:
                 raise HTTPException(status_code=409, detail="Phone number already registered to another user")
+
+        # Verifying a number shouldn't carry over to a different one — but only reset
+        # when the number actually changes, not on a same-value re-save (e.g. saving
+        # name alone still resends the unchanged phone in the request body).
+        if "phone" in updates:
+            current = await conn.fetchrow(
+                "SELECT phone FROM users WHERE keycloak_sub = $1", claims["sub"]
+            )
+            if current and updates["phone"] != current["phone"]:
+                updates["phone_verified"] = False
+
+        set_parts = [f"{col} = ${i + 2}" for i, col in enumerate(updates)]
+        values = list(updates.values())
 
         row = await conn.fetchrow(
             f"""
@@ -311,6 +352,493 @@ async def update_me(
         apartments = await _fetch_user_apartments(conn, user_id)
         units = await _fetch_user_units(conn, user_id)
     return _row_to_user(row, apartments, units)
+
+
+@router.post("/me/avatar", response_model=UserResponse, summary="Upload own profile picture")
+async def upload_my_avatar(
+    file: UploadFile = File(...),
+    claims: dict = Depends(get_current_claims),
+    pool: Pool = Depends(get_pool),
+):
+    if file.content_type not in _AVATAR_TYPES:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG, or WebP images accepted")
+    content = await file.read()
+    if len(content) > _AVATAR_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="File too large (max 5 MB)")
+
+    async with pool.acquire() as conn:
+        user = await conn.fetchrow(
+            "SELECT id, avatar_url FROM users WHERE keycloak_sub = $1", claims["sub"]
+        )
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user_id = user["id"]
+
+        ext = (file.filename or "avatar.jpg").rsplit(".", 1)[-1].lower()
+        filename = f"{uuid_lib.uuid4()}.{ext}"
+        save_dir = os.path.join(settings.uploads_dir, "avatars")
+        os.makedirs(save_dir, exist_ok=True)
+        async with aiofiles.open(os.path.join(save_dir, filename), "wb") as f:
+            await f.write(content)
+
+        old_avatar = user["avatar_url"]
+        await conn.execute(
+            "UPDATE users SET avatar_url = $1 WHERE id = $2",
+            f"avatars/{filename}", user_id,
+        )
+
+        row = await conn.fetchrow(f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1", user_id)
+        apartments = await _fetch_user_apartments(conn, user_id)
+        units = await _fetch_user_units(conn, user_id)
+
+    if old_avatar:
+        try:
+            os.remove(os.path.join(settings.uploads_dir, old_avatar))
+        except OSError:
+            pass  # already gone, or never existed on disk — not worth failing the request over
+
+    return _row_to_user(row, apartments, units)
+
+
+@router.delete("/me/avatar", response_model=UserResponse, summary="Remove own profile picture")
+async def remove_my_avatar(
+    claims: dict = Depends(get_current_claims),
+    pool: Pool = Depends(get_pool),
+):
+    async with pool.acquire() as conn:
+        user = await conn.fetchrow(
+            "SELECT id, avatar_url FROM users WHERE keycloak_sub = $1", claims["sub"]
+        )
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user_id = user["id"]
+        old_avatar = user["avatar_url"]
+
+        await conn.execute("UPDATE users SET avatar_url = NULL WHERE id = $1", user_id)
+
+        row = await conn.fetchrow(f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1", user_id)
+        apartments = await _fetch_user_apartments(conn, user_id)
+        units = await _fetch_user_units(conn, user_id)
+
+    if old_avatar:
+        try:
+            os.remove(os.path.join(settings.uploads_dir, old_avatar))
+        except OSError:
+            pass
+
+    return _row_to_user(row, apartments, units)
+
+
+# ── Email verification (delegates to Keycloak's own VERIFY_EMAIL action) ──────
+
+@router.post("/me/verify-email/send", status_code=204, summary="Send Keycloak email-verification link")
+async def send_email_verification(
+    claims: dict = Depends(get_current_claims),
+    pool: Pool = Depends(get_pool),
+):
+    async with pool.acquire() as conn:
+        user = await conn.fetchrow(
+            "SELECT keycloak_sub, email, email_verified FROM users WHERE keycloak_sub = $1",
+            claims["sub"],
+        )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user["email"]:
+        raise HTTPException(status_code=400, detail="No email address on file")
+    if user["email_verified"]:
+        raise HTTPException(status_code=400, detail="Email already verified")
+
+    # Same X-Forwarded-* dance as /forgot-password, so Keycloak's email link points
+    # at the public app URL rather than the internal container hostname.
+    _parsed = urlparse(settings.keycloak_public_url)
+    _scheme = _parsed.scheme
+    _port = _parsed.port or (443 if _scheme == "https" else 80)
+    _fwd_host = f"{_parsed.hostname}:{_port}" if _port not in (80, 443) else _parsed.hostname
+    _proxy_headers = {
+        "X-Forwarded-Host":  _fwd_host,
+        "X-Forwarded-Proto": _scheme,
+        "X-Forwarded-Port":  str(_port),
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            token_resp = await client.post(
+                f"{settings.keycloak_url}/realms/master/protocol/openid-connect/token",
+                data={
+                    "client_id": "admin-cli",
+                    "grant_type": "password",
+                    "username": settings.keycloak_admin_user,
+                    "password": settings.keycloak_admin_password,
+                },
+                headers=_proxy_headers,
+            )
+            if token_resp.status_code != 200:
+                raise HTTPException(status_code=502, detail="Auth service unavailable")
+            admin_token = token_resp.json()["access_token"]
+            headers = {"Authorization": f"Bearer {admin_token}", **_proxy_headers}
+
+            resp = await client.put(
+                f"{settings.keycloak_url}/admin/realms/{settings.keycloak_realm}"
+                f"/users/{user['keycloak_sub']}/execute-actions-email",
+                params={"client_id": "society-frontend", "redirect_uri": f"{settings.app_public_url}/"},
+                headers=headers,
+                json=["VERIFY_EMAIL"],
+            )
+            if resp.status_code not in (200, 204):
+                raise HTTPException(status_code=502, detail="Could not send verification email. Please try again later.")
+    except HTTPException:
+        raise
+    except (httpx.ConnectError, httpx.TimeoutException):
+        raise HTTPException(status_code=503, detail="Authentication service is temporarily unavailable. Please try again in a moment.")
+
+
+@router.post("/me/verify-email/check", response_model=UserResponse, summary="Re-check Keycloak email-verified status")
+async def check_email_verification(
+    claims: dict = Depends(get_current_claims),
+    pool: Pool = Depends(get_pool),
+):
+    """
+    Keycloak's VERIFY_EMAIL flow completes out-of-band (the user clicks a link
+    in a new tab), so our local `email_verified` flag only refreshes on the
+    next login/token-refresh. This lets the UI re-check immediately instead
+    of waiting for that.
+    """
+    async with pool.acquire() as conn:
+        user = await conn.fetchrow(
+            "SELECT id, keycloak_sub FROM users WHERE keycloak_sub = $1", claims["sub"]
+        )
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                token_resp = await client.post(
+                    f"{settings.keycloak_url}/realms/master/protocol/openid-connect/token",
+                    data={
+                        "client_id": "admin-cli",
+                        "grant_type": "password",
+                        "username": settings.keycloak_admin_user,
+                        "password": settings.keycloak_admin_password,
+                    },
+                )
+                if token_resp.status_code != 200:
+                    raise HTTPException(status_code=502, detail="Auth service unavailable")
+                admin_token = token_resp.json()["access_token"]
+                kc_resp = await client.get(
+                    f"{settings.keycloak_url}/admin/realms/{settings.keycloak_realm}/users/{user['keycloak_sub']}",
+                    headers={"Authorization": f"Bearer {admin_token}"},
+                )
+                kc_resp.raise_for_status()
+                verified = bool(kc_resp.json().get("emailVerified", False))
+        except HTTPException:
+            raise
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError):
+            raise HTTPException(status_code=503, detail="Authentication service is temporarily unavailable. Please try again in a moment.")
+
+        await conn.execute("UPDATE users SET email_verified = $1 WHERE id = $2", verified, user["id"])
+        row = await conn.fetchrow(f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1", user["id"])
+        apartments = await _fetch_user_apartments(conn, user["id"])
+        units = await _fetch_user_units(conn, user["id"])
+    return _row_to_user(row, apartments, units)
+
+
+# ── Phone verification (delegates OTP generation/storage to ~/auth-service) ───
+# Reuses auth-service's turnkey OTP request/verify API rather than building our
+# own Redis-backed generation/storage — see its backend/app/otp_service.py.
+
+@router.get(
+    "/telegram/link-status",
+    response_model=TelegramLinkStatusResponse,
+    summary="Check whether a phone number is linked to the Telegram OTP bot",
+)
+async def telegram_link_status(phone: str = Query(...)):
+    """Unauthenticated by design, same trust level as /auth/phone-login/request
+    (a phone number, not a secret) — proxies auth-service's own unauthenticated
+    GET /api/telegram/link so the browser never needs auth-service's origin or
+    its bot username directly."""
+    if not settings.auth_service_api_key:
+        raise HTTPException(status_code=503, detail="Telegram linking is not configured")
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{settings.auth_service_url}/api/telegram/link",
+                params={"phone": phone},
+            )
+    except (httpx.ConnectError, httpx.TimeoutException):
+        raise HTTPException(status_code=503, detail="Verification service is temporarily unavailable. Please try again in a moment.")
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="Could not check Telegram link status")
+
+    data = resp.json()
+    return TelegramLinkStatusResponse(linked=data.get("linked", False), deep_link=data.get("deep_link"))
+
+
+@router.post(
+    "/me/phone/verify/request",
+    response_model=PhoneVerifyRequestResponse,
+    summary="Request an OTP to verify own phone number",
+)
+async def request_phone_verification(
+    body: PhoneVerifyRequestBody = PhoneVerifyRequestBody(),
+    claims: dict = Depends(get_current_claims),
+    pool: Pool = Depends(get_pool),
+):
+    if not settings.auth_service_api_key:
+        raise HTTPException(status_code=503, detail="Phone verification is not configured")
+
+    async with pool.acquire() as conn:
+        user = await conn.fetchrow(
+            "SELECT phone, phone_verified FROM users WHERE keycloak_sub = $1", claims["sub"]
+        )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user["phone"]:
+        raise HTTPException(status_code=400, detail="No phone number on file")
+    if user["phone_verified"]:
+        raise HTTPException(status_code=400, detail="Phone already verified")
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{settings.auth_service_url}/api/otp/request",
+                json={"phone": user["phone"], "channel": body.channel},
+                headers={"X-API-Key": settings.auth_service_api_key},
+            )
+    except (httpx.ConnectError, httpx.TimeoutException):
+        raise HTTPException(status_code=503, detail="Verification service is temporarily unavailable. Please try again in a moment.")
+
+    if resp.status_code == 429:
+        body = resp.json().get("detail", {})
+        return PhoneVerifyRequestResponse(
+            ok=False,
+            error=(body.get("error") if isinstance(body, dict) else None) or "rate_limited",
+            retry_after=body.get("retry_after") if isinstance(body, dict) else None,
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="Could not send verification code")
+
+    data = resp.json()
+    return PhoneVerifyRequestResponse(
+        ok=data.get("ok", False),
+        request_id=data.get("request_id"),
+        expires_in=data.get("expires_in"),
+        sent_via=data.get("sent_via"),
+        error=data.get("error"),
+    )
+
+
+@router.post(
+    "/me/phone/verify/confirm",
+    response_model=PhoneVerifyConfirmResponse,
+    summary="Confirm the OTP and mark own phone number verified",
+)
+async def confirm_phone_verification(
+    body: PhoneVerifyConfirmRequest,
+    claims: dict = Depends(get_current_claims),
+    pool: Pool = Depends(get_pool),
+):
+    if not settings.auth_service_api_key:
+        raise HTTPException(status_code=503, detail="Phone verification is not configured")
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{settings.auth_service_url}/api/otp/verify",
+                json={"request_id": body.request_id, "code": body.code},
+                headers={"X-API-Key": settings.auth_service_api_key},
+            )
+    except (httpx.ConnectError, httpx.TimeoutException):
+        raise HTTPException(status_code=503, detail="Verification service is temporarily unavailable. Please try again in a moment.")
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="Could not verify code")
+
+    data = resp.json()
+    if not data.get("verified"):
+        return PhoneVerifyConfirmResponse(
+            verified=False,
+            status=data.get("status", "unknown"),
+            attempts_remaining=data.get("attempts_remaining"),
+        )
+
+    async with pool.acquire() as conn:
+        user = await conn.fetchrow("SELECT id FROM users WHERE keycloak_sub = $1", claims["sub"])
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        await conn.execute("UPDATE users SET phone_verified = TRUE WHERE id = $1", user["id"])
+        row = await conn.fetchrow(f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1", user["id"])
+        apartments = await _fetch_user_apartments(conn, user["id"])
+        units = await _fetch_user_units(conn, user["id"])
+
+    return PhoneVerifyConfirmResponse(
+        verified=True,
+        status="verified",
+        user=_row_to_user(row, apartments, units),
+    )
+
+
+# ── Phone-number login (already-registered, already phone-verified users only) ─
+# Same auth-service OTP request/verify calls as phone verification above, plus
+# a Keycloak token exchange via the otp-bridge service account (app/otp_bridge.py)
+# to mint a real access token — no password, no new Keycloak session type.
+# Deliberately does not support anonymous signup: a phone with no matching
+# phone_verified=TRUE account is rejected before any OTP is sent.
+
+_OTP_LOGIN_SESSION_TTL_SECONDS = 24 * 60 * 60
+
+
+async def _eligible_login_user(conn, phone: str):
+    return await conn.fetchrow(
+        """
+        SELECT id, keycloak_sub FROM users
+        WHERE phone = $1 AND phone_verified = TRUE AND is_active = TRUE
+              AND keycloak_sub IS NOT NULL
+        """,
+        phone,
+    )
+
+
+@router.post(
+    "/auth/phone-login/request",
+    response_model=PhoneLoginRequestResponse,
+    summary="Request an OTP to log in with an already-verified phone number",
+)
+async def request_phone_login(body: PhoneLoginRequest, pool: Pool = Depends(get_pool)):
+    if not settings.auth_service_api_key:
+        raise HTTPException(status_code=503, detail="Phone login is not configured")
+
+    phone = body.phone.strip()
+    async with pool.acquire() as conn:
+        user = await _eligible_login_user(conn, phone)
+    if not user:
+        return PhoneLoginRequestResponse(ok=False, error="not_eligible")
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{settings.auth_service_url}/api/otp/request",
+                json={"phone": phone, "channel": body.channel},
+                headers={"X-API-Key": settings.auth_service_api_key},
+            )
+    except (httpx.ConnectError, httpx.TimeoutException):
+        raise HTTPException(status_code=503, detail="Login service is temporarily unavailable. Please try again in a moment.")
+
+    if resp.status_code == 429:
+        body_json = resp.json().get("detail", {})
+        return PhoneLoginRequestResponse(
+            ok=False,
+            error=(body_json.get("error") if isinstance(body_json, dict) else None) or "rate_limited",
+            retry_after=body_json.get("retry_after") if isinstance(body_json, dict) else None,
+        )
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="Could not send login code")
+
+    data = resp.json()
+    return PhoneLoginRequestResponse(
+        ok=data.get("ok", False),
+        request_id=data.get("request_id"),
+        expires_in=data.get("expires_in"),
+        sent_via=data.get("sent_via"),
+        error=data.get("error"),
+    )
+
+
+@router.post(
+    "/auth/phone-login/verify",
+    response_model=PhoneLoginVerifyResponse,
+    summary="Confirm the OTP and obtain a Keycloak session for the verified phone's account",
+)
+async def verify_phone_login(body: PhoneLoginVerifyRequest, pool: Pool = Depends(get_pool)):
+    if not settings.auth_service_api_key:
+        raise HTTPException(status_code=503, detail="Phone login is not configured")
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{settings.auth_service_url}/api/otp/verify",
+                json={"request_id": body.request_id, "code": body.code},
+                headers={"X-API-Key": settings.auth_service_api_key},
+            )
+    except (httpx.ConnectError, httpx.TimeoutException):
+        raise HTTPException(status_code=503, detail="Login service is temporarily unavailable. Please try again in a moment.")
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="Could not verify code")
+
+    data = resp.json()
+    if not data.get("verified"):
+        return PhoneLoginVerifyResponse(
+            verified=False,
+            status=data.get("status", "unknown"),
+            attempts_remaining=data.get("attempts_remaining"),
+        )
+
+    # Trust only the phone auth-service reports for this request_id — never a
+    # client-supplied one — so a verified code for phone A can't be replayed
+    # to log in as the account for a different phone B.
+    verified_phone = data.get("phone")
+    async with pool.acquire() as conn:
+        user = await _eligible_login_user(conn, verified_phone) if verified_phone else None
+    if not user:
+        raise HTTPException(status_code=403, detail="This phone number is not eligible for OTP login")
+
+    try:
+        oidc = await get_oidc_token_for_user(user["keycloak_sub"])
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    session_token = secrets.token_urlsafe(32)
+    session_hash = hashlib.sha256(session_token.encode()).hexdigest()
+    expires_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=_OTP_LOGIN_SESSION_TTL_SECONDS)
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO otp_login_sessions (session_token_hash, keycloak_sub, phone, expires_at)
+            VALUES ($1, $2, $3, $4)
+            """,
+            session_hash, user["keycloak_sub"], verified_phone, expires_at,
+        )
+
+    return PhoneLoginVerifyResponse(
+        verified=True,
+        status="verified",
+        access_token=oidc["access_token"],
+        expires_in=oidc.get("expires_in"),
+        session_token=session_token,
+        session_expires_in=_OTP_LOGIN_SESSION_TTL_SECONDS,
+    )
+
+
+@router.post(
+    "/auth/phone-login/refresh",
+    response_model=PhoneLoginRefreshResponse,
+    summary="Silently mint a fresh access token for an active phone-login session",
+)
+async def refresh_phone_login(body: PhoneLoginRefreshRequest, pool: Pool = Depends(get_pool)):
+    session_hash = hashlib.sha256(body.session_token.encode()).hexdigest()
+    async with pool.acquire() as conn:
+        session = await conn.fetchrow(
+            "SELECT keycloak_sub FROM otp_login_sessions WHERE session_token_hash = $1 AND expires_at > now()",
+            session_hash,
+        )
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired or invalid. Please log in again.")
+
+    try:
+        oidc = await get_oidc_token_for_user(session["keycloak_sub"])
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return PhoneLoginRefreshResponse(access_token=oidc["access_token"], expires_in=oidc.get("expires_in"))
+
+
+@router.post("/auth/phone-login/logout", status_code=204, summary="Revoke a phone-login session")
+async def logout_phone_login(body: PhoneLoginLogoutRequest, pool: Pool = Depends(get_pool)):
+    session_hash = hashlib.sha256(body.session_token.encode()).hexdigest()
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM otp_login_sessions WHERE session_token_hash = $1", session_hash)
 
 
 @router.post("/me/apartments", response_model=UserResponse, summary="Add an apartment to own profile")
@@ -902,6 +1430,9 @@ async def approve_user(
             raise HTTPException(status_code=500, detail="Update failed")
 
         await _record_action(conn, claims, user_id, row["name"], row["email"], "approved", body.role)
+        await conn.execute(
+            "DELETE FROM notification WHERE type = 'new_registration' AND related_id = $1", user_id
+        )
 
         full = await conn.fetchrow(
             f"SELECT {_USER_COLS} FROM users u WHERE u.id = $1",
@@ -929,6 +1460,9 @@ async def reject_user(
         )
         if not user_row:
             raise HTTPException(status_code=404, detail="Pending user not found")
+        await conn.execute(
+            "DELETE FROM notification WHERE type = 'new_registration' AND related_id = $1", user_id
+        )
         await conn.execute("DELETE FROM users WHERE id = $1", user_id)
         await _record_action(conn, claims, None, user_row["name"], user_row["email"], "rejected")
 

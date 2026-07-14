@@ -14,13 +14,11 @@
 
 .PHONY: help up down restart free-ports validate-ports check-env logs ps reset seed \
         shell-db shell-redis sync-users setup-google-idp \
-        setup-otp setup-otp-keycloak otp-secret logs-otp restart-otp-service \
         frontend frontend-install frontend-docker \
         restart-nginx restart-postgres restart-redis \
         restart-pgadmin restart-user-service restart-event-service \
-        restart-otp-service \
         restart-mfe-admin restart-mfe-events restart-mfe-booking restart-mfe-payment \
-        logs-nginx logs-db logs-user logs-events logs-otp \
+        logs-nginx logs-db logs-user logs-events \
         logs-mfe-admin logs-mfe-events logs-mfe-booking logs-mfe-payment \
         logs-splunk logs-fluent-bit \
         splunk-up splunk-down
@@ -148,7 +146,6 @@ up: validate-ports ## Start all services (detached). ENV=dev|test|stage|prod
 	 echo "  Splunk             → https://splunk.gm-global-techies-town.club  (start: make splunk-up)"; \
 	 echo "  User API docs      → $$_local/api/users/docs"; \
 	 echo "  Event API docs     → $$_local/api/events/docs"; \
-	 echo "  OTP Bridge docs    → $$_local/api/otp/docs"; \
 	 echo "  Registration docs  → $$_local/api/registrations/docs"; \
 	 echo "  Ticket API docs    → $$_local/api/tickets/docs"; \
 	 echo "  Payment API docs   → $$_local/api/payments/docs"; \
@@ -331,104 +328,6 @@ migrate: ## Run pending SQL migrations in db/migrations/ (idempotent)
 
 setup-google-idp: ## Apply Google IDP + first-broker-login flow to the RUNNING Keycloak (idempotent)
 	python3 scripts/setup_google_idp.py
-
-## ── OTP / Mobile login setup ─────────────────────────────────────────────────
-# All three sub-steps of setup-otp are idempotent — safe to re-run.
-
-otp-secret: check-env ## Generate a fresh OTP_BRIDGE_CLIENT_SECRET and add it to the active env file
-	@_f=$(ENV_FILE); \
-	if grep -q '^OTP_BRIDGE_CLIENT_SECRET=' "$$_f" 2>/dev/null; then \
-	  echo "  OTP_BRIDGE_CLIENT_SECRET already set in $$_f — delete the line to regenerate."; \
-	else \
-	  _secret=$$(python3 -c 'import secrets; print(secrets.token_hex(32))'); \
-	  echo "" >> "$$_f"; \
-	  echo "# ─── OTP Bridge Service ────────────────────────────────────────────────────" >> "$$_f"; \
-	  echo "OTP_BRIDGE_CLIENT_SECRET=$$_secret" >> "$$_f"; \
-	  echo "SMS_GATEWAY=log" >> "$$_f"; \
-	  echo "  $(CYAN)OTP_BRIDGE_CLIENT_SECRET added to $$_f$(RESET)"; \
-	fi
-
-setup-otp-keycloak: check-env ## Register otp-bridge client in centralized Keycloak via REST API (idempotent)
-	@_secret=$$(grep -m1 '^OTP_BRIDGE_CLIENT_SECRET=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]'); \
-	_kc_admin=$$(grep -m1 '^KEYCLOAK_ADMIN_USER=' $(ENV_FILE) | cut -d= -f2- | tr -d '"[:space:]' || echo admin); \
-	_kc_pass=$$(grep -m1 '^KEYCLOAK_ADMIN_PASSWORD=' $(ENV_FILE) | cut -d= -f2- | tr -d '"[:space:]'); \
-	_kc_url=$$(grep -m1 '^KEYCLOAK_URL=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo https://auth.gm-global-techies-town.club); \
-	if [ -z "$$_secret" ]; then \
-	  echo "  ERROR: OTP_BRIDGE_CLIENT_SECRET not set in $(ENV_FILE). Run: make otp-secret ENV=$(ENV)"; \
-	  exit 1; \
-	fi; \
-	echo "  $(CYAN)[1/3] Obtaining admin token from $$_kc_url…$(RESET)"; \
-	_token=$$(curl -s -X POST "$$_kc_url/realms/master/protocol/openid-connect/token" \
-	  -d "client_id=admin-cli&grant_type=password&username=$$_kc_admin&password=$$_kc_pass" \
-	  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null); \
-	if [ -z "$$_token" ]; then echo "  ERROR: Could not get Keycloak admin token"; exit 1; fi; \
-	echo "  $(CYAN)[2/3] Creating / updating otp-bridge client…$(RESET)"; \
-	_cid=$$(curl -s "$$_kc_url/admin/realms/society-events/clients?clientId=otp-bridge" \
-	  -H "Authorization: Bearer $$_token" \
-	  | python3 -c "import sys,json; c=json.load(sys.stdin); print(c[0]['id'] if c else '')" 2>/dev/null); \
-	if [ -z "$$_cid" ]; then \
-	  curl -s -X POST "$$_kc_url/admin/realms/society-events/clients" \
-	    -H "Authorization: Bearer $$_token" -H "Content-Type: application/json" \
-	    -d "{\"clientId\":\"otp-bridge\",\"name\":\"OTP Bridge Service\",\"enabled\":true,\"publicClient\":false,\"serviceAccountsEnabled\":true,\"directAccessGrantsEnabled\":false,\"standardFlowEnabled\":false,\"secret\":\"$$_secret\"}" \
-	    -w "  Create status: %{http_code}\n" -o /dev/null; \
-	  echo "    otp-bridge client created."; \
-	else \
-	  curl -s -X PUT "$$_kc_url/admin/realms/society-events/clients/$$_cid" \
-	    -H "Authorization: Bearer $$_token" -H "Content-Type: application/json" \
-	    -d "{\"secret\":\"$$_secret\"}" \
-	    -w "  Update status: %{http_code}\n" -o /dev/null; \
-	  echo "    otp-bridge secret refreshed (client already existed)."; \
-	fi; \
-	echo "  $(CYAN)[3/3] Granting impersonation role to service account…$(RESET)"; \
-	_sa_id=$$(curl -s "$$_kc_url/admin/realms/society-events/clients?clientId=otp-bridge" \
-	  -H "Authorization: Bearer $$_token" \
-	  | python3 -c "import sys,json; c=json.load(sys.stdin); print(c[0]['id'] if c else '')" 2>/dev/null); \
-	_rm_id=$$(curl -s "$$_kc_url/admin/realms/society-events/clients?clientId=realm-management" \
-	  -H "Authorization: Bearer $$_token" \
-	  | python3 -c "import sys,json; c=json.load(sys.stdin); print(c[0]['id'] if c else '')" 2>/dev/null); \
-	_imp_role=$$(curl -s "$$_kc_url/admin/realms/society-events/clients/$$_rm_id/roles/impersonation" \
-	  -H "Authorization: Bearer $$_token" \
-	  | python3 -c "import sys,json; r=json.load(sys.stdin); print(r.get('id',''))" 2>/dev/null); \
-	_sa_user=$$(curl -s "$$_kc_url/admin/realms/society-events/clients/$$_sa_id/service-account-user" \
-	  -H "Authorization: Bearer $$_token" \
-	  | python3 -c "import sys,json; u=json.load(sys.stdin); print(u.get('id',''))" 2>/dev/null); \
-	curl -s -X POST "$$_kc_url/admin/realms/society-events/users/$$_sa_user/role-mappings/clients/$$_rm_id" \
-	  -H "Authorization: Bearer $$_token" -H "Content-Type: application/json" \
-	  -d "[{\"id\":\"$$_imp_role\",\"name\":\"impersonation\"}]" \
-	  -w "  Role grant status: %{http_code}\n" -o /dev/null; \
-	echo "  $(CYAN)Keycloak otp-bridge setup complete.$(RESET)"
-
-setup-otp: check-env ## Full OTP setup: generate secret → migrate DB → Keycloak client → build service (idempotent)
-	@echo ""
-	@echo "  $(CYAN)─── Mobile OTP Setup [$(ENV)] ───$(RESET)"
-	@echo ""
-	@$(MAKE) -s otp-secret ENV=$(ENV)
-	@echo "  $(CYAN)[Step 2/4] Running DB migration 002_mobile_otp.sql…$(RESET)"
-	@$(COMPOSE) exec -T postgres psql \
-	  -U $$(grep -m1 '^POSTGRES_USER=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]') \
-	  -d $(POSTGRES_DB_NAME) -f /dev/stdin < db/migrations/002_mobile_otp.sql
-	@echo "  DB migration applied."
-	@echo "  $(CYAN)[Step 3/4] Configuring Keycloak otp-bridge client…$(RESET)"
-	@$(MAKE) -s setup-otp-keycloak ENV=$(ENV)
-	@echo "  $(CYAN)[Step 4/4] Building & starting otp-service…$(RESET)"
-	@$(COMPOSE) up -d --build otp-service
-	@$(COMPOSE) up -d --build nginx
-	@echo ""
-	@_port=$$(grep -m1 '^NGINX_PORT=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo 8080); \
-	echo "  $(CYAN)OTP setup complete! [$(ENV)]$(RESET)"; \
-	echo "  Health : http://localhost:$$_port/api/otp/health"; \
-	echo "  Docs   : http://localhost:$$_port/api/otp/docs"; \
-	echo ""; \
-	echo "  SMS gateway is currently set to: $$(grep -m1 '^SMS_GATEWAY=' $(ENV_FILE) | cut -d= -f2 | tr -d '"[:space:]' || echo log)"; \
-	echo "  To enable real SMS: set SMS_GATEWAY=gammu in $(ENV_FILE)"; \
-	echo "                      and run: make restart-otp-service ENV=$(ENV)"; \
-	echo ""
-
-restart-otp-service: ## Rebuild & restart otp-service (picks up code/env changes)
-	$(COMPOSE) up -d --build otp-service
-
-logs-otp: ## Follow otp-service logs
-	$(COMPOSE) logs -f otp-service
 
 sync-users: ## Sync users from auth-service realm.json → postgres (inserts only, never overwrites)
 	docker run --rm \

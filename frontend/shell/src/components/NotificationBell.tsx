@@ -15,6 +15,7 @@ import PaymentIcon             from '@mui/icons-material/Payment';
 import CurrencyRupeeIcon       from '@mui/icons-material/CurrencyRupee';
 import CampaignIcon            from '@mui/icons-material/Campaign';
 import ManageAccountsIcon      from '@mui/icons-material/ManageAccounts';
+import { useNavigate }          from 'react-router-dom';
 import { useAuth }             from '../contexts/AuthContext';
 import { useNotifications }    from '../hooks/useNotifications';
 import type { NotificationItem } from '../api/userService';
@@ -35,6 +36,11 @@ const TYPE_META: Record<string, TypeMeta> = {
   refund_processed:   { icon: <CurrencyRupeeIcon fontSize="small" />,       color: '#d97706', bg: '#fef3c7' },
   announcement:       { icon: <CampaignIcon fontSize="small" />,            color: '#0f766e', bg: '#ccfbf1' },
   role_changed:       { icon: <ManageAccountsIcon fontSize="small" />,      color: '#4f46e5', bg: '#eef2ff' },
+  // "needs your action" (organizer-facing), kept visually distinct from the
+  // "FYI, already resolved" resident-facing types above.
+  payment_verification_requested: { icon: <PaymentIcon fontSize="small" />,        color: '#b91c1c', bg: '#fee2e2' },
+  cancellation_requested:         { icon: <CancelOutlinedIcon fontSize="small" />, color: '#b91c1c', bg: '#fee2e2' },
+  refund_requested:               { icon: <CurrencyRupeeIcon fontSize="small" />,  color: '#b91c1c', bg: '#fee2e2' },
 };
 
 const DEFAULT_META: TypeMeta = {
@@ -55,6 +61,34 @@ const ROLE_CATEGORIES: Record<string, string[]> = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Only notification types a role can actually receive route here — e.g.
+// new_registration/leave_request_submitted are only ever sent to admins, and
+// leave_request_approved/rejected/revoked only ever sent to the requesting
+// resident, so no extra role guard is needed on top of this map.
+function resolveTarget(n: NotificationItem): string | null {
+  switch (n.type) {
+    case 'new_registration':        return '/admin/users';
+    case 'leave_request_submitted': return '/admin/leave-requests';
+    case 'leave_request_approved':
+    case 'leave_request_rejected':
+    case 'leave_request_revoked':
+    case 'role_changed':            return '/profile';
+    case 'event_created':
+    case 'event_reminder':
+    case 'event_cancelled':
+    case 'announcement':            return n.event_id ? `/events/${n.event_id}` : '/events';
+    case 'booking_confirmed':
+    case 'booking_cancelled':       return '/registrations';
+    case 'payment_success':
+    case 'payment_received':
+    case 'refund_processed':
+    case 'payment_verification_requested':
+    case 'refund_requested':        return '/payments';
+    case 'cancellation_requested':  return '/registrations';
+    default:                        return null;
+  }
+}
+
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60_000);
@@ -69,18 +103,19 @@ function relativeTime(iso: string): string {
 
 // ─── Single notification row ──────────────────────────────────────────────────
 
-function NotifRow({ n, onRead }: { n: NotificationItem; onRead: (id: string) => void }) {
+function NotifRow({ n, onClick }: { n: NotificationItem; onClick: (n: NotificationItem) => void }) {
   const meta = TYPE_META[n.type] ?? DEFAULT_META;
+  const clickable = !n.is_read || resolveTarget(n) !== null;
 
   return (
     <ListItem
       alignItems="flex-start"
-      onClick={() => { if (!n.is_read) onRead(n.id); }}
+      onClick={() => { if (clickable) onClick(n); }}
       sx={{
         gap: 1,
         px: 2,
         py: 1.25,
-        cursor: n.is_read ? 'default' : 'pointer',
+        cursor: clickable ? 'pointer' : 'default',
         bgcolor: n.is_read ? 'transparent' : 'rgba(99,102,241,0.04)',
         borderLeft: n.is_read ? '3px solid transparent' : `3px solid ${meta.color}`,
         transition: 'background 0.15s',
@@ -99,17 +134,17 @@ function NotifRow({ n, onRead }: { n: NotificationItem; onRead: (id: string) => 
             <Typography
               variant="body2"
               fontWeight={n.is_read ? 400 : 600}
-              sx={{ color: '#1e293b', lineHeight: 1.4, flex: 1 }}
+              sx={{ color: 'text.primary', lineHeight: 1.4, flex: 1 }}
             >
               {n.title}
             </Typography>
-            <Typography variant="caption" sx={{ color: '#94a3b8', flexShrink: 0, mt: '2px' }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', flexShrink: 0, mt: '2px' }}>
               {relativeTime(n.created_at)}
             </Typography>
           </Box>
         }
         secondary={
-          <Typography variant="caption" sx={{ color: '#64748b', mt: 0.25, display: 'block' }}>
+          <Typography variant="caption" sx={{ color: 'text.secondary', mt: 0.25, display: 'block' }}>
             {n.message}
           </Typography>
         }
@@ -130,6 +165,7 @@ function NotifRow({ n, onRead }: { n: NotificationItem; onRead: (id: string) => 
 
 export function NotificationBell() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { unreadCount, notifications, notifLoading, fetchNotifications, markRead, markAllRead } =
     useNotifications();
 
@@ -142,6 +178,15 @@ export function NotificationBell() {
   };
 
   const handleClose = () => setAnchorEl(null);
+
+  const handleRowClick = (n: NotificationItem) => {
+    if (!n.is_read) markRead(n.id);
+    const target = resolveTarget(n);
+    if (target) {
+      handleClose();
+      navigate(target);
+    }
+  };
 
   const role       = user?.primaryRole ?? '';
   const categories = ROLE_CATEGORIES[role] ?? [];
@@ -188,7 +233,7 @@ export function NotificationBell() {
       >
         {/* ── Header ── */}
         <Box sx={{ px: 2, py: 1.5, display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-          <Typography variant="subtitle1" fontWeight={700} sx={{ color: '#1e293b', flex: 1 }}>
+          <Typography variant="subtitle1" fontWeight={700} sx={{ color: 'text.primary', flex: 1 }}>
             Notifications
           </Typography>
           {unreadCount > 0 && (
@@ -220,7 +265,7 @@ export function NotificationBell() {
           ) : notifications.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 5, px: 3 }}>
               <NotificationsNoneIcon sx={{ fontSize: 48, color: '#cbd5e1', mb: 1 }} />
-              <Typography variant="body2" sx={{ color: '#94a3b8', fontWeight: 500 }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500 }}>
                 No notifications yet
               </Typography>
               <Typography variant="caption" sx={{ color: '#cbd5e1' }}>
@@ -232,7 +277,7 @@ export function NotificationBell() {
               {notifications.map((n, i) => (
                 <React.Fragment key={n.id}>
                   {i > 0 && <Divider component="li" sx={{ mx: 2 }} />}
-                  <NotifRow n={n} onRead={markRead} />
+                  <NotifRow n={n} onClick={handleRowClick} />
                 </React.Fragment>
               ))}
             </List>
@@ -243,8 +288,8 @@ export function NotificationBell() {
         {categories.length > 0 && (
           <>
             <Divider />
-            <Box sx={{ px: 2, py: 1, bgcolor: '#f8fafc', flexShrink: 0 }}>
-              <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>
+            <Box sx={{ px: 2, py: 1, bgcolor: 'action.hover', flexShrink: 0 }}>
+              <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
                 You receive notifications for:
               </Typography>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
@@ -253,7 +298,7 @@ export function NotificationBell() {
                     key={c}
                     label={c}
                     size="small"
-                    sx={{ fontSize: 10, height: 20, bgcolor: '#e2e8f0', color: '#475569' }}
+                    sx={{ fontSize: 10, height: 20, bgcolor: 'action.selected', color: 'text.secondary' }}
                   />
                 ))}
               </Box>

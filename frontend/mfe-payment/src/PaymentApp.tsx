@@ -195,6 +195,16 @@ function CheckoutFlow({ token }: { token: string }) {
   const [cartLoading, setCartLoading] = useState(true);
   const [registration, setRegistration] = useState<Registration | null>(null);
   const [paymentIntent, setPaymentIntent] = useState<PaymentIntentResp | null>(null);
+  // Mirrors of the two state values above, kept in sync at every setRegistration/
+  // setPaymentIntent call. openSse() is invoked imperatively once per checkout —
+  // its onmessage closure captures registration/paymentIntent as they were AT THAT
+  // CALL (both still null, since the setState calls just above it haven't taken
+  // effect in this render yet), and that closure is never recreated on later
+  // renders. Reading these refs instead of the closed-over state inside
+  // markTicketPurchased sidesteps the stale closure regardless of which path
+  // (SSE vs. the direct verify-screenshot response) invokes it.
+  const registrationRef               = useRef<Registration | null>(null);
+  const paymentIntentRef              = useRef<PaymentIntentResp | null>(null);
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [screenshotPreviewUrl, setScreenshotPreviewUrl] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -204,6 +214,9 @@ function CheckoutFlow({ token }: { token: string }) {
   const [reviewUpiRef, setReviewUpiRef] = useState('');
   const [reviewTimestamp, setReviewTimestamp] = useState('');
   const [reviewPayerUpi, setReviewPayerUpi] = useState('');
+  const [amountError, setAmountError] = useState('');
+  const [utrError, setUtrError] = useState('');
+  const [timestampError, setTimestampError] = useState('');
   const [verifying, setVerifying]     = useState(false);
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [error, setError]             = useState<string | null>(null);
@@ -272,14 +285,16 @@ function CheckoutFlow({ token }: { token: string }) {
           window.location.href = '/registrations';
           return;
         }
-        setRegistration({
+        const resumedRegistration: Registration = {
           id: reg.id, event_id: reg.event_id, event_title: reg.event_title,
           event_start_time: reg.event_start_time, event_end_time: reg.event_end_time,
           event_venue: reg.event_venue, event_is_free: reg.event_is_free,
           ticket_count: reg.ticket_count, total_amount: reg.total_amount,
           display_currency: reg.display_currency, status: reg.status,
           registered_at: reg.registered_at,
-        });
+        };
+        setRegistration(resumedRegistration);
+        registrationRef.current = resumedRegistration;
         // Synthetic single-line cart so `total`/`isFree` below still compute correctly
         // if the resident navigates back to the QR step — there's no real cart to read.
         setCheckoutData({
@@ -298,6 +313,7 @@ function CheckoutFlow({ token }: { token: string }) {
           body: JSON.stringify({ event_id: reg.event_id, registration_id: reg.id }),
         });
         setPaymentIntent(intent);
+        paymentIntentRef.current = intent;
         openSse(intent.transaction_id);
         setStep(2);
       } catch (e: unknown) {
@@ -353,6 +369,7 @@ function CheckoutFlow({ token }: { token: string }) {
       }
 
       setRegistration(reg);
+      registrationRef.current = reg;
       fetch('/api/registrations/registrations/cart', {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
@@ -372,6 +389,7 @@ function CheckoutFlow({ token }: { token: string }) {
         }),
       });
       setPaymentIntent(intent);
+      paymentIntentRef.current = intent;
 
       // Open SSE before user uploads proof so we never miss the event
       openSse(intent.transaction_id);
@@ -448,13 +466,21 @@ function CheckoutFlow({ token }: { token: string }) {
   }
 
   async function markTicketPurchased(result: VerifyResult) {
-    if (!registration || !paymentIntent) {
+    // Read from the refs, not the closed-over registration/paymentIntent state — this
+    // function is called both from a fresh per-render closure (handleScreenshotUpload)
+    // and from openSse()'s onmessage, which is registered once, imperatively, right
+    // after setRegistration/setPaymentIntent are called and before that state update
+    // is visible in this render's closure. The refs are updated synchronously at the
+    // same call sites, so they're always current regardless of which closure calls in.
+    const currentRegistration  = registrationRef.current;
+    const currentPaymentIntent = paymentIntentRef.current;
+    if (!currentRegistration || !currentPaymentIntent) {
       // Should be impossible on this code path (both are set before Step 2 renders
       // at all) — logged loudly because a silent return here previously looked
       // identical to a successful confirm: reconciliation succeeds server-side,
       // but nothing ever marks the local registration/payment_transaction as paid.
       console.error('markTicketPurchased: missing registration or paymentIntent', {
-        hasRegistration: !!registration, hasPaymentIntent: !!paymentIntent, result,
+        hasRegistration: !!currentRegistration, hasPaymentIntent: !!currentPaymentIntent, result,
       });
       return;
     }
@@ -466,11 +492,11 @@ function CheckoutFlow({ token }: { token: string }) {
     // left registrations permanently stuck 'pending_payment' with no visible error anywhere
     // even though the resident's money was matched. Retry a few times before giving up.
     const body = JSON.stringify({
-      event_id:              registration.event_id,
-      registration_id:       registration.id,
-      reconciliation_txn_id: paymentIntent.transaction_id,
+      event_id:              currentRegistration.event_id,
+      registration_id:       currentRegistration.id,
+      reconciliation_txn_id: currentPaymentIntent.transaction_id,
       upi_ref:               result.upiRef ?? 'RECONCILED',
-      amount:                result.amount ?? paymentIntent.amount,
+      amount:                result.amount ?? currentPaymentIntent.amount,
       payer_upi:             reviewPayerUpi.trim() || null,
     });
 
@@ -537,8 +563,49 @@ function CheckoutFlow({ token }: { token: string }) {
 
   // ── Step 2: Submit for verification (using the reviewed/corrected fields) ───
 
+  // UTR/RRN numbers are 6-22 alphanumeric characters across UPI apps (the AI
+  // extractor's own regex accepts 12-22, but some banks' RRNs run shorter) —
+  // not tied to a specific bank's format, just enough to catch empty/garbage input.
+  const UTR_PATTERN = /^[A-Za-z0-9]{6,22}$/;
+
+  function validateReviewFields(): boolean {
+    let ok = true;
+
+    const amt = Number(reviewAmount.trim());
+    if (!reviewAmount.trim() || !Number.isFinite(amt) || amt <= 0) {
+      setAmountError('Enter a valid amount greater than 0');
+      ok = false;
+    } else {
+      setAmountError('');
+    }
+
+    const utr = reviewUpiRef.trim();
+    if (!utr) {
+      setUtrError('UTR / RRN number is required');
+      ok = false;
+    } else if (!UTR_PATTERN.test(utr)) {
+      setUtrError('Enter a valid UTR / RRN number (6-22 letters/digits)');
+      ok = false;
+    } else {
+      setUtrError('');
+    }
+
+    if (!reviewTimestamp) {
+      setTimestampError('Payment date & time is required');
+      ok = false;
+    } else if (new Date(reviewTimestamp).getTime() > Date.now()) {
+      setTimestampError('Payment date & time cannot be in the future');
+      ok = false;
+    } else {
+      setTimestampError('');
+    }
+
+    return ok;
+  }
+
   async function handleScreenshotUpload() {
     if (!screenshotFile || !paymentIntent || !registration) return;
+    if (!validateReviewFields()) return;
     resolvedRef.current = false;
     setVerifying(true); setError(null);
 
@@ -827,21 +894,29 @@ function CheckoutFlow({ token }: { token: string }) {
               <Stack spacing={2}>
                 <TextField
                   label="Amount Paid (₹)" size="small" fullWidth type="number" required
-                  value={reviewAmount} onChange={e => setReviewAmount(e.target.value)} disabled={verifying}
+                  value={reviewAmount}
+                  onChange={e => { setReviewAmount(e.target.value); if (amountError) setAmountError(''); }}
+                  disabled={verifying}
+                  error={!!amountError}
+                  helperText={amountError || undefined}
                 />
                 <TextField
-                  label="UTR / Transaction Reference" size="small" fullWidth required
-                  value={reviewUpiRef} onChange={e => setReviewUpiRef(e.target.value)} disabled={verifying}
-                  helperText="The 12-digit UPI reference number from your payment app"
+                  label="UTR / RRN Number" size="small" fullWidth required
+                  value={reviewUpiRef}
+                  onChange={e => { setReviewUpiRef(e.target.value); if (utrError) setUtrError(''); }}
+                  disabled={verifying}
+                  error={!!utrError}
+                  helperText={utrError || 'The UTR / RRN reference number from your payment app'}
                 />
                 <TextField
-                  label="Payment Date & Time (optional)" size="small" fullWidth
+                  label="Payment Date & Time" size="small" fullWidth required
                   type="datetime-local"
                   InputLabelProps={{ shrink: true }}
                   value={isoToDatetimeLocal(reviewTimestamp)}
-                  onChange={e => setReviewTimestamp(datetimeLocalToIso(e.target.value))}
+                  onChange={e => { setReviewTimestamp(datetimeLocalToIso(e.target.value)); if (timestampError) setTimestampError(''); }}
                   disabled={verifying}
-                  helperText="Shown in your local time — as shown on your screenshot, used to widen the bank-email search if the payment wasn't made today"
+                  error={!!timestampError}
+                  helperText={timestampError || 'Shown in your local time — as shown on your screenshot, used to widen the bank-email search if the payment wasn\'t made today'}
                 />
                 <TextField
                   label="Your UPI ID (optional)" size="small" fullWidth
@@ -870,7 +945,7 @@ function CheckoutFlow({ token }: { token: string }) {
           <Button
             fullWidth variant="contained" size="large" color="success"
             disabled={!screenshotFile || extracting || verifying
-              || !reviewAmount.trim() || !reviewUpiRef.trim()}
+              || !reviewAmount.trim() || !reviewUpiRef.trim() || !reviewTimestamp}
             onClick={handleScreenshotUpload}
           >
             {verifying

@@ -159,6 +159,23 @@ class TicketTypeUpdate(BaseModel):
 EventDetail.model_rebuild()
 
 
+# ── Event permission (per-event delegation) ───────────────────────────────────
+
+class EventPermissionGrant(BaseModel):
+    email: str = Field(..., min_length=3)
+
+
+class EventPermissionOut(BaseModel):
+    id: str
+    event_id: str
+    user_id: str
+    user_name: str
+    user_email: Optional[str] = None
+    granted_by: str
+    granted_by_name: str
+    granted_at: datetime
+
+
 # ── Registration & Payment (manual screenshot flow) ───────────────────────────
 
 class TicketSelection(BaseModel):

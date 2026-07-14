@@ -12,6 +12,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserService } from '../contexts/UserServiceContext';
+import { avatarUrl } from '../api/userService';
 import { ROLE_COLORS, ROLE_LABELS } from '../theme';
 
 export function UserMenu() {
@@ -42,7 +43,7 @@ export function UserMenu() {
             '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' },
           }}
         >
-          <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontSize: 12, fontWeight: 700 }}>
+          <Avatar src={avatarUrl(dbUser?.avatar_url)} sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontSize: 12, fontWeight: 700 }}>
             {user.initials}
           </Avatar>
           <Box component="span" sx={{ display: { xs: 'none', sm: 'block' }, fontSize: 13, fontWeight: 500, color: '#fff' }}>
@@ -62,8 +63,8 @@ export function UserMenu() {
         PaperProps={{ elevation: 4, sx: { width: 260, borderRadius: 1.5, mt: 1 } }}
       >
         {/* Identity block */}
-        <Box sx={{ px: 2, py: 1.5, bgcolor: 'grey.50', display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
-          <Avatar sx={{ width: 42, height: 42, bgcolor: 'primary.main', fontSize: 15, fontWeight: 700 }}>
+        <Box sx={{ px: 2, py: 1.5, bgcolor: 'action.hover', display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+          <Avatar src={avatarUrl(dbUser?.avatar_url)} sx={{ width: 42, height: 42, bgcolor: 'primary.main', fontSize: 15, fontWeight: 700 }}>
             {user.initials}
           </Avatar>
           <Box sx={{ flex: 1, minWidth: 0 }}>

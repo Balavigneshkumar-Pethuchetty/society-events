@@ -3,7 +3,10 @@ import React, {
   useEffect, useState,
 } from 'react';
 import { useAuth } from './AuthContext';
-import { userService, DbUser, Apartment } from '../api/userService';
+import {
+  userService, DbUser, Apartment,
+  PhoneVerifyRequestResponse, PhoneVerifyConfirmResponse, OtpChannel,
+} from '../api/userService';
 
 interface UserServiceContextValue {
   dbUser: DbUser | null;
@@ -12,6 +15,12 @@ interface UserServiceContextValue {
   syncError: string | null;
   refreshProfile: () => Promise<void>;
   updateProfile: (data: { name?: string; phone?: string | null }) => Promise<void>;
+  uploadAvatar: (file: File) => Promise<void>;
+  removeAvatar: () => Promise<void>;
+  sendEmailVerification: () => Promise<void>;
+  checkEmailVerification: () => Promise<boolean>;
+  requestPhoneVerification: (channel?: OtpChannel) => Promise<PhoneVerifyRequestResponse>;
+  confirmPhoneVerification: (requestId: string, code: string) => Promise<PhoneVerifyConfirmResponse>;
   addApartment: (apartment_id: string) => Promise<void>;
   removeApartment: (apartment_id: string) => Promise<void>;
   addUnit: (node_id: string) => Promise<void>;
@@ -58,6 +67,42 @@ export function UserServiceProvider({ children }: { children: React.ReactNode })
     setDbUser(u);
   }, [token]);
 
+  const uploadAvatar = useCallback(async (file: File) => {
+    if (!token) throw new Error('Not authenticated');
+    const u = await userService.uploadAvatar(token, file);
+    setDbUser(u);
+  }, [token]);
+
+  const removeAvatar = useCallback(async () => {
+    if (!token) throw new Error('Not authenticated');
+    const u = await userService.removeAvatar(token);
+    setDbUser(u);
+  }, [token]);
+
+  const sendEmailVerification = useCallback(async () => {
+    if (!token) throw new Error('Not authenticated');
+    await userService.verifyEmail.send(token);
+  }, [token]);
+
+  const checkEmailVerification = useCallback(async () => {
+    if (!token) throw new Error('Not authenticated');
+    const u = await userService.verifyEmail.check(token);
+    setDbUser(u);
+    return u.email_verified;
+  }, [token]);
+
+  const requestPhoneVerification = useCallback(async (channel?: OtpChannel) => {
+    if (!token) throw new Error('Not authenticated');
+    return userService.verifyPhone.request(token, channel);
+  }, [token]);
+
+  const confirmPhoneVerification = useCallback(async (requestId: string, code: string) => {
+    if (!token) throw new Error('Not authenticated');
+    const result = await userService.verifyPhone.confirm(token, requestId, code);
+    if (result.verified && result.user) setDbUser(result.user);
+    return result;
+  }, [token]);
+
   const addApartment = useCallback(async (apartment_id: string) => {
     if (!token) throw new Error('Not authenticated');
     const u = await userService.addApartment(token, apartment_id);
@@ -84,7 +129,13 @@ export function UserServiceProvider({ children }: { children: React.ReactNode })
 
   return (
     <UserServiceContext.Provider
-      value={{ dbUser, apartments, isSyncing, syncError, refreshProfile, updateProfile, addApartment, removeApartment, addUnit, removeUnit }}
+      value={{
+        dbUser, apartments, isSyncing, syncError, refreshProfile, updateProfile,
+        uploadAvatar, removeAvatar,
+        sendEmailVerification, checkEmailVerification,
+        requestPhoneVerification, confirmPhoneVerification,
+        addApartment, removeApartment, addUnit, removeUnit,
+      }}
     >
       {children}
     </UserServiceContext.Provider>

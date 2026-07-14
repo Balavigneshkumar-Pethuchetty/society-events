@@ -368,7 +368,7 @@ function MembersTab({ token, nodes, nodesLoading }: MembersTabProps) {
       <Box sx={{ display: { xs: 'none', md: 'block' }, overflowX: 'auto' }}>
         <Table size="small">
           <TableHead>
-            <TableRow sx={{ bgcolor: '#f8fafc' }}>
+            <TableRow sx={{ bgcolor: 'action.hover' }}>
               <TableCell sx={{ fontWeight: 700 }}>Member</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Role</TableCell>
               <TableCell sx={{ fontWeight: 700 }}>Assigned Flats</TableCell>
@@ -586,7 +586,7 @@ function RequestsTab({ token, nodes, nodesLoading }: RequestsTabProps) {
           <Box sx={{ display: { xs: 'none', md: 'block' }, overflowX: 'auto' }}>
             <Table size="small">
               <TableHead>
-                <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                <TableRow sx={{ bgcolor: 'action.hover' }}>
                   <TableCell sx={{ fontWeight: 700 }}>Member</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Type</TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>Unit</TableCell>
@@ -725,7 +725,7 @@ export function UnitManagement({ token }: UnitManagementProps) {
         </Box>
 
         {/* Tabs */}
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#fff' }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.paper' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ px: { xs: 1, md: 3 } }}>
             <Tab label="Members & Units" sx={{ fontWeight: 600, fontSize: 13 }} />
             <Tab label="Unit Requests" sx={{ fontWeight: 600, fontSize: 13 }} />
@@ -733,7 +733,7 @@ export function UnitManagement({ token }: UnitManagementProps) {
         </Box>
 
         {/* Tab panels */}
-        <Box sx={{ bgcolor: '#f8fafc', minHeight: 'calc(100vh - 200px)' }}>
+        <Box sx={{ bgcolor: 'background.default', minHeight: 'calc(100vh - 200px)' }}>
           {tab === 0 && (
             <MembersTab token={token} nodes={nodes} nodesLoading={nodesLoading} />
           )}

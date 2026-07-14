@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 from pydantic import BaseModel, EmailStr, field_validator
 
@@ -19,6 +19,9 @@ class UserResponse(BaseModel):
     name: str
     email: Optional[str] = None   # nullable for phone-only accounts
     phone: Optional[str] = None
+    avatar_url: Optional[str] = None   # relative path, e.g. "avatars/<uuid>.jpg"
+    email_verified: bool = False
+    phone_verified: bool = False
     role: str
     keycloak_sub: Optional[str] = None
     identity_provider: str
@@ -31,6 +34,80 @@ class UserResponse(BaseModel):
 class UserUpdateRequest(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
+
+
+class PhoneVerifyRequestBody(BaseModel):
+    # None = let auth-service pick automatically (Telegram if linked, else SMS)
+    channel: Optional[Literal["telegram", "sms"]] = None
+
+
+class PhoneVerifyRequestResponse(BaseModel):
+    ok: bool
+    request_id: Optional[str] = None
+    expires_in: Optional[int] = None
+    sent_via: Optional[str] = None
+    error: Optional[str] = None
+    retry_after: Optional[int] = None
+
+
+class TelegramLinkStatusResponse(BaseModel):
+    linked: bool
+    deep_link: Optional[str] = None
+
+
+class PhoneVerifyConfirmRequest(BaseModel):
+    request_id: str
+    code: str
+
+
+class PhoneVerifyConfirmResponse(BaseModel):
+    verified: bool
+    status: str
+    attempts_remaining: Optional[int] = None
+    user: Optional[UserResponse] = None
+
+
+class PhoneLoginRequest(BaseModel):
+    phone: str
+    # None = let auth-service pick automatically (Telegram if linked, else SMS)
+    channel: Optional[Literal["telegram", "sms"]] = None
+
+
+class PhoneLoginRequestResponse(BaseModel):
+    ok: bool
+    request_id: Optional[str] = None
+    expires_in: Optional[int] = None
+    sent_via: Optional[str] = None
+    error: Optional[str] = None
+    retry_after: Optional[int] = None
+
+
+class PhoneLoginVerifyRequest(BaseModel):
+    request_id: str
+    code: str
+
+
+class PhoneLoginVerifyResponse(BaseModel):
+    verified: bool
+    status: str
+    attempts_remaining: Optional[int] = None
+    access_token: Optional[str] = None
+    expires_in: Optional[int] = None
+    session_token: Optional[str] = None
+    session_expires_in: Optional[int] = None
+
+
+class PhoneLoginRefreshRequest(BaseModel):
+    session_token: str
+
+
+class PhoneLoginRefreshResponse(BaseModel):
+    access_token: str
+    expires_in: int
+
+
+class PhoneLoginLogoutRequest(BaseModel):
+    session_token: str
 
 
 class ApartmentAssignRequest(BaseModel):
@@ -192,3 +269,35 @@ class UnitRequestResponse(BaseModel):
     reviewed_by_name: Optional[str]
     reviewed_at: Optional[datetime]
     created_at: datetime
+
+
+# ── Leave-society request models ─────────────────────────────────────────────
+
+class LeaveRequestCreate(BaseModel):
+    reason: Optional[str] = None
+
+
+class LeaveRequestReview(BaseModel):
+    note: Optional[str] = None
+
+
+class LeaveRequestResponse(BaseModel):
+    id: UUID
+    user_id: Optional[UUID]
+    user_name: str
+    user_email: Optional[str]
+    reason: Optional[str]
+    status: str
+    requested_at: datetime
+    reviewed_by: Optional[UUID]
+    reviewed_by_name: Optional[str]
+    reviewed_at: Optional[datetime]
+    review_note: Optional[str]
+    completed_at: Optional[datetime]
+    has_pending_payment: bool = False
+    blockers: list[str] = []
+
+
+class LeaveRequestListResponse(BaseModel):
+    total: int
+    items: list[LeaveRequestResponse]

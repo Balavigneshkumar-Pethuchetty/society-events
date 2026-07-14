@@ -94,8 +94,8 @@ const HOW_IT_WORKS = [
   { step: '03', icon: <EmojiEventsIcon sx={{ fontSize: 28 }} />, title: 'Book & Attend', desc: 'Reserve your spot, pay online, and show your QR-code ticket at the gate. It\'s that simple.' },
 ];
 
-const showGoogleLogin  = !!import.meta.env.VITE_GOOGLE_LOGIN;
-const showMobileLogin  = !!import.meta.env.VITE_MOBILE_LOGIN;
+const showGoogleLogin = !!import.meta.env.VITE_GOOGLE_LOGIN;
+const showPhoneLogin  = !!import.meta.env.VITE_PHONE_LOGIN;
 
 export function Landing() {
   const { login, loginWithGoogle, register } = useAuth();
@@ -183,7 +183,7 @@ export function Landing() {
           </Stack>
 
           {/* Alternative sign-in options */}
-          {(showMobileLogin || showGoogleLogin) && (
+          {(showGoogleLogin || showPhoneLogin) && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center', mb: 2.5 }}>
               <Box sx={{ flex: 1, maxWidth: 120, height: '1px', bgcolor: 'rgba(255,255,255,0.18)' }} />
               <Box
@@ -193,29 +193,6 @@ export function Landing() {
                 or continue with
               </Box>
               <Box sx={{ flex: 1, maxWidth: 120, height: '1px', bgcolor: 'rgba(255,255,255,0.18)' }} />
-            </Box>
-          )}
-
-          {/* Mobile OTP login */}
-          {showMobileLogin && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1.5 }}>
-              <Button
-                variant="outlined"
-                size="large"
-                startIcon={<PhoneIcon />}
-                onClick={() => navigate('/mobile-login')}
-                sx={{
-                  px: 4, py: 1.5, fontWeight: 600, fontSize: 15,
-                  color: '#a5b4fc',
-                  borderColor: 'rgba(165,180,252,0.5)',
-                  borderRadius: '8px',
-                  textTransform: 'none',
-                  '&:hover': { borderColor: '#a5b4fc', bgcolor: 'rgba(165,180,252,0.08)' },
-                  minWidth: 240,
-                }}
-              >
-                Sign in with Mobile OTP
-              </Button>
             </Box>
           )}
 
@@ -251,20 +228,31 @@ export function Landing() {
             </Box>
           )}
 
+          {/* Phone-OTP login — only for accounts with an already-verified number */}
+          {showPhoneLogin && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3.5 }}>
+              <Button
+                variant="outlined"
+                size="large"
+                startIcon={<PhoneIcon />}
+                onClick={() => navigate('/phone-login')}
+                sx={{
+                  px: 4, py: 1.5, fontWeight: 600, fontSize: 15,
+                  color: '#a5b4fc',
+                  borderColor: 'rgba(165,180,252,0.5)',
+                  borderRadius: '8px',
+                  textTransform: 'none',
+                  '&:hover': { borderColor: '#a5b4fc', bgcolor: 'rgba(165,180,252,0.08)' },
+                  minWidth: 240,
+                }}
+              >
+                Sign in with Phone
+              </Button>
+            </Box>
+          )}
+
           <Typography sx={{ fontSize: 13, color: 'rgba(165,180,252,0.8)' }}>
-            New members: register with email
-            {showMobileLogin && (
-              <>
-                {' '}or{' '}
-                <Link
-                  to="/phone-register"
-                  style={{ color: '#a5b4fc', textDecoration: 'underline' }}
-                >
-                  mobile number
-                </Link>
-              </>
-            )}
-            {' '}— committee activates within 24 hours.
+            New members: register with email — committee activates within 24 hours.
           </Typography>
 
           <Typography sx={{ fontSize: 13, color: 'rgba(165,180,252,0.6)', mt: 1.5 }}>
@@ -378,7 +366,7 @@ export function Landing() {
       </Box>
 
       {/* ── Events service detail (what's live today) ──────────────────── */}
-      <Box sx={{ py: { xs: 7, md: 10 }, px: 3, bgcolor: '#f8fafc', borderTop: '1px solid', borderColor: 'divider' }}>
+      <Box sx={{ py: { xs: 7, md: 10 }, px: 3, bgcolor: 'background.default', borderTop: '1px solid', borderColor: 'divider' }}>
         <Container maxWidth="lg">
           <Chip
             label="LIVE NOW"
@@ -402,7 +390,7 @@ export function Landing() {
                 label={c.label}
                 sx={{
                   fontSize: 14, px: 1, py: 2.5, fontWeight: 600,
-                  bgcolor: '#fff',
+                  bgcolor: 'background.paper',
                   border: `2px solid ${c.color}`,
                   color: c.color,
                   '&:hover': { bgcolor: c.color, color: '#fff' },

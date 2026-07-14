@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Container,
-  Grid, Paper, Stack, Tab, Tabs, Table, TableBody, TableCell, TableHead,
-  TableRow, Typography,
+  Grid, IconButton, MenuItem, Paper, Stack, Tab, Tabs, Table, TableBody, TableCell, TableHead,
+  TableRow, TextField, Typography,
 } from '@mui/material';
 import ArrowBackIcon      from '@mui/icons-material/ArrowBack';
 import CalendarTodayIcon  from '@mui/icons-material/CalendarToday';
@@ -14,6 +14,7 @@ import ReceiptIcon        from '@mui/icons-material/Receipt';
 import StorefrontIcon     from '@mui/icons-material/Storefront';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import OpenInNewIcon      from '@mui/icons-material/OpenInNew';
+import DeleteIcon         from '@mui/icons-material/DeleteOutline';
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
@@ -34,6 +35,23 @@ async function apiFetch<T>(service: string, path: string, token: string): Promis
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { detail?: string }).detail ?? `HTTP ${res.status}`);
   }
+  return res.json() as Promise<T>;
+}
+
+async function apiMutate<T>(
+  service: string, path: string, token: string,
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', body?: unknown,
+): Promise<T | null> {
+  const res = await fetch(`${apiBase(service)}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error((errBody as { detail?: string }).detail ?? `HTTP ${res.status}`);
+  }
+  if (res.status === 204) return null;
   return res.json() as Promise<T>;
 }
 
@@ -109,7 +127,7 @@ function PurchasesTab({ registrations }: { registrations: Registration[] }) {
       <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
         <Table>
           <TableHead>
-            <TableRow sx={{ bgcolor: '#f8fafc' }}>
+            <TableRow sx={{ bgcolor: 'action.hover' }}>
               {['Resident', 'Tickets', 'Amount', 'Payment', 'Status', 'Registered At'].map(h => (
                 <TableCell key={h} sx={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'text.secondary' }}>{h}</TableCell>
               ))}
@@ -168,7 +186,7 @@ function AttendanceTab({ tickets }: { tickets: RosterTicket[] }) {
       <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
         <Table>
           <TableHead>
-            <TableRow sx={{ bgcolor: '#f8fafc' }}>
+            <TableRow sx={{ bgcolor: 'action.hover' }}>
               {['Resident', 'Unit', 'Tickets', 'Status', 'Scanned At'].map(h => (
                 <TableCell key={h} sx={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'text.secondary' }}>{h}</TableCell>
               ))}
@@ -217,7 +235,7 @@ function ComplimentaryTab({ entries, eventId }: { entries: ComplimentaryEntry[];
       <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
         <Table>
           <TableHead>
-            <TableRow sx={{ bgcolor: '#f8fafc' }}>
+            <TableRow sx={{ bgcolor: 'action.hover' }}>
               {['Guest / Invited By', 'Type', 'Tickets', 'Status', 'Issued By'].map(h => (
                 <TableCell key={h} sx={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'text.secondary' }}>{h}</TableCell>
               ))}
@@ -258,46 +276,447 @@ function ComplimentaryTab({ entries, eventId }: { entries: ComplimentaryEntry[];
   );
 }
 
-// ── Mock preview tabs (Finance / Vendors / Revenue — no backend yet) ────────
+// ── Finance & Expenses tab ───────────────────────────────────────────────────
 
-function MockPreviewTab({
-  icon, title, description, columns, rows,
-}: {
-  icon: React.ReactNode; title: string; description: string;
-  columns: string[]; rows: (string | number)[][];
-}) {
+interface FinanceSummary {
+  ticket_revenue: number | string; sponsorship_income: number | string;
+  total_expenses: number | string; vendor_pool: number | string;
+  net_balance: number | string; sponsor_count: number; complimentary_tickets: number;
+}
+
+interface Expense {
+  id: string; description: string; amount: number | string; currency_code: string;
+  category: string; created_by_name: string; created_at: string;
+}
+
+const EXPENSE_CATEGORIES = ['venue', 'catering', 'equipment', 'marketing', 'staff', 'other'];
+
+function FinanceTab({ eventId, token }: { eventId: string; token: string }) {
+  const [summary,  setSummary]  = useState<FinanceSummary | null>(null);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState<string | null>(null);
+  const [desc,     setDesc]     = useState('');
+  const [amount,   setAmount]   = useState('');
+  const [category, setCategory] = useState('other');
+  const [saving,   setSaving]   = useState(false);
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true); setError(null);
+    Promise.all([
+      apiFetch<FinanceSummary>('payments', `/funds/${eventId}/summary`, token),
+      apiFetch<Expense[]>('payments', `/funds/${eventId}/expenses`, token),
+    ]).then(([s, ex]) => { setSummary(s); setExpenses(ex); })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [eventId, token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const addExpense = async () => {
+    setSaving(true);
+    try {
+      await apiMutate('payments', `/funds/${eventId}/expenses`, token, 'POST', {
+        description: desc, amount: Number(amount), category,
+      });
+      setDesc(''); setAmount(''); setCategory('other');
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to add expense');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeExpense = async (id: string) => {
+    await apiMutate('payments', `/funds/expenses/${id}`, token, 'DELETE');
+    load();
+  };
+
+  const downloadExport = async (format: 'xlsx' | 'pdf') => {
+    const res = await fetch(`${apiBase('payments')}/funds/${eventId}/export.${format}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) { setError(`Failed to generate ${format} export`); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `fund-report-${eventId}.${format}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const copyShareLink = async () => {
+    try {
+      const link = await apiMutate<{ path: string; expires_at: string }>(
+        'payments', `/funds/${eventId}/share-link`, token, 'POST',
+      );
+      if (!link) return;
+      const fullUrl = `${window.location.origin}${link.path}`;
+      await navigator.clipboard.writeText(fullUrl);
+      setShareMsg(`Link copied — valid until ${new Date(link.expires_at).toLocaleDateString('en-IN')}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create share link');
+    }
+  };
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>;
+
   return (
     <>
-      <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>
-        Preview only — {title} isn't wired to a backend yet. This is sample data to illustrate the layout.
-      </Alert>
-      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }}>
-        {icon}
-        <Box>
-          <Typography variant="h6" fontWeight={700}>{title}</Typography>
-          <Typography fontSize={13} color="text.secondary">{description}</Typography>
-        </Box>
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
+      {shareMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setShareMsg(null)}>{shareMsg}</Alert>}
+      <Stack direction="row" spacing={1.5} justifyContent="flex-end" sx={{ mb: 2 }}>
+        <Button size="small" variant="outlined" onClick={() => downloadExport('xlsx')}>Download Excel</Button>
+        <Button size="small" variant="outlined" onClick={() => downloadExport('pdf')}>Download PDF</Button>
+        <Button size="small" variant="outlined" onClick={copyShareLink}>Copy Share Link</Button>
       </Stack>
-      <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
+      {summary && (
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <StatCard label="Ticket Revenue" value={fmtMoney(summary.ticket_revenue, 'INR')} color="#0ea5e9" />
+          <StatCard label="Sponsorship Income" value={fmtMoney(summary.sponsorship_income, 'INR')} color="#8b5cf6" />
+          <StatCard label="Total Expenses" value={fmtMoney(summary.total_expenses, 'INR')} color="#ef4444" />
+          <StatCard label="Net Balance" value={fmtMoney(summary.net_balance, 'INR')}
+            color={Number(summary.net_balance) >= 0 ? '#10b981' : '#ef4444'} />
+        </Grid>
+      )}
+      <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', mb: 3 }}>
         <Table>
           <TableHead>
-            <TableRow sx={{ bgcolor: '#f8fafc' }}>
-              {columns.map(h => (
+            <TableRow sx={{ bgcolor: 'action.hover' }}>
+              {['Description', 'Category', 'Amount', 'Logged By', ''].map(h => (
                 <TableCell key={h} sx={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'text.secondary' }}>{h}</TableCell>
               ))}
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row, i) => (
-              <TableRow key={i} hover>
-                {row.map((cell, j) => (
-                  <TableCell key={j}><Typography fontSize={13}>{cell}</Typography></TableCell>
-                ))}
+            {expenses.length === 0 && (
+              <TableRow><TableCell colSpan={5}>
+                <Typography fontSize={13} color="text.secondary" textAlign="center" py={2}>No expenses logged yet.</Typography>
+              </TableCell></TableRow>
+            )}
+            {expenses.map(e => (
+              <TableRow key={e.id} hover>
+                <TableCell><Typography fontSize={13}>{e.description}</Typography></TableCell>
+                <TableCell><Chip label={e.category} size="small" sx={{ textTransform: 'capitalize' }} /></TableCell>
+                <TableCell><Typography fontWeight={700} fontSize={13}>{fmtMoney(e.amount, e.currency_code)}</Typography></TableCell>
+                <TableCell><Typography fontSize={12} color="text.secondary">{e.created_by_name}</Typography></TableCell>
+                <TableCell align="right">
+                  <IconButton size="small" onClick={() => removeExpense(e.id)}><DeleteIcon sx={{ fontSize: 16 }} /></IconButton>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </Paper>
+      <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap alignItems="center">
+        <TextField size="small" label="Description" value={desc} onChange={e => setDesc(e.target.value)} sx={{ flex: 1, minWidth: 180 }} />
+        <TextField size="small" label="Amount (₹)" type="number" value={amount} onChange={e => setAmount(e.target.value)} sx={{ width: 130 }} />
+        <TextField size="small" select label="Category" value={category} onChange={e => setCategory(e.target.value)} sx={{ width: 140 }}>
+          {EXPENSE_CATEGORIES.map(c => <MenuItem key={c} value={c} sx={{ textTransform: 'capitalize' }}>{c}</MenuItem>)}
+        </TextField>
+        <Button variant="contained" size="small" disabled={saving || !desc.trim() || !amount} onClick={addExpense}>
+          Add Expense
+        </Button>
+      </Stack>
+    </>
+  );
+}
+
+// ── Vendors tab ──────────────────────────────────────────────────────────────
+
+interface VendorDirectoryEntry { id: string; name: string; category: string }
+interface EventVendor {
+  id: string; vendor_id: string; vendor_name: string; vendor_category: string;
+  stall_number: string | null; fee_type: string; fixed_fee: number | string;
+  revenue_share_pct: number | string; status: string;
+}
+
+const VENDOR_CATEGORIES = ['food', 'beverages', 'merchandise', 'games', 'services', 'other'];
+const VENDOR_STATUSES = ['invited', 'confirmed', 'cancelled'];
+
+function VendorsTab({ eventId, token }: { eventId: string; token: string }) {
+  const [directory, setDirectory] = useState<VendorDirectoryEntry[]>([]);
+  const [vendors,   setVendors]   = useState<EventVendor[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState<string | null>(null);
+  const [newVendorName, setNewVendorName] = useState('');
+  const [newVendorCat,  setNewVendorCat]  = useState('other');
+  const [pickVendorId,  setPickVendorId]  = useState('');
+  const [stall,         setStall]         = useState('');
+  const [saving,        setSaving]        = useState(false);
+
+  const load = useCallback(() => {
+    setLoading(true); setError(null);
+    Promise.all([
+      apiFetch<VendorDirectoryEntry[]>('payments', '/funds/vendor-directory', token),
+      apiFetch<EventVendor[]>('payments', `/funds/${eventId}/vendors`, token),
+    ]).then(([d, v]) => { setDirectory(d); setVendors(v); })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [eventId, token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const createVendor = async () => {
+    setSaving(true);
+    try {
+      await apiMutate('payments', '/funds/vendor-directory', token, 'POST', {
+        name: newVendorName, category: newVendorCat,
+      });
+      setNewVendorName(''); setNewVendorCat('other');
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to add vendor');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inviteVendor = async () => {
+    setSaving(true);
+    try {
+      await apiMutate('payments', `/funds/${eventId}/vendors`, token, 'POST', {
+        vendor_id: pickVendorId, stall_number: stall || null,
+      });
+      setPickVendorId(''); setStall('');
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to invite vendor');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setStatus = async (id: string, status: string) => {
+    await apiMutate('payments', `/funds/vendors/${id}`, token, 'PUT', { status });
+    load();
+  };
+
+  const remove = async (id: string) => {
+    await apiMutate('payments', `/funds/vendors/${id}`, token, 'DELETE');
+    load();
+  };
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>;
+
+  return (
+    <>
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
+      <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', mb: 3 }}>
+        <Table>
+          <TableHead>
+            <TableRow sx={{ bgcolor: 'action.hover' }}>
+              {['Vendor', 'Category', 'Stall', 'Status', ''].map(h => (
+                <TableCell key={h} sx={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'text.secondary' }}>{h}</TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {vendors.length === 0 && (
+              <TableRow><TableCell colSpan={5}>
+                <Typography fontSize={13} color="text.secondary" textAlign="center" py={2}>No vendors invited yet.</Typography>
+              </TableCell></TableRow>
+            )}
+            {vendors.map(v => (
+              <TableRow key={v.id} hover>
+                <TableCell><Typography fontWeight={600} fontSize={13}>{v.vendor_name}</Typography></TableCell>
+                <TableCell><Chip label={v.vendor_category} size="small" sx={{ textTransform: 'capitalize' }} /></TableCell>
+                <TableCell><Typography fontSize={13}>{v.stall_number ?? '—'}</Typography></TableCell>
+                <TableCell>
+                  <TextField select size="small" value={v.status} onChange={e => setStatus(v.id, e.target.value)}
+                    sx={{ minWidth: 120 }}>
+                    {VENDOR_STATUSES.map(s => <MenuItem key={s} value={s} sx={{ textTransform: 'capitalize' }}>{s}</MenuItem>)}
+                  </TextField>
+                </TableCell>
+                <TableCell align="right">
+                  <IconButton size="small" onClick={() => remove(v.id)}><DeleteIcon sx={{ fontSize: 16 }} /></IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Paper>
+
+      <Typography fontSize={13} fontWeight={700} sx={{ mb: 1 }}>Invite an existing vendor</Typography>
+      <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mb: 3 }}>
+        <TextField select size="small" label="Vendor" value={pickVendorId}
+          onChange={e => setPickVendorId(e.target.value)} sx={{ minWidth: 200 }}>
+          {directory.map(d => <MenuItem key={d.id} value={d.id}>{d.name} ({d.category})</MenuItem>)}
+        </TextField>
+        <TextField size="small" label="Stall #" value={stall} onChange={e => setStall(e.target.value)} sx={{ width: 100 }} />
+        <Button variant="contained" size="small" disabled={saving || !pickVendorId} onClick={inviteVendor}>
+          Invite
+        </Button>
+      </Stack>
+
+      <Typography fontSize={13} fontWeight={700} sx={{ mb: 1 }}>Or add a new vendor to the directory</Typography>
+      <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap alignItems="center">
+        <TextField size="small" label="Vendor name" value={newVendorName} onChange={e => setNewVendorName(e.target.value)} sx={{ flex: 1, minWidth: 180 }} />
+        <TextField select size="small" label="Category" value={newVendorCat} onChange={e => setNewVendorCat(e.target.value)} sx={{ width: 150 }}>
+          {VENDOR_CATEGORIES.map(c => <MenuItem key={c} value={c} sx={{ textTransform: 'capitalize' }}>{c}</MenuItem>)}
+        </TextField>
+        <Button variant="outlined" size="small" disabled={saving || !newVendorName.trim()} onClick={createVendor}>
+          Add to Directory
+        </Button>
+      </Stack>
+    </>
+  );
+}
+
+// ── Revenue distribution tab ─────────────────────────────────────────────────
+
+interface DistributionEntry {
+  id: string; recipient_type: string; recipient_name: string | null;
+  share_percentage: number | string; amount: number | string; status: string;
+}
+interface Distribution {
+  id: string; total_pool: number | string; status: string; entries: DistributionEntry[];
+}
+
+const RECIPIENT_TYPES = ['sponsor', 'organizer', 'resident', 'society'];
+
+function RevenueTab({ eventId, token }: { eventId: string; token: string }) {
+  const [dist,    setDist]    = useState<Distribution | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState<string | null>(null);
+  const [poolAmount, setPoolAmount] = useState('');
+  const [recipientType, setRecipientType] = useState('society');
+  const [sharePct,      setSharePct]      = useState('');
+  const [entryAmount,   setEntryAmount]   = useState('');
+  const [saving,        setSaving]        = useState(false);
+
+  const load = useCallback(() => {
+    setLoading(true); setError(null);
+    apiFetch<Distribution>('payments', `/funds/${eventId}/revenue-distribution`, token)
+      .then(setDist)
+      .catch(() => setDist(null))
+      .finally(() => setLoading(false));
+  }, [eventId, token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const createPool = async () => {
+    setSaving(true);
+    try {
+      await apiMutate('payments', `/funds/${eventId}/revenue-distribution`, token, 'POST', {
+        total_pool: Number(poolAmount),
+      });
+      setPoolAmount(''); load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to set up distribution');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addEntry = async () => {
+    if (!dist) return;
+    setSaving(true);
+    try {
+      await apiMutate('payments', `/funds/revenue-distribution/${dist.id}/entries`, token, 'POST', {
+        recipient_type: recipientType, share_percentage: Number(sharePct), amount: Number(entryAmount),
+      });
+      setSharePct(''); setEntryAmount(''); load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to add entry');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const approve = async () => {
+    if (!dist) return;
+    await apiMutate('payments', `/funds/revenue-distribution/${dist.id}/approve`, token, 'PATCH');
+    load();
+  };
+
+  const markDistributed = async () => {
+    if (!dist) return;
+    await apiMutate('payments', `/funds/revenue-distribution/${dist.id}/mark-distributed`, token, 'PATCH');
+    load();
+  };
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>;
+
+  if (!dist) {
+    return (
+      <>
+        {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
+        <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>
+          No revenue distribution pool has been set up for this event yet.
+        </Alert>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <TextField size="small" label="Total pool (₹)" type="number" value={poolAmount}
+            onChange={e => setPoolAmount(e.target.value)} sx={{ width: 160 }} />
+          <Button variant="contained" size="small" disabled={saving || !poolAmount} onClick={createPool}>
+            Set Up Distribution
+          </Button>
+        </Stack>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>{error}</Alert>}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <StatCard label="Total Pool" value={fmtMoney(dist.total_pool, 'INR')} color="#ec4899" />
+        <StatCard label="Status" value={dist.status} color="#6366f1" />
+      </Grid>
+      <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', mb: 3 }}>
+        <Table>
+          <TableHead>
+            <TableRow sx={{ bgcolor: 'action.hover' }}>
+              {['Recipient', 'Type', 'Share', 'Amount', 'Status'].map(h => (
+                <TableCell key={h} sx={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'text.secondary' }}>{h}</TableCell>
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {dist.entries.length === 0 && (
+              <TableRow><TableCell colSpan={5}>
+                <Typography fontSize={13} color="text.secondary" textAlign="center" py={2}>No payout entries yet.</Typography>
+              </TableCell></TableRow>
+            )}
+            {dist.entries.map(en => (
+              <TableRow key={en.id} hover>
+                <TableCell><Typography fontSize={13}>{en.recipient_name ?? '—'}</Typography></TableCell>
+                <TableCell><Chip label={en.recipient_type} size="small" sx={{ textTransform: 'capitalize' }} /></TableCell>
+                <TableCell><Typography fontSize={13}>{en.share_percentage}%</Typography></TableCell>
+                <TableCell><Typography fontWeight={700} fontSize={13}>{fmtMoney(en.amount, 'INR')}</Typography></TableCell>
+                <TableCell><Chip label={en.status} size="small" color={en.status === 'paid' ? 'success' : 'default'} /></TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Paper>
+
+      {dist.status === 'draft' && (
+        <>
+          <Typography fontSize={13} fontWeight={700} sx={{ mb: 1 }}>Add a payout entry</Typography>
+          <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap alignItems="center" sx={{ mb: 3 }}>
+            <TextField select size="small" label="Recipient Type" value={recipientType}
+              onChange={e => setRecipientType(e.target.value)} sx={{ width: 150 }}>
+              {RECIPIENT_TYPES.map(t => <MenuItem key={t} value={t} sx={{ textTransform: 'capitalize' }}>{t}</MenuItem>)}
+            </TextField>
+            <TextField size="small" label="Share %" type="number" value={sharePct} onChange={e => setSharePct(e.target.value)} sx={{ width: 100 }} />
+            <TextField size="small" label="Amount (₹)" type="number" value={entryAmount} onChange={e => setEntryAmount(e.target.value)} sx={{ width: 130 }} />
+            <Button variant="outlined" size="small" disabled={saving || !sharePct || !entryAmount} onClick={addEntry}>
+              Add Entry
+            </Button>
+          </Stack>
+          <Button variant="contained" size="small" disabled={dist.entries.length === 0} onClick={approve}>
+            Approve Distribution
+          </Button>
+        </>
+      )}
+      {dist.status === 'approved' && (
+        <Button variant="contained" size="small" color="success" onClick={markDistributed}>
+          Mark as Fully Distributed
+        </Button>
+      )}
     </>
   );
 }
@@ -371,7 +790,7 @@ export function EventDetails({ token, id: eventId }: { token?: string | null; id
 
   return (
     <Box component="main">
-      <Box sx={{ bgcolor: '#fff', borderBottom: '1px solid', borderColor: 'divider', px: 3, pt: 3 }}>
+      <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', px: 3, pt: 3 }}>
         <Container maxWidth="lg">
           <Button size="small" startIcon={<ArrowBackIcon />} sx={{ mb: 1 }}
             onClick={() => { window.location.href = '/manage'; }}>
@@ -417,43 +836,9 @@ export function EventDetails({ token, id: eventId }: { token?: string | null; id
             {tab === 0 && <PurchasesTab registrations={registrations} />}
             {tab === 1 && <AttendanceTab tickets={tickets} />}
             {tab === 2 && <ComplimentaryTab entries={comps} eventId={eventId} />}
-            {tab === 3 && (
-              <MockPreviewTab
-                icon={<ReceiptIcon sx={{ color: '#10b981', fontSize: 28 }} />}
-                title="Finance & Expenses"
-                description="Track expenses and sponsorship income for this event."
-                columns={['Description', 'Category', 'Amount']}
-                rows={[
-                  ['Cricket set and badminton nets', 'equipment', '₹6,000'],
-                  ['Medals and trophies for all categories', 'other', '₹4,500'],
-                  ['Refreshments for participants', 'catering', '₹3,800'],
-                ]}
-              />
-            )}
-            {tab === 4 && (
-              <MockPreviewTab
-                icon={<StorefrontIcon sx={{ color: '#f59e0b', fontSize: 28 }} />}
-                title="Vendor Management"
-                description="Vendors and stalls invited to sell at this event."
-                columns={['Vendor', 'Category', 'Stall', 'Status']}
-                rows={[
-                  ['Sunrise Snacks', 'food', 'A1', 'confirmed'],
-                  ['Chai Point Kiosk', 'beverages', 'A2', 'invited'],
-                ]}
-              />
-            )}
-            {tab === 5 && (
-              <MockPreviewTab
-                icon={<AccountBalanceIcon sx={{ color: '#ec4899', fontSize: 28 }} />}
-                title="Revenue Distribution"
-                description="How this event's net revenue pool is split among sponsors, organizers, and the society."
-                columns={['Recipient', 'Type', 'Share', 'Amount']}
-                rows={[
-                  ['Community Welfare Foundation', 'sponsor', '25%', '₹1,725'],
-                  ['GM Global Techies Town', 'society', '75%', '₹5,175'],
-                ]}
-              />
-            )}
+            {tab === 3 && <FinanceTab eventId={eventId} token={token} />}
+            {tab === 4 && <VendorsTab eventId={eventId} token={token} />}
+            {tab === 5 && <RevenueTab eventId={eventId} token={token} />}
           </>
         )}
       </Container>

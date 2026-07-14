@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.openapi.docs import get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
+from fastapi.openapi.docs import get_swagger_ui_oauth2_redirect_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,7 +13,8 @@ from app.config import settings
 from app.database import close_pool, get_pool, wait_for_db
 from app.middleware.splunk import SplunkLoggingMiddleware
 from app.reconciliation import inbox as reconciliation_inbox
-from app.routes import audit, payments, reconciliation, refunds, registry, settings as recon_settings, testing
+from app.routes import audit, funds, payments, reconciliation, refunds, registry, settings as recon_settings, sponsors, testing
+from app.swagger_theme import themed_swagger_ui_html
 
 _OPENAPI_URL     = "openapi.json"
 _OAUTH2_REDIRECT = "/docs/oauth2-redirect"
@@ -47,7 +48,7 @@ async def oauth2_redirect() -> HTMLResponse:
 
 @app.get("/docs", include_in_schema=False)
 async def swagger_ui() -> HTMLResponse:
-    return get_swagger_ui_html(
+    return themed_swagger_ui_html(
         openapi_url=_OPENAPI_URL,
         title="Payment & Reconciliation Service",
         oauth2_redirect_url=_OAUTH2_REDIRECT,
@@ -76,6 +77,8 @@ app.include_router(reconciliation.router,  prefix="/reconciliation",  tags=["rec
 app.include_router(registry.router,        prefix="/registry",        tags=["registry"])
 app.include_router(audit.router,           prefix="/audit",           tags=["audit"])
 app.include_router(recon_settings.router,  prefix="/recon-settings",  tags=["reconciliation-settings"])
+app.include_router(funds.router,           prefix="/funds",           tags=["funds"])
+app.include_router(sponsors.router,        prefix="/sponsors",        tags=["sponsors"])
 
 if settings.is_testing:
     app.include_router(testing.router, prefix="/test", tags=["testing"])

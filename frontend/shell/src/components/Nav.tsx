@@ -11,6 +11,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import { NotificationBell } from './NotificationBell';
 import { UserMenu } from './UserMenu';
+import { ThemeToggle } from './ThemeToggle';
 import { useAuth } from '../contexts/AuthContext';
 import { useSociety } from '../contexts/SocietyContext';
 import { NAV_BG } from '../theme';
@@ -80,7 +81,7 @@ export function Nav() {
             disableRipple
             sx={{ color: '#fff', fontWeight: 700, fontSize: 15, gap: 1, mr: 1, flexShrink: 0, '&:hover': { background: 'none' } }}
           >
-            <span style={{ fontSize: 20 }}>🏛</span>
+            <span style={{ fontSize: 20, fontWeight: 400 }}>🏛</span>
             <Box component="span" sx={{ display: { xs: 'none', sm: 'block' } }}>{name}</Box>
             <Box component="span" sx={{ display: { xs: 'block', sm: 'none' } }}>{shortName}</Box>
           </Button>
@@ -132,6 +133,8 @@ export function Nav() {
           )}
 
           <Box sx={{ flex: 1 }} />
+
+          <ThemeToggle />
 
           {/* Guest: Sign In + Register buttons */}
           {isGuest ? (

@@ -9,15 +9,16 @@ import aiofiles
 import qrcode
 import qrcode.image.svg
 from dateutil import parser as dateutil_parser
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from app import reconciliation_client
 from app.adapters.factory import get_processor
-from app.auth import require_role
+from app.auth import _has_event_access, get_current_claims, require_role
 from app.config import settings
 from app.database import get_pool
 from app.models import RefundCompleteBody, TransactionOut
+from app.notifications import notify_refund_processed, send_channels
 
 router = APIRouter()
 
@@ -123,6 +124,7 @@ async def get_refund_qr(
                       "auto-completes the refund on a CONFIRMED verdict (admin/committee)")
 async def verify_refund_screenshot(
     txn_ref: str,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="Screenshot of the outgoing refund UPI transfer"),
     search_days: int = Form(default=3, ge=1, le=14, description="How many days back to search the mailbox"),
     manual_upi_ref: Optional[str] = Form(default=None, description="Manual UTR/RRN override if AI extraction fails"),
@@ -132,16 +134,19 @@ async def verify_refund_screenshot(
         description="Refund transfer date/time as reviewed by the admin (free text, e.g. "
                     "'08 Jul 2026, 9:01 PM') — sanity-checked against the original purchase date",
     ),
-    claims: dict = Depends(require_role("admin", "committee_member")),
+    claims: dict = Depends(get_current_claims),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT status, reconciliation_txn_id, created_at FROM payment_transaction WHERE txn_ref = $1",
+            "SELECT status, reconciliation_txn_id, created_at, event_id::text AS event_id "
+            "FROM payment_transaction WHERE txn_ref = $1",
             txn_ref,
         )
-    if not row:
-        raise HTTPException(status_code=404, detail="Refund task not found")
+        if not row:
+            raise HTTPException(status_code=404, detail="Refund task not found")
+        if not await _has_event_access(conn, claims.get("sub"), row["event_id"]):
+            raise HTTPException(status_code=403, detail="You don't have access to this event")
     if row["status"] != "refund_requested":
         raise HTTPException(status_code=400, detail=f"Not awaiting refund (current status: {row['status']})")
     if not row["reconciliation_txn_id"]:
@@ -213,6 +218,12 @@ async def verify_refund_screenshot(
             await processor.process_refund(txn_ref, refund_ref)
             result["local_status"] = "refunded"
 
+            pool = await get_pool()
+            async with pool.acquire() as conn:
+                recipients, notify_message = await notify_refund_processed(conn, txn_ref, claims.get("sub"))
+            if recipients:
+                background_tasks.add_task(send_channels, recipients, notify_message)
+
     return result
 
 
@@ -223,7 +234,25 @@ async def verify_refund_screenshot(
 async def complete_refund(
     txn_ref: str,
     body: RefundCompleteBody,
-    claims: dict = Depends(require_role("admin", "committee_member")),
+    background_tasks: BackgroundTasks,
+    claims: dict = Depends(get_current_claims),
 ):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        event_id = await conn.fetchval(
+            "SELECT event_id::text FROM payment_transaction WHERE txn_ref = $1", txn_ref
+        )
+        if not event_id:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        if not await _has_event_access(conn, claims.get("sub"), event_id):
+            raise HTTPException(status_code=403, detail="You don't have access to this event")
+
     processor = get_processor()
-    return await processor.process_refund(txn_ref, body.refund_utr)
+    result = await processor.process_refund(txn_ref, body.refund_utr)
+
+    async with pool.acquire() as conn:
+        recipients, notify_message = await notify_refund_processed(conn, txn_ref, claims.get("sub"))
+    if recipients:
+        background_tasks.add_task(send_channels, recipients, notify_message)
+
+    return result

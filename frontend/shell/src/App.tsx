@@ -1,22 +1,22 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { Alert, Box, Button, Typography } from '@mui/material';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SocietyProvider, useSociety } from './contexts/SocietyContext';
 import { UserServiceProvider } from './contexts/UserServiceContext';
+import { ThemeModeProvider, useThemeMode } from './contexts/ThemeModeContext';
 import { Nav } from './components/Nav';
 import { Footer } from './components/Footer';
 import { Home } from './pages/Home';
 import { Landing } from './pages/Landing';
 import { ForgotPassword } from './pages/ForgotPassword';
-import { MobileLogin } from './pages/MobileLogin';
-import { PhoneRegister } from './pages/PhoneRegister';
+import { PhoneLogin } from './pages/PhoneLogin';
 import { PendingApproval } from './pages/PendingApproval';
 import { Profile } from './pages/Profile';
 import { SecurityScanner } from './pages/SecurityScanner';
 import { EntryLog } from './pages/EntryLog';
-import { theme } from './theme';
+import { getTheme } from './theme';
 
 type RemoteModule = Record<string, unknown> & {
   default?: unknown;
@@ -42,6 +42,7 @@ interface EventsAppProps {
 
 interface SponsorAppProps {
   firstName?: string;
+  token?: string | null;
 }
 
 interface BookingAppProps {
@@ -275,10 +276,10 @@ function ProtectedRoute({
 
 // ── Wrappers ──────────────────────────────────────────────────────────────────
 function SponsorWrapper() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   return (
     <React.Suspense fallback={<MfeFallback label="Sponsor Portal" />}>
-      <RemoteSponsorApp firstName={user?.name.split(' ')[0]} />
+      <RemoteSponsorApp firstName={user?.name.split(' ')[0]} token={token} />
     </React.Suspense>
   );
 }
@@ -326,8 +327,7 @@ function AppShell() {
       <BrowserRouter>
         <Routes>
           <Route path="/forgot-password"  element={<ForgotPassword />} />
-          <Route path="/mobile-login"     element={<MobileLogin />} />
-          <Route path="/phone-register"   element={<PhoneRegister />} />
+          <Route path="/phone-login"      element={<PhoneLogin />} />
           <Route path="*" element={
             <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
               <Nav />
@@ -414,7 +414,10 @@ function AppShell() {
   );
 }
 
-export default function App() {
+function ThemedApp() {
+  const { resolvedMode } = useThemeMode();
+  const theme = useMemo(() => getTheme(resolvedMode), [resolvedMode]);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -426,5 +429,13 @@ export default function App() {
         </UserServiceProvider>
       </AuthProvider>
     </ThemeProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeModeProvider>
+      <ThemedApp />
+    </ThemeModeProvider>
   );
 }

@@ -156,7 +156,7 @@ export function Home() {
       </Box>
 
       {/* More services on the way */}
-      <Box sx={{ py: 6, px: { xs: 2, sm: 3 }, bgcolor: '#f8fafc', borderTop: '1px solid', borderColor: 'divider' }}>
+      <Box sx={{ py: 6, px: { xs: 2, sm: 3 }, bgcolor: 'background.default', borderTop: '1px solid', borderColor: 'divider' }}>
         <Container maxWidth="lg">
           <Typography variant="h6" fontWeight={700} sx={{ mb: 0.5 }}>
             More is on the way for {name}

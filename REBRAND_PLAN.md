@@ -83,7 +83,6 @@ the Progress Log at the bottom each session so we can pick back up cleanly.
 Explicitly **out of frontend-only scope** — only do these if the rebrand is later extended
 beyond the frontend. Listed here so the rebrand doesn't feel inconsistent once shipped.
 
-- [ ] `services/otp/app/config.py:24` — `society_name` default is `"Society Events"`, inconsistent with `services/registration` and `services/user`, which default to the tenant name — leaks into SMS text as a fallback
 - [ ] pgAdmin login banner — `PGADMIN_CONFIG_LOGIN_BANNER` in `docker-compose.yml` — "Society Events — DB Admin"
 - [ ] Keycloak realm display name/theme in `~/auth-service` (separate repo) — the actual first screen a user sees on login, before this app even loads
 

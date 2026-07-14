@@ -1,16 +1,74 @@
-import React from 'react';
-import { Box, Button, Container, Paper, Step, StepLabel, Stepper, Typography } from '@mui/material';
+import React, { useState } from 'react';
+import { Alert, Box, Button, CircularProgress, Container, Paper, Step, StepLabel, Stepper, Typography } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import HourglassTopIcon from '@mui/icons-material/HourglassTop';
 import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useAuth } from '../contexts/AuthContext';
+import { useUserService } from '../contexts/UserServiceContext';
+import { PhoneInputField } from '../components/PhoneInputField';
+import { ProfileAvatar } from '../components/ProfileAvatar';
 
 const STEPS = [
   { label: 'Registered', icon: <CheckCircleIcon />, done: true },
   { label: 'Admin Review', icon: <HourglassTopIcon />, done: false },
   { label: 'Access Granted', icon: <VerifiedUserIcon />, done: false },
 ];
+
+// ── Optional phone capture — committee may use it to reach out during review ───
+function PhonePrompt() {
+  const { dbUser, updateProfile } = useUserService();
+  const [phone,  setPhone]  = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved,  setSaved]  = useState(false);
+  const [error,  setError]  = useState<string | null>(null);
+
+  if (dbUser?.phone || saved) {
+    return (
+      <Alert severity="success" icon={<CheckCircleIcon />} sx={{ mb: 4, textAlign: 'left' }}>
+        Phone number on file: <strong>{dbUser?.phone ?? phone}</strong>
+      </Alert>
+    );
+  }
+
+  const handleSave = async () => {
+    if (!phone) return;
+    setError(null);
+    setSaving(true);
+    try {
+      await updateProfile({ phone });
+      setSaved(true);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not save phone number');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Box sx={{ bgcolor: 'action.hover', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, mb: 4, textAlign: 'left' }}>
+      <Typography fontSize={12} color="text.secondary" fontWeight={600} textTransform="uppercase" letterSpacing={0.6} mb={1.5}>
+        Add a phone number (optional)
+      </Typography>
+      <Typography fontSize={12} color="text.secondary" mb={1.5}>
+        Helps the committee reach you during review.
+      </Typography>
+      {error && <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => setError(null)}>{error}</Alert>}
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+        <PhoneInputField value={phone} onChange={setPhone} size="small" />
+        <Button
+          variant="contained"
+          onClick={handleSave}
+          disabled={!phone || saving}
+          startIcon={saving ? <CircularProgress size={14} color="inherit" /> : null}
+          sx={{ fontWeight: 700, mt: 0.25, flexShrink: 0 }}
+        >
+          Save
+        </Button>
+      </Box>
+    </Box>
+  );
+}
 
 export function PendingApproval() {
   const { user, logout } = useAuth();
@@ -30,7 +88,9 @@ export function PendingApproval() {
       <Container maxWidth="sm">
         <Paper variant="outlined" sx={{ p: { xs: 3, md: 5 }, borderRadius: 2, textAlign: 'center' }}>
 
-          <Typography fontSize={56} lineHeight={1} mb={2}>⏳</Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+            <ProfileAvatar size={72} />
+          </Box>
 
           <Typography variant="h5" fontWeight={700} mb={1}>
             Almost there, {firstName}!
@@ -50,7 +110,7 @@ export function PendingApproval() {
           </Stepper>
 
           {/* User details box */}
-          <Box sx={{ bgcolor: 'grey.50', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, mb: 4, textAlign: 'left' }}>
+          <Box sx={{ bgcolor: 'action.hover', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2, mb: 4, textAlign: 'left' }}>
             <Typography fontSize={12} color="text.secondary" fontWeight={600} textTransform="uppercase" letterSpacing={0.6} mb={1}>
               Your Registration Details
             </Typography>
@@ -61,6 +121,8 @@ export function PendingApproval() {
               </Box>
             ))}
           </Box>
+
+          <PhonePrompt />
 
           <Typography fontSize={13} color="text.secondary" mb={3}>
             You'll receive an email at <strong>{user?.email}</strong> once your account is activated.

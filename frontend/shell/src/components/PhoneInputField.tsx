@@ -11,11 +11,13 @@
  *   UK     (+44)  →  +44-7911-123456
  *   UAE    (+971) →  +971-50-123-4567
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Box, FormControl, InputLabel, MenuItem,
-  Select, TextField, Typography,
+  Box, InputAdornment, List, ListItemButton, Popover, TextField, Typography,
 } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import type { SxProps, Theme } from '@mui/material/styles';
 
 // ── Country registry ──────────────────────────────────────────────────────────
 
@@ -90,6 +92,11 @@ interface Props {
   helperText?: string;
   error?: boolean;
   disabled?: boolean;
+  autoFocus?: boolean;
+  /** Cascades to the country Select and the number TextField, e.g. for a dark-card auth page. */
+  sx?: SxProps<Theme>;
+  /** Rendered inside the number field's end adornment, e.g. a "Verified" chip. */
+  endAdornment?: React.ReactNode;
 }
 
 export function PhoneInputField({
@@ -101,11 +108,36 @@ export function PhoneInputField({
   helperText,
   error,
   disabled,
+  autoFocus,
+  sx,
+  endAdornment,
 }: Props) {
   const defaultCountry = COUNTRIES[0]; // India
 
   const [country,    setCountry]    = useState<Country>(defaultCountry);
   const [localInput, setLocalInput] = useState('');  // formatted display string
+
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const [search,   setSearch]   = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  const open = Boolean(anchorEl);
+
+  const filteredCountries = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return COUNTRIES;
+    return COUNTRIES.filter((c) =>
+      c.name.toLowerCase().includes(q)
+      || c.code.toLowerCase().includes(q)
+      || c.dial.replace('+', '').includes(q.replace('+', ''))
+    );
+  }, [search]);
+
+  const openPicker = (e: React.MouseEvent<HTMLElement>) => {
+    if (disabled) return;
+    setAnchorEl(e.currentTarget);
+    setSearch('');
+  };
+  const closePicker = () => setAnchorEl(null);
 
   // Sync from external E.164 value (e.g. loaded from DB)
   useEffect(() => {
@@ -131,6 +163,7 @@ export function PhoneInputField({
     // Emit E.164
     if (digits) onChange(`${c.dial}${digits}`);
     else onChange('');
+    closePicker();
   };
 
   const handleNumberChange = (raw: string) => {
@@ -152,40 +185,75 @@ export function PhoneInputField({
   const placeholder = applyMask('X'.repeat(country.digits).replace(/X/g, '0'), country.mask);
 
   return (
-    <Box sx={{ display: 'flex', gap: 1 }}>
-      {/* Country selector */}
-      <FormControl size={size} sx={{ minWidth: 100 }} disabled={disabled}>
-        <InputLabel>{' '}</InputLabel>
-        <Select
-          value={country.code}
-          onChange={(e) => handleCountryChange(e.target.value)}
-          renderValue={(code) => {
-            const c = COUNTRIES.find((x) => x.code === code) ?? defaultCountry;
-            return (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <Typography fontSize={18} lineHeight={1}>{c.flag}</Typography>
-                <Typography fontSize={13} fontWeight={600} color="text.secondary">
-                  {c.dial}
-                </Typography>
-              </Box>
-            );
-          }}
-          label=" "
-          sx={{ '& .MuiSelect-select': { py: size === 'small' ? '8.5px' : '14px' } }}
-        >
-          {COUNTRIES.map((c) => (
-            <MenuItem key={c.code} value={c.code}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Typography fontSize={18}>{c.flag}</Typography>
-                <Box>
-                  <Typography fontSize={13} fontWeight={600}>{c.name}</Typography>
-                  <Typography fontSize={11} color="text.secondary">{c.dial}</Typography>
-                </Box>
-              </Box>
-            </MenuItem>
+    <Box sx={{ display: 'flex', gap: 1, ...sx }}>
+      {/* Country selector — a real TextField (not a plain styled Box) so that
+          callers overriding `sx` with dark-theme selectors targeting
+          `.MuiOutlinedInput-root` / `.MuiInputLabel-root` (e.g. PhoneLogin's
+          darkFieldSx) still theme it consistently with the number field. */}
+      <TextField
+        label=" "
+        size={size}
+        disabled={disabled}
+        value={country.dial}
+        onClick={openPicker}
+        sx={{ minWidth: 108, '& .MuiInputBase-input': { cursor: disabled ? 'default' : 'pointer', fontWeight: 600 } }}
+        InputProps={{
+          readOnly: true,
+          startAdornment: (
+            <InputAdornment position="start">
+              <Typography fontSize={18} lineHeight={1}>{country.flag}</Typography>
+            </InputAdornment>
+          ),
+          endAdornment: <ArrowDropDownIcon fontSize="small" sx={{ color: 'text.secondary' }} />,
+        }}
+        inputProps={{ 'aria-label': 'Country code', readOnly: true }}
+      />
+
+      <Popover
+        open={open}
+        anchorEl={anchorEl}
+        onClose={closePicker}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        TransitionProps={{ onEntered: () => searchRef.current?.focus() }}
+      >
+        <Box sx={{ p: 1, width: 260 }}>
+          <TextField
+            inputRef={searchRef}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search country or code"
+            size="small"
+            fullWidth
+            autoFocus
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Box>
+        <List sx={{ maxHeight: 320, overflowY: 'auto', pt: 0 }}>
+          {filteredCountries.length === 0 && (
+            <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 1 }}>
+              No countries match "{search}"
+            </Typography>
+          )}
+          {filteredCountries.map((c) => (
+            <ListItemButton
+              key={c.code}
+              selected={c.code === country.code}
+              onClick={() => handleCountryChange(c.code)}
+              sx={{ gap: 1.5 }}
+            >
+              <Typography fontSize={18} lineHeight={1}>{c.flag}</Typography>
+              <Typography fontSize={13} fontWeight={600} sx={{ flexGrow: 1 }}>{c.name}</Typography>
+              <Typography fontSize={12} color="text.secondary">{c.dial}</Typography>
+            </ListItemButton>
           ))}
-        </Select>
-      </FormControl>
+        </List>
+      </Popover>
 
       {/* Number input */}
       <TextField
@@ -196,10 +264,14 @@ export function PhoneInputField({
         fullWidth
         size={size}
         required={required}
+        autoFocus={autoFocus}
         helperText={helperText ?? `Stored as ${country.dial}${localInput.replace(/\D/g, '') || 'XXXXXXXXXX'}`}
         error={error}
         disabled={disabled}
         inputProps={{ inputMode: 'tel' }}
+        InputProps={endAdornment ? {
+          endAdornment: <InputAdornment position="end">{endAdornment}</InputAdornment>,
+        } : undefined}
       />
     </Box>
   );

@@ -5,7 +5,7 @@ import uuid
 from typing import Optional
 
 import aiofiles
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from app import reconciliation_client
@@ -14,6 +14,7 @@ from app.auth import get_current_claims, require_role
 from app.config import settings
 from app.database import get_pool
 from app.models import InitiateBody, TransactionOut, VerifyBody
+from app.notifications import resolve_and_record, send_channels
 
 
 class ApproveBody(BaseModel):
@@ -233,6 +234,7 @@ async def parse_screenshot(
 @router.post("/verify-screenshot", response_model=dict,
              summary="Submit a payment screenshot for verification against the bank email")
 async def verify_screenshot(
+    background_tasks: BackgroundTasks,
     event_id: str = Form(...),
     registration_id: str = Form(...),
     file: UploadFile = File(...),
@@ -262,7 +264,7 @@ async def verify_screenshot(
             event_id,
         )
         reg = await conn.fetchrow(
-            "SELECT total_amount, price_currency FROM registration r "
+            "SELECT total_amount, price_currency, e.title AS event_title FROM registration r "
             "JOIN event e ON e.id = r.event_id WHERE r.id = $1::uuid",
             registration_id,
         )
@@ -280,7 +282,7 @@ async def verify_screenshot(
         idempotency_key = f"reconciliation-screenshot:{registration_id}"
         txn_ref = "TXN" + secrets.token_hex(8).upper()
 
-        await conn.execute(
+        txn_row = await conn.fetchrow(
             """
             INSERT INTO payment_transaction
                 (txn_ref, event_id, registration_id, user_id, amount, currency,
@@ -292,11 +294,26 @@ async def verify_screenshot(
                 payment_utr = EXCLUDED.payment_utr, screenshot_path = EXCLUDED.screenshot_path,
                 reconciliation_txn_id = EXCLUDED.reconciliation_txn_id, updated_at = now()
             WHERE payment_transaction.status = 'pending'
+            RETURNING id, (xmax = 0) AS inserted
             """,
             txn_ref, event_id, registration_id, user_id, amount, currency,
             collector["upi_id"] if collector else None, payer_upi, manual_upi_ref,
             screenshot_path, txn_id, idempotency_key,
         )
+
+        # Only notify on a genuine fresh submission — xmax=0 means the INSERT
+        # landed, not the ON CONFLICT DO UPDATE path (a retry/re-upload of the
+        # same registration would otherwise double-notify organizers).
+        recipients: list[dict] = []
+        message = f"A resident submitted a payment screenshot for \"{reg['event_title'] if reg else 'an event'}\" — please review."
+        if txn_row and txn_row["inserted"]:
+            recipients = await resolve_and_record(
+                conn, event_id, user_id, "payment_verification_requested",
+                "Payment verification requested", message, related_id=str(txn_row["id"]),
+            )
+
+    if recipients:
+        background_tasks.add_task(send_channels, recipients, message)
 
     return await reconciliation_client.verify_screenshot(
         content, file.filename or "screenshot", file.content_type or "image/jpeg",

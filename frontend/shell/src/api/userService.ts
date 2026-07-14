@@ -23,6 +23,26 @@ async function apiFetch<T>(path: string, token: string, options?: RequestInit): 
   return res.json() as Promise<T>;
 }
 
+// No explicit Content-Type here — the browser sets the multipart boundary itself
+// when the body is a FormData instance; setting it manually would drop the boundary.
+async function apiFetchForm<T>(path: string, token: string, formData: FormData, method = 'POST'): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { detail?: string }).detail ?? `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+/** Build a browsable URL for a relative avatar path stored on users.avatar_url. */
+export function avatarUrl(path: string | null | undefined): string | undefined {
+  return path ? `${BASE}/uploads/${path}` : undefined;
+}
+
 export interface ApartmentBrief {
   id: string;
   block: string;
@@ -40,6 +60,9 @@ export interface DbUser {
   name: string;
   email: string;
   phone: string | null;
+  avatar_url: string | null;
+  email_verified: boolean;
+  phone_verified: boolean;
   role: string;
   keycloak_sub: string;
   identity_provider: string;
@@ -47,6 +70,53 @@ export interface DbUser {
   created_at: string;
   structure_node_id?: string | null;
   unit_node_ids: string[];
+}
+
+export type OtpChannel = 'telegram' | 'sms';
+
+export interface TelegramLinkStatusResponse {
+  linked: boolean;
+  deep_link: string | null;
+}
+
+export interface PhoneVerifyRequestResponse {
+  ok: boolean;
+  request_id: string | null;
+  expires_in: number | null;
+  sent_via: string | null;
+  error: string | null;
+  retry_after: number | null;
+}
+
+export interface PhoneVerifyConfirmResponse {
+  verified: boolean;
+  status: string;
+  attempts_remaining: number | null;
+  user: DbUser | null;
+}
+
+export interface PhoneLoginRequestResponse {
+  ok: boolean;
+  request_id: string | null;
+  expires_in: number | null;
+  sent_via: string | null;
+  error: string | null;
+  retry_after: number | null;
+}
+
+export interface PhoneLoginVerifyResponse {
+  verified: boolean;
+  status: string;
+  attempts_remaining: number | null;
+  access_token: string | null;
+  expires_in: number | null;
+  session_token: string | null;
+  session_expires_in: number | null;
+}
+
+export interface PhoneLoginRefreshResponse {
+  access_token: string;
+  expires_in: number;
 }
 
 export interface StructureNode {
@@ -77,7 +147,24 @@ export interface UserListResponse {
   items: DbUser[];
 }
 
-async function publicPost(path: string, body: unknown): Promise<void> {
+export interface LeaveRequest {
+  id: string;
+  user_id: string | null;
+  user_name: string;
+  user_email: string | null;
+  reason: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'revoked' | 'completed';
+  requested_at: string;
+  reviewed_by: string | null;
+  reviewed_by_name: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  completed_at: string | null;
+  has_pending_payment: boolean;
+  blockers: string[];
+}
+
+async function publicPost<T = void>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -87,6 +174,19 @@ async function publicPost(path: string, body: unknown): Promise<void> {
     const data = await res.json().catch(() => ({}));
     throw new Error((data as { detail?: string }).detail ?? `HTTP ${res.status}`);
   }
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+    return undefined as T;
+  }
+  return res.json() as Promise<T>;
+}
+
+async function publicGet<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { detail?: string }).detail ?? `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<T>;
 }
 
 export interface NotificationItem {
@@ -120,6 +220,54 @@ export const userService = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
+
+  uploadAvatar: (token: string, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return apiFetchForm<DbUser>('/users/me/avatar', token, fd, 'POST');
+  },
+
+  removeAvatar: (token: string) =>
+    apiFetch<DbUser>('/users/me/avatar', token, { method: 'DELETE' }),
+
+  verifyEmail: {
+    send: (token: string) =>
+      apiFetch<void>('/users/me/verify-email/send', token, { method: 'POST' }),
+    check: (token: string) =>
+      apiFetch<DbUser>('/users/me/verify-email/check', token, { method: 'POST' }),
+  },
+
+  verifyPhone: {
+    request: (token: string, channel?: OtpChannel) =>
+      apiFetch<PhoneVerifyRequestResponse>('/users/me/phone/verify/request', token, {
+        method: 'POST',
+        body: JSON.stringify({ channel: channel ?? null }),
+      }),
+    confirm: (token: string, request_id: string, code: string) =>
+      apiFetch<PhoneVerifyConfirmResponse>('/users/me/phone/verify/confirm', token, {
+        method: 'POST',
+        body: JSON.stringify({ request_id, code }),
+      }),
+  },
+
+  // Phone-number login for already-registered, already phone-verified users
+  // only — no bearer token exists yet, so these go through publicPost.
+  phoneLogin: {
+    request: (phone: string, channel?: OtpChannel) =>
+      publicPost<PhoneLoginRequestResponse>('/users/auth/phone-login/request', { phone, channel: channel ?? null }),
+    verify: (request_id: string, code: string) =>
+      publicPost<PhoneLoginVerifyResponse>('/users/auth/phone-login/verify', { request_id, code }),
+    refresh: (session_token: string) =>
+      publicPost<PhoneLoginRefreshResponse>('/users/auth/phone-login/refresh', { session_token }),
+    logout: (session_token: string) =>
+      publicPost('/users/auth/phone-login/logout', { session_token }),
+  },
+
+  // Unauthenticated — same trust level as a phone number, not a secret.
+  telegram: {
+    linkStatus: (phone: string) =>
+      publicGet<TelegramLinkStatusResponse>(`/users/telegram/link-status?phone=${encodeURIComponent(phone)}`),
+  },
 
   addApartment: (token: string, apartment_id: string) =>
     apiFetch<DbUser>('/users/me/apartments', token, {
@@ -210,5 +358,20 @@ export const userService = {
       }),
     remove: (token: string, userId: string, node_id: string) =>
       apiFetch<void>(`/building/users/${userId}/units/${node_id}`, token, { method: 'DELETE' }),
+  },
+
+  /** Self-service leave-society request lifecycle */
+  leaveRequests: {
+    create: (token: string, reason?: string) =>
+      apiFetch<LeaveRequest>('/leave-requests', token, {
+        method: 'POST',
+        body: JSON.stringify({ reason: reason ?? null }),
+      }),
+    mine: (token: string) =>
+      apiFetch<LeaveRequest | null>('/leave-requests/me', token),
+    activityExport: (token: string, id: string) =>
+      apiFetch<Record<string, unknown>>(`/leave-requests/${id}/activity-export`, token),
+    confirm: (token: string, id: string) =>
+      apiFetch<{ status: string }>(`/leave-requests/${id}/confirm`, token, { method: 'POST' }),
   },
 };

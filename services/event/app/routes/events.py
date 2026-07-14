@@ -2,12 +2,13 @@ import json
 import math
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from app.auth import get_current_claims, get_optional_claims, require_role
+from app.auth import _has_event_access, get_current_claims, get_optional_claims, require_event_access, require_role, require_role_or_organizer
 from app.config import settings
 from app.database import get_pool
 from app.models import (
     AnnouncementCreate, AnnouncementOut,
     EventCreate, EventDetail, EventListItem, EventListResponse, EventUpdate,
+    EventPermissionGrant, EventPermissionOut,
     TicketTypeOut, TicketTypeCreate, TicketTypeUpdate,
 )
 
@@ -86,10 +87,11 @@ async def list_events(
     limit:       int            = Query(9,  ge=1, le=50),
     search:      Optional[str]  = Query(None),
     category_id: Optional[str]  = Query(None),
-    status:      Optional[str]  = Query("published"),
+    status:      Optional[str]  = Query(None),
     is_free:     Optional[bool] = Query(None),
     sort:        str            = Query("date_asc"),
-    _claims:     Optional[dict] = Depends(get_optional_claims),
+    mine:        bool           = Query(False, description="Only events organized by the caller, any status"),
+    claims:      Optional[dict] = Depends(get_optional_claims),
 ):
     order_map = {
         "date_asc":   "e.start_time ASC",
@@ -102,6 +104,29 @@ async def list_events(
     order_clause = order_map.get(sort, "e.start_time ASC")
     offset = (page - 1) * limit
 
+    if status is None and not mine:
+        status = "published"
+
+    pool = await get_pool()
+
+    # Resolve the caller's internal user id once — used both for `mine=true` and, below, to
+    # let a draft's organizer/approved members still see it in the general listing while
+    # everyone else can't (drafts aren't "published to everyone" yet, per the isolation model).
+    caller_user_id: Optional[str] = None
+    if claims:
+        async with pool.acquire() as conn:
+            caller = await conn.fetchrow("SELECT id FROM users WHERE keycloak_sub = $1", claims.get("sub"))
+        if caller:
+            caller_user_id = str(caller["id"])
+
+    organizer_user_id: Optional[str] = None
+    if mine:
+        if not claims:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        if not caller_user_id:
+            raise HTTPException(status_code=404, detail="User record not found")
+        organizer_user_id = caller_user_id
+
     conditions = ["e.society_id = $1"]
     params: list = [_SOCIETY]
     idx = 2
@@ -110,6 +135,25 @@ async def list_events(
         conditions.append(f"e.status = ${idx}")
         params.append(status)
         idx += 1
+
+    if organizer_user_id:
+        conditions.append(f"e.organizer_id = ${idx}::uuid")
+        params.append(organizer_user_id)
+        idx += 1
+    elif not mine:
+        # Hide draft events from everyone except their organizer/approved members —
+        # only "mine=true" (handled above) or organizer/approved-member access reveals a draft.
+        if caller_user_id:
+            conditions.append(
+                f"(e.status != 'draft' OR e.organizer_id = ${idx}::uuid OR EXISTS ("
+                f"  SELECT 1 FROM event_permission ep "
+                f"  WHERE ep.event_id = e.id AND ep.user_id = ${idx}::uuid AND ep.revoked_at IS NULL"
+                f"))"
+            )
+            params.append(caller_user_id)
+            idx += 1
+        else:
+            conditions.append("e.status != 'draft'")
 
     if search:
         conditions.append(f"(e.title ILIKE ${idx} OR e.title % ${idx})")
@@ -148,7 +192,6 @@ async def list_events(
     )
     params_page = params + [limit, offset]
 
-    pool = await get_pool()
     async with pool.acquire() as conn:
         total = await conn.fetchval(count_sql, *params)
         rows  = await conn.fetch(data_sql, *params_page)
@@ -169,7 +212,7 @@ async def list_events(
 @router.get("/{event_id}", response_model=EventDetail, summary="Event detail")
 async def get_event(
     event_id: str,
-    _claims:  Optional[dict] = Depends(get_optional_claims),
+    claims:   Optional[dict] = Depends(get_optional_claims),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -183,6 +226,12 @@ async def get_event(
             event_id, _SOCIETY,
         )
         if not row:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        # A draft isn't "published to everyone" yet — hide it from anyone who isn't its
+        # organizer or an approved member, same as it's hidden from the general listing.
+        # 404 (not 403) so it doesn't even reveal the draft exists.
+        if row["status"] == "draft" and not await _has_event_access(conn, claims.get("sub") if claims else None, event_id):
             raise HTTPException(status_code=404, detail="Event not found")
 
         ann_rows = await conn.fetch(
@@ -208,10 +257,10 @@ async def get_event(
 
 # ── POST /events ──────────────────────────────────────────────────────────────
 
-@router.post("", status_code=201, summary="Create event (admin/committee)")
+@router.post("", status_code=201, summary="Create event (admin/committee/resident)")
 async def create_event(
     body:   EventCreate,
-    claims: dict = Depends(require_role("admin", "committee_member")),
+    claims: dict = Depends(require_role("admin", "committee_member", "resident")),
 ):
     if body.end_time <= body.start_time:
         raise HTTPException(status_code=422, detail="end_time must be after start_time")
@@ -256,11 +305,11 @@ async def create_event(
 
 # ── PUT /events/{event_id} ────────────────────────────────────────────────────
 
-@router.put("/{event_id}", summary="Update event details (admin/committee)")
+@router.put("/{event_id}", summary="Update event details (admin/committee/organizer)")
 async def update_event(
     event_id: str,
     body:     EventUpdate,
-    claims:   dict = Depends(require_role("admin", "committee_member")),
+    claims:   dict = Depends(require_event_access()),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -315,7 +364,7 @@ async def update_event(
 @router.patch("/{event_id}/publish", summary="Publish a draft event")
 async def publish_event(
     event_id: str,
-    claims:   dict = Depends(require_role("admin", "committee_member")),
+    claims:   dict = Depends(require_event_access()),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -334,7 +383,7 @@ async def publish_event(
 @router.patch("/{event_id}/cancel", summary="Cancel a published event")
 async def cancel_event(
     event_id: str,
-    claims:   dict = Depends(require_role("admin", "committee_member")),
+    claims:   dict = Depends(require_event_access()),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -353,7 +402,7 @@ async def cancel_event(
 @router.patch("/{event_id}/complete", summary="Mark an event as completed")
 async def complete_event(
     event_id: str,
-    claims:   dict = Depends(require_role("admin", "committee_member")),
+    claims:   dict = Depends(require_event_access()),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -369,20 +418,22 @@ async def complete_event(
 
 # ── DELETE /events/{event_id} ─────────────────────────────────────────────────
 
-@router.delete("/{event_id}", status_code=204, summary="Delete a draft event")
+@router.delete("/{event_id}", status_code=204,
+               summary="Delete a draft or completed event (organizer/approved member)")
 async def delete_event(
     event_id: str,
-    claims:   dict = Depends(require_role("admin", "committee_member")),
+    claims:   dict = Depends(require_event_access()),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.execute(
             "DELETE FROM event "
-            "WHERE id=$1::uuid AND society_id=$2::uuid AND status='draft'",
+            "WHERE id=$1::uuid AND society_id=$2::uuid AND status IN ('draft', 'completed')",
             event_id, _SOCIETY,
         )
     if result == "DELETE 0":
-        raise HTTPException(status_code=409, detail="Event not found or not in draft state")
+        raise HTTPException(status_code=409,
+                             detail="Event not found or not in a deletable state (must be draft or completed)")
 
 
 # ── GET /events/{event_id}/announcements ─────────────────────────────────────
@@ -422,7 +473,7 @@ async def list_announcements(
 async def create_announcement(
     event_id: str,
     body:     AnnouncementCreate,
-    claims:   dict = Depends(require_role("admin", "committee_member")),
+    claims:   dict = Depends(require_event_access()),
 ):
     author_sub = claims.get("sub")
     pool = await get_pool()
@@ -487,7 +538,7 @@ async def list_ticket_types(
 async def create_ticket_type(
     event_id: str,
     body: TicketTypeCreate,
-    claims: dict = Depends(require_role("admin", "committee_member")),
+    claims: dict = Depends(require_event_access()),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -527,7 +578,7 @@ async def update_ticket_type(
     event_id: str,
     type_id: str,
     body: TicketTypeUpdate,
-    claims: dict = Depends(require_role("admin", "committee_member")),
+    claims: dict = Depends(require_event_access()),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -573,7 +624,7 @@ async def update_ticket_type(
 async def delete_ticket_type(
     event_id: str,
     type_id: str,
-    claims: dict = Depends(require_role("admin", "committee_member")),
+    claims: dict = Depends(require_event_access()),
 ):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -583,3 +634,80 @@ async def delete_ticket_type(
         )
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail="Ticket type not found")
+
+
+# ── Event permission (approved-member delegation) ─────────────────────────────
+# Organizer-only — approved members don't get to grant further access themselves.
+# Uses require_role_or_organizer() with no roles passed, which reduces to a pure
+# organizer check (the role-bypass list is empty, so only the organizer_id match applies).
+
+_PERMISSION_SELECT = (
+    "SELECT ep.id::text, ep.event_id::text, ep.user_id::text, "
+    "u.name AS user_name, u.email AS user_email, "
+    "ep.granted_by::text, gb.name AS granted_by_name, ep.granted_at "
+    "FROM event_permission ep "
+    "JOIN users u ON u.id = ep.user_id "
+    "JOIN users gb ON gb.id = ep.granted_by "
+)
+
+
+@router.get("/{event_id}/permissions", response_model=list[EventPermissionOut],
+            summary="List approved members for an event (organizer-only)")
+async def list_permissions(
+    event_id: str,
+    claims: dict = Depends(require_role_or_organizer()),
+):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            _PERMISSION_SELECT + "WHERE ep.event_id = $1::uuid AND ep.revoked_at IS NULL "
+            "ORDER BY ep.granted_at DESC",
+            event_id,
+        )
+    return [dict(r) for r in rows]
+
+
+@router.post("/{event_id}/permissions", response_model=EventPermissionOut, status_code=201,
+             summary="Grant a user access to manage this event (organizer-only)")
+async def grant_permission(
+    event_id: str,
+    body: EventPermissionGrant,
+    claims: dict = Depends(require_role_or_organizer()),
+):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        target = await conn.fetchrow("SELECT id FROM users WHERE email = $1", body.email)
+        if not target:
+            raise HTTPException(status_code=404, detail="No user found with that email")
+        granter = await conn.fetchrow("SELECT id FROM users WHERE keycloak_sub = $1", claims.get("sub"))
+        if not granter:
+            raise HTTPException(status_code=404, detail="Granter user record not found")
+
+        row = await conn.fetchrow(
+            "INSERT INTO event_permission (event_id, user_id, granted_by) "
+            "VALUES ($1::uuid, $2::uuid, $3::uuid) "
+            "ON CONFLICT (event_id, user_id) DO UPDATE SET "
+            "  granted_by = EXCLUDED.granted_by, granted_at = now(), revoked_at = NULL "
+            "RETURNING id",
+            event_id, str(target["id"]), str(granter["id"]),
+        )
+        full = await conn.fetchrow(_PERMISSION_SELECT + "WHERE ep.id = $1::uuid", row["id"])
+    return dict(full)
+
+
+@router.delete("/{event_id}/permissions/{user_id}", status_code=204,
+               summary="Revoke a user's access to this event (organizer-only)")
+async def revoke_permission(
+    event_id: str,
+    user_id: str,
+    claims: dict = Depends(require_role_or_organizer()),
+):
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "UPDATE event_permission SET revoked_at = now() "
+            "WHERE event_id = $1::uuid AND user_id = $2::uuid AND revoked_at IS NULL",
+            event_id, user_id,
+        )
+    if result == "UPDATE 0":
+        raise HTTPException(status_code=404, detail="Active permission not found")

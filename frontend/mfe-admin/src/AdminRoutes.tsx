@@ -4,6 +4,7 @@ import { PaymentApprovals } from './pages/PaymentApprovals';
 import { SponsorManagement } from './pages/SponsorManagement';
 import { SponsorshipRefunds } from './pages/SponsorshipRefunds';
 import { UserApproval } from './pages/UserApproval';
+import { LeaveRequests } from './pages/LeaveRequests';
 import { BuildingStructure } from './pages/BuildingStructure';
 import { UnitManagement } from './pages/UnitManagement';
 import { CollectorRegistry } from './pages/CollectorRegistry';
@@ -47,10 +48,11 @@ export function AdminRoutes({ token = null, onLogin, page, role }: AdminRoutesPr
   }
 
   if (!effectivePage || effectivePage === 'users') return <UserApproval token={token} onLogin={onLogin} />;
+  if (effectivePage === 'leave-requests')     return <LeaveRequests token={token} />;
   if (effectivePage === 'building')          return <BuildingStructure token={token} />;
   if (effectivePage === 'units')             return <UnitManagement token={token} />;
-  if (effectivePage === 'sponsors')          return <SponsorManagement />;
-  if (effectivePage === 'refunds')           return <SponsorshipRefunds />;
+  if (effectivePage === 'sponsors')          return <SponsorManagement token={token} />;
+  if (effectivePage === 'refunds')           return <SponsorshipRefunds token={token} />;
   if (effectivePage === 'payments')          return <PaymentApprovals token={token} role={role} />;
   if (effectivePage === 'collector-registry') return <CollectorRegistry token={token} />;
   if (effectivePage === 'reconciliation')    return <ReconciliationConsole token={token} role={role} />;

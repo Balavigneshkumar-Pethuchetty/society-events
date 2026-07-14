@@ -25,6 +25,18 @@ class Settings(BaseSettings):
     society_name: str = "GM Global Techies Town"
     society_short_name: str = "GMGT"
     society_city: str = "Bengaluru"
+    uploads_dir: str = "/app/uploads"
+    # ~/auth-service's turnkey OTP request/verify API — used for phone verification
+    # and phone-number login (POST /api/otp/request, /api/otp/verify). Shared
+    # secret must match auth-service's OTP_SERVICE_API_KEY.
+    auth_service_url: str = "http://host.containers.internal:8000"
+    auth_service_api_key: str = ""
+    # otp-bridge Keycloak service account — RFC 8693 token exchange to mint a
+    # real Keycloak access token for a phone-OTP-verified user, without
+    # touching their password. Requires Keycloak's --features=token-exchange
+    # and the service account's `impersonation` realm-management role.
+    otp_bridge_client_id: str = "otp-bridge"
+    otp_bridge_client_secret: str = ""
 
     @property
     def database_url(self) -> str:

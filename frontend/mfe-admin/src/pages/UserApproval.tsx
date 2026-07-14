@@ -118,7 +118,7 @@ interface PendingCardProps {
 
 function PendingUserCard({ u, busy, roleValue, onRoleChange, onApprove, onReject, initials }: PendingCardProps) {
   return (
-    <Paper variant="outlined" sx={{ p: 2, bgcolor: '#fffbeb', borderRadius: 2 }}>
+    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, borderLeft: '4px solid', borderLeftColor: 'warning.main' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
         <Avatar sx={{ width: 40, height: 40, fontSize: 13, bgcolor: '#94a3b8', flexShrink: 0 }}>
           {initials(u.name)}
@@ -126,7 +126,7 @@ function PendingUserCard({ u, busy, roleValue, onRoleChange, onApprove, onReject
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography fontWeight={700} fontSize={15}>{u.name}</Typography>
           <Typography fontSize={12} color="text.secondary" noWrap>{u.email}</Typography>
-          <Typography fontSize={11} color="#92400e" mt={0.25}>
+          <Typography fontSize={11} color="warning.main" mt={0.25}>
             {new Date(u.created_at).toLocaleDateString()}
           </Typography>
         </Box>
@@ -170,7 +170,7 @@ interface ActiveCardProps {
 function ActiveUserCard({ u, busy, pendingRole, onRoleChange, onSaveRole, onRevoke, onRemove, initials }: ActiveCardProps) {
   const hasRoleChange = pendingRole !== undefined && pendingRole !== u.role;
   return (
-    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, '&:hover': { bgcolor: '#fafafa' } }}>
+    <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, '&:hover': { bgcolor: 'action.hover' } }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
         <Avatar sx={{ width: 40, height: 40, fontSize: 13, bgcolor: '#6366f1', flexShrink: 0 }}>
           {initials(u.name)}
@@ -377,7 +377,7 @@ export function UserApproval({ token, onLogin }: UserApprovalProps) {
         size="small" placeholder="Search name or email…" value={pendingSearch}
         onChange={e => { setPendingSearch(e.target.value); setPendingPage(0); }}
         InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 16, color: 'text.secondary' }} /></InputAdornment> }}
-        sx={{ minWidth: 200, flex: 1, maxWidth: 360, bgcolor: '#fff' }}
+        sx={{ minWidth: 200, flex: 1, maxWidth: 360, bgcolor: 'background.paper' }}
       />
       {pendingSearch && (
         <Typography fontSize={13} color="text.secondary">{filteredPending.length} of {pending.length}</Typography>
@@ -391,11 +391,11 @@ export function UserApproval({ token, onLogin }: UserApprovalProps) {
         size="small" placeholder="Search name or email…" value={activeSearch}
         onChange={e => { setActiveSearch(e.target.value); setActivePage(0); }}
         InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 16, color: 'text.secondary' }} /></InputAdornment> }}
-        sx={{ minWidth: 200, flex: 1, maxWidth: 300, bgcolor: '#fff' }}
+        sx={{ minWidth: 200, flex: 1, maxWidth: 300, bgcolor: 'background.paper' }}
       />
       <Select size="small" displayEmpty value={activeRoleFilter}
         onChange={e => { setActiveRoleFilter(e.target.value); setActivePage(0); }}
-        sx={{ minWidth: 140, fontSize: 13, bgcolor: '#fff' }}>
+        sx={{ minWidth: 140, fontSize: 13, bgcolor: 'background.paper' }}>
         <MenuItem value="" sx={{ fontSize: 13 }}><em>All roles</em></MenuItem>
         {ALL_ROLES.map(r => <MenuItem key={r} value={r} sx={{ fontSize: 13 }}>{r}</MenuItem>)}
       </Select>
@@ -409,12 +409,12 @@ export function UserApproval({ token, onLogin }: UserApprovalProps) {
     <Box sx={{ display: 'flex', minHeight: 'calc(100vh - 64px)' }}>
       <AdminSidebar active="Users" mobileOpen={sidebarOpen} onMobileClose={() => setSidebarOpen(false)} />
 
-      <Box sx={{ flex: 1, p: { xs: 2, md: 3 }, bgcolor: '#f8fafc', overflow: 'auto', minWidth: 0 }}>
+      <Box sx={{ flex: 1, p: { xs: 2, md: 3 }, bgcolor: 'background.default', overflow: 'auto', minWidth: 0 }}>
 
         {/* Header */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3, flexWrap: 'wrap' }}>
           <IconButton onClick={() => setSidebarOpen(true)}
-            sx={{ display: { md: 'none' }, color: '#475569' }} aria-label="Open admin menu">
+            sx={{ display: { md: 'none' }, color: 'text.secondary' }} aria-label="Open admin menu">
             <MenuIcon />
           </IconButton>
           <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -455,7 +455,7 @@ export function UserApproval({ token, onLogin }: UserApprovalProps) {
         {/* Tabs */}
         <Paper variant="outlined" sx={{ mb: 3, overflow: 'hidden' }}>
           <Tabs value={tab} onChange={(_, v) => setTab(v)}
-            sx={{ borderBottom: '1px solid', borderColor: 'divider', bgcolor: '#f8fafc', px: 1 }}
+            sx={{ borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'action.hover', px: 1 }}
             variant="scrollable" scrollButtons="auto">
             <Tab label={`Pending (${pending.length})`} sx={{ fontSize: 13, textTransform: 'none', fontWeight: 600 }} />
             <Tab label={`Active (${activeUsers.length})`} sx={{ fontSize: 13, textTransform: 'none', fontWeight: 600 }} />
@@ -497,7 +497,7 @@ export function UserApproval({ token, onLogin }: UserApprovalProps) {
                   <Box sx={{ display: { xs: 'none', md: 'block' }, overflowX: 'auto' }}>
                     <Table sx={{ minWidth: 600 }}>
                       <TableHead>
-                        <TableRow sx={{ bgcolor: '#fffbeb' }}>
+                        <TableRow sx={{ bgcolor: 'action.hover' }}>
                           {(['name', 'email', 'created_at'] as PendingSortKey[]).map((k, i) => (
                             <TableCell key={k} sx={{ fontWeight: 600, fontSize: 12 }}>
                               <TableSortLabel active={pendingSort === k} direction={pendingSort === k ? pendingSortDir : 'asc'} onClick={() => togglePendingSort(k)}>
@@ -513,8 +513,8 @@ export function UserApproval({ token, onLogin }: UserApprovalProps) {
                         {paginatedPending.map(u => {
                           const busy = actionId === u.id;
                           return (
-                            <TableRow key={u.id} sx={{ bgcolor: '#fffbeb', '&:last-child td': { borderBottom: 0 } }}>
-                              <TableCell>
+                            <TableRow key={u.id} sx={{ bgcolor: 'action.hover', '&:last-child td': { borderBottom: 0 } }}>
+                              <TableCell sx={{ borderLeft: '3px solid', borderLeftColor: 'warning.main' }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                                   <Avatar sx={{ width: 30, height: 30, fontSize: 11, bgcolor: '#94a3b8' }}>{initials(u.name)}</Avatar>
                                   <Typography fontWeight={600} fontSize={14}>{u.name}</Typography>
@@ -594,7 +594,7 @@ export function UserApproval({ token, onLogin }: UserApprovalProps) {
                   <Box sx={{ display: { xs: 'none', md: 'block' }, overflowX: 'auto' }}>
                     <Table sx={{ minWidth: 700 }}>
                       <TableHead>
-                        <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                        <TableRow sx={{ bgcolor: 'action.hover' }}>
                           {(['name', 'email', 'role', 'created_at'] as ActiveSortKey[]).map((k, i) => (
                             <TableCell key={k} sx={{ fontWeight: 600, fontSize: 12, ...(k === 'role' ? { width: 230 } : {}) }}>
                               <TableSortLabel active={activeSort === k} direction={activeSort === k ? activeSortDir : 'asc'} onClick={() => toggleActiveSort(k)}>
@@ -609,7 +609,7 @@ export function UserApproval({ token, onLogin }: UserApprovalProps) {
                         {paginatedActive.map(u => {
                           const busy = actionId === u.id;
                           return (
-                            <TableRow key={u.id} sx={{ '&:last-child td': { borderBottom: 0 }, '&:hover': { bgcolor: '#f8fafc' } }}>
+                            <TableRow key={u.id} sx={{ '&:last-child td': { borderBottom: 0 }, '&:hover': { bgcolor: 'action.hover' } }}>
                               <TableCell>
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                                   <Avatar sx={{ width: 30, height: 30, fontSize: 11, bgcolor: '#6366f1' }}>{initials(u.name)}</Avatar>
@@ -686,10 +686,10 @@ export function UserApproval({ token, onLogin }: UserApprovalProps) {
         {/* Admin breakdown */}
         {stats && stats.by_admin.length > 0 && (
           <Paper variant="outlined" sx={{ mb: 3, overflow: 'hidden' }}>
-            <Box sx={{ px: 2, py: 1.25, bgcolor: '#f0f4ff', borderBottom: '1px solid', borderColor: '#c7d2fe',
+            <Box sx={{ px: 2, py: 1.25, bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider',
               display: 'flex', alignItems: 'center', gap: 1 }}>
-              <PeopleIcon sx={{ fontSize: 16, color: '#6366f1' }} />
-              <Typography fontSize={13} fontWeight={600} color="#3730a3">Admin Activity Breakdown</Typography>
+              <PeopleIcon sx={{ fontSize: 16, color: 'primary.main' }} />
+              <Typography fontSize={13} fontWeight={600} color="primary.main">Admin Activity Breakdown</Typography>
             </Box>
 
             {/* Mobile: compact cards */}
@@ -713,7 +713,7 @@ export function UserApproval({ token, onLogin }: UserApprovalProps) {
             <Box sx={{ display: { xs: 'none', md: 'block' }, overflowX: 'auto' }}>
               <Table size="small" sx={{ minWidth: 400 }}>
                 <TableHead>
-                  <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                  <TableRow sx={{ bgcolor: 'action.hover' }}>
                     <TableCell sx={{ fontWeight: 600, fontSize: 12 }}>Admin</TableCell>
                     <TableCell sx={{ fontWeight: 600, fontSize: 12, color: '#16a34a' }}>Approved</TableCell>
                     <TableCell sx={{ fontWeight: 600, fontSize: 12, color: '#dc2626' }}>Rejected</TableCell>
@@ -740,7 +740,7 @@ export function UserApproval({ token, onLogin }: UserApprovalProps) {
         {/* Recent activity */}
         {stats && stats.recent_actions.length > 0 && (
           <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-            <Box sx={{ px: 2, py: 1.25, bgcolor: '#f8fafc', borderBottom: '1px solid', borderColor: 'divider' }}>
+            <Box sx={{ px: 2, py: 1.25, bgcolor: 'action.hover', borderBottom: '1px solid', borderColor: 'divider' }}>
               <Typography fontSize={13} fontWeight={600} color="text.secondary">
                 Recent Activity — all admins (persistent)
               </Typography>
@@ -749,7 +749,7 @@ export function UserApproval({ token, onLogin }: UserApprovalProps) {
             {/* Mobile: card list */}
             <Stack spacing={1} sx={{ display: { xs: 'flex', md: 'none' }, p: 1.5 }}>
               {paginatedActions.map(a => {
-                const c = ACTION_COLORS[a.action] ?? { bg: '#f1f5f9', color: '#475569' };
+                const c = ACTION_COLORS[a.action] ?? { bg: 'action.hover', color: 'text.secondary' };
                 return (
                   <Paper key={a.id} variant="outlined" sx={{ p: 1.5, borderRadius: 1.5 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.75, gap: 1 }}>
@@ -775,7 +775,7 @@ export function UserApproval({ token, onLogin }: UserApprovalProps) {
             <Box sx={{ display: { xs: 'none', md: 'block' }, overflowX: 'auto' }}>
               <Table size="small" sx={{ minWidth: 560 }}>
                 <TableHead>
-                  <TableRow sx={{ bgcolor: '#f8fafc' }}>
+                  <TableRow sx={{ bgcolor: 'action.hover' }}>
                     {['User', 'Email', 'Action', 'Role', 'By Admin', 'Time'].map(h => (
                       <TableCell key={h} sx={{ fontWeight: 600, fontSize: 12 }}>{h}</TableCell>
                     ))}
@@ -783,7 +783,7 @@ export function UserApproval({ token, onLogin }: UserApprovalProps) {
                 </TableHead>
                 <TableBody>
                   {paginatedActions.map(a => {
-                    const c = ACTION_COLORS[a.action] ?? { bg: '#f1f5f9', color: '#475569' };
+                    const c = ACTION_COLORS[a.action] ?? { bg: 'action.hover', color: 'text.secondary' };
                     return (
                       <TableRow key={a.id} sx={{ '&:last-child td': { borderBottom: 0 } }}>
                         <TableCell><Typography fontSize={13} fontWeight={600}>{a.target_user_name}</Typography></TableCell>

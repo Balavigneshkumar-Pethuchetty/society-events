@@ -256,8 +256,42 @@ CREATE TABLE IF NOT EXISTS notification (
     title       VARCHAR(255) NOT NULL,
     message     TEXT        NOT NULL,
     is_read     BOOLEAN     NOT NULL DEFAULT FALSE,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    related_id  UUID        -- generic entity ref (not a FK: points at different
+                             -- tables depending on `type`), used to delete a
+                             -- "pending action" notification once resolved
 );
+
+CREATE INDEX IF NOT EXISTS idx_notification_related_id ON notification(related_id);
+
+-- ---------------------------------------------------------------------------
+-- LEAVE_REQUEST  (self-service "leave society": resident requests -> admin
+-- approves/rejects/revokes -> resident finalizes irreversible deletion).
+-- user_name/user_email are snapshotted so this row stays a readable audit
+-- record after the users row itself is deleted (user_id/reviewed_by -> NULL).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS leave_request (
+    id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id           UUID        REFERENCES users(id) ON DELETE SET NULL,
+    user_name         VARCHAR(255) NOT NULL,
+    user_email        VARCHAR(255),
+    reason            TEXT,
+    status            VARCHAR(20) NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending','approved','rejected','revoked','completed')),
+    requested_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    reviewed_by       UUID        REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_by_name  VARCHAR(255),
+    reviewed_at       TIMESTAMPTZ,
+    review_note       TEXT,
+    completed_at      TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_leave_request_user_id ON leave_request(user_id);
+CREATE INDEX IF NOT EXISTS idx_leave_request_status   ON leave_request(status);
+
+-- Only one open (pending/approved) request per user at a time.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_leave_request_one_open
+    ON leave_request(user_id) WHERE status IN ('pending','approved');
 
 -- =============================================================================
 -- INDEXES  (add before seed so they're built once, not rebuilt per INSERT)
@@ -693,3 +727,48 @@ CREATE TABLE IF NOT EXISTS payment_reconciliation_settings (
     CONSTRAINT ai_provider_check CHECK (ai_provider IN ('ollama', 'claude'))
 );
 INSERT INTO payment_reconciliation_settings (id) VALUES (1) ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- EVENT_PERMISSION  (per-event delegation: organizer grants another user
+-- access to this specific event only — see db/migrations/019_event_permission.sql)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS event_permission (
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id     UUID        NOT NULL REFERENCES event(id) ON DELETE CASCADE,
+    user_id      UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    granted_by   UUID        NOT NULL REFERENCES users(id),
+    granted_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    revoked_at   TIMESTAMPTZ,
+    UNIQUE (event_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_permission_event ON event_permission(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_permission_user  ON event_permission(user_id);
+
+-- ---------------------------------------------------------------------------
+-- FUND_EXPORT_LINK  (shareable, unauthenticated download link for a fund
+-- export — see db/migrations/020_fund_export_link.sql)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS fund_export_link (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id    UUID        NOT NULL REFERENCES event(id) ON DELETE CASCADE,
+    token       VARCHAR(64) NOT NULL UNIQUE,
+    created_by  UUID        NOT NULL REFERENCES users(id),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at  TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_fund_export_link_event ON fund_export_link(event_id);
+CREATE INDEX IF NOT EXISTS idx_fund_export_link_token  ON fund_export_link(token);
+
+-- ---------------------------------------------------------------------------
+-- USERS.avatar_url  (uploaded profile picture, stored server-side by
+-- user-service — see db/migrations/023_user_avatar.sql)
+-- ---------------------------------------------------------------------------
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(500);
+
+-- ---------------------------------------------------------------------------
+-- USERS.email_verified / phone_verified  (see db/migrations/024_user_verification.sql)
+-- ---------------------------------------------------------------------------
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN NOT NULL DEFAULT FALSE;

@@ -8,7 +8,7 @@ from typing import Optional
 import aiofiles
 import qrcode
 import qrcode.image.svg
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response as FastAPIResponse
 
 from app.auth import get_current_claims, require_role
@@ -17,6 +17,7 @@ from app.database import get_pool
 from app.models import (
     CancelBody, PaymentReviewBody, RegistrationCreate, RegistrationOut, PaymentOut,
 )
+from app.notifications import resolve_and_record, send_channels
 
 router = APIRouter()
 
@@ -276,6 +277,7 @@ async def get_payment_qr(
 
 @router.delete("/{reg_id}", summary="Cancel a registration")
 async def cancel_registration(
+    background_tasks: BackgroundTasks,
     reg_id: str,
     body: Optional[CancelBody] = Body(default=None),
     claims: dict = Depends(get_current_claims),
@@ -285,12 +287,14 @@ async def cancel_registration(
     is_admin = any(r in realm_roles for r in ("admin", "committee_member"))
 
     pool = await get_pool()
+    recipients: list[dict] = []
+    refund_recipients: list[dict] = []
     async with pool.acquire() as conn:
         user_id = await _get_db_user_id(conn, sub)
 
         row = await conn.fetchrow(
             "SELECT r.id, r.user_id::text, r.status, r.total_amount, "
-            "e.start_time, e.cancel_freeze_at "
+            "e.id AS event_id, e.title AS event_title, e.start_time, e.cancel_freeze_at "
             "FROM registration r JOIN event e ON e.id = r.event_id "
             "WHERE r.id = $1::uuid",
             reg_id,
@@ -323,7 +327,15 @@ async def cancel_registration(
             "UPDATE ticket SET status = 'cancelled' WHERE reg_id = $1::uuid", reg_id
         )
 
+        event_title = row["event_title"] or "an event"
+        cancel_message = f"A resident cancelled their registration for \"{event_title}\"."
+        recipients = await resolve_and_record(
+            conn, row["event_id"], user_id, "cancellation_requested",
+            "Registration cancelled", cancel_message, related_id=reg_id,
+        )
+
         refund_requested = False
+        refund_message = ""
         if row["total_amount"] > 0:
             txn = await conn.fetchrow(
                 "SELECT id::text FROM payment_transaction "
@@ -344,6 +356,16 @@ async def cancel_registration(
                     txn["id"], sub,
                 )
                 refund_requested = True
+                refund_message = f"A refund was requested for the cancelled registration on \"{event_title}\"."
+                refund_recipients = await resolve_and_record(
+                    conn, row["event_id"], user_id, "refund_requested",
+                    "Refund requested", refund_message, related_id=txn["id"],
+                )
+
+    if recipients:
+        background_tasks.add_task(send_channels, recipients, cancel_message)
+    if refund_recipients:
+        background_tasks.add_task(send_channels, refund_recipients, refund_message)
 
     return {"status": "cancelled", "refund_requested": refund_requested}
 

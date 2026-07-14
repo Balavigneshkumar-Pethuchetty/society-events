@@ -164,7 +164,7 @@ function StatsBar({ rows }: { rows: AttendeeRow[] }) {
         <LinearProgress
           variant="determinate"
           value={pct}
-          sx={{ flex: 1, height: 6, borderRadius: 3, bgcolor: '#e2e8f0',
+          sx={{ flex: 1, height: 6, borderRadius: 3, bgcolor: 'action.disabledBackground',
                 '& .MuiLinearProgress-bar': { bgcolor: '#10b981' } }}
         />
         <Typography fontSize={12} fontWeight={700} color="#10b981" sx={{ minWidth: 36 }}>
@@ -250,7 +250,7 @@ function AttendeeCard({
           )}
           {row.unit_label && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.4 }}>
-              <ApartmentIcon sx={{ fontSize: 11, color: '#94a3b8' }} />
+              <ApartmentIcon sx={{ fontSize: 11, color: 'text.secondary' }} />
               <Typography fontSize={12} color="#6366f1" fontWeight={500} noWrap>
                 {row.unit_label}
               </Typography>
@@ -377,7 +377,7 @@ function RosterPanel({
                   borderRadius: 0, px: 1.5, py: 0.75, fontSize: 12, textTransform: 'none', minWidth: 0,
                   bgcolor: searchMode === m.value ? '#6366f1' : 'transparent',
                   color:   searchMode === m.value ? '#fff'    : 'text.secondary',
-                  '&:hover': { bgcolor: searchMode === m.value ? '#4f46e5' : '#f1f5f9' },
+                  '&:hover': { bgcolor: searchMode === m.value ? '#4f46e5' : 'action.hover' },
                   borderRight: idx < SEARCH_MODES.length - 1 ? '1px solid' : undefined,
                   borderColor: 'divider',
                 }}
@@ -618,7 +618,7 @@ export function EntryLog() {
     const end   = new Date(ev.end_time);
     if (start <= now && end >= now) return { label: 'Live',     color: '#166534', bg: '#dcfce7' };
     if (start > now && isNearby(ev, now)) return { label: 'Soon', color: '#92400e', bg: '#fef3c7' };
-    if (ev.status === 'completed')        return { label: 'Past', color: '#475569', bg: '#f1f5f9' };
+    if (ev.status === 'completed')        return { label: 'Past', color: 'text.secondary', bg: 'action.hover' };
     return { label: 'Upcoming', color: '#1d4ed8', bg: '#dbeafe' };
   }
 

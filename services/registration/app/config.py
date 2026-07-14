@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     splunk_hec_url: str = "http://splunk:8088/services/collector/event"
     splunk_hec_token: str = ""
 
+    # auth-service (~/auth-service) — shared SMS/Telegram transport for
+    # notifying event organizers, same contract as user-service's OTP calls.
+    auth_service_url: str = "http://host.containers.internal:8000"
+    auth_service_api_key: str = ""
+
     society_upi_id: str = ""
     society_upi_name: str = ""
     society_bank_name: str = ""
