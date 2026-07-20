@@ -2,8 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import {
   Accordion, AccordionDetails, AccordionSummary,
-  Box, Button, Card, CardActionArea, CardContent,
-  Chip, Container, Grid, Typography,
+  Box, Button, Container, Typography,
 } from '@mui/material';
 import EventIcon from '@mui/icons-material/Event';
 import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
@@ -18,8 +17,22 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSociety } from '../contexts/SocietyContext';
 import { useUserService } from '../contexts/UserServiceContext';
 import { ROADMAP } from '../data/roadmap';
+import { ServicesGrid, ServiceTile } from '../components/ServicesGrid';
 
 type Slot = { icon: React.ReactNode; title: string; desc: string; path: string; cta: string; color: string };
+
+// Events is the one live service; the rest come from the shared roadmap so
+// this list never drifts out of sync with the pre-login Landing page.
+const SERVICES_OVERVIEW: ServiceTile[] = [
+  {
+    icon: <EventIcon sx={{ fontSize: 30 }} />,
+    color: '#6366f1',
+    title: 'Events & Ticketing',
+    desc: 'Browse, book and attend community events with digital QR-code entry.',
+    status: 'live',
+  },
+  ...ROADMAP.map((r) => ({ ...r, status: 'soon' as const })),
+];
 
 const RESIDENT_SLOTS: Slot[] = [
   { icon: <EventIcon sx={{ fontSize: 28 }} />,             title: 'Events',         desc: 'Browse upcoming festivals, sports days, wellness sessions and more.',        path: '/events',   cta: 'Browse Events',     color: '#6366f1' },
@@ -88,6 +101,9 @@ export function Home() {
   const roleHint           = ROLE_WELCOME[role];
   const slots              = useMfeSlots(role);
   const apt                = dbUser?.apartments[0];
+  const quickActionsLabel  = role === 'security_guard' || role === 'sponsor'
+    ? 'Quick actions'
+    : 'Events & ticketing — quick actions';
 
   return (
     <Box component="main">
@@ -119,85 +135,45 @@ export function Home() {
         </Container>
       </Box>
 
-      {/* MFE cards */}
+      {/* All society services */}
       <Box sx={{ py: 6, px: { xs: 2, sm: 3 } }}>
         <Container maxWidth="lg">
-          <Typography variant="h6" fontWeight={700} sx={{ mb: 3 }}>
-            What would you like to do?
+          <Typography variant="h6" fontWeight={700} sx={{ mb: 0.5 }}>
+            All society services
           </Typography>
-          <Grid container spacing={2.5}>
-            {slots.map((s) => (
-              <Grid item xs={12} sm={6} md={4} key={s.title}>
-                <Card
-                  variant="outlined"
-                  sx={{
-                    height: '100%',
-                    transition: 'box-shadow 0.2s, transform 0.2s',
-                    '&:hover': { boxShadow: 4, transform: 'translateY(-2px)' },
-                  }}
-                >
-                  <CardActionArea
-                    component={Link}
-                    to={s.path}
-                    sx={{ height: '100%', p: 3, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1.5 }}
-                  >
-                    <Box sx={{ width: 48, height: 48, borderRadius: 1.5, bgcolor: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
-                      {s.icon}
-                    </Box>
-                    <Typography fontWeight={700} fontSize={17}>{s.title}</Typography>
-                    <Typography fontSize={14} color="text.secondary" sx={{ flex: 1 }}>{s.desc}</Typography>
-                    <Typography fontSize={13} fontWeight={600} color="primary.main">{s.cta} →</Typography>
-                  </CardActionArea>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
+          <Typography fontSize={14} color="text.secondary" sx={{ mb: 3 }}>
+            Events &amp; ticketing is live today. Here's everything else coming to the platform.
+          </Typography>
+          <ServicesGrid services={SERVICES_OVERVIEW} />
         </Container>
       </Box>
 
-      {/* More services on the way */}
+      {/* Events & ticketing — quick actions */}
       <Box sx={{ py: 6, px: { xs: 2, sm: 3 }, bgcolor: 'background.default', borderTop: '1px solid', borderColor: 'divider' }}>
         <Container maxWidth="lg">
-          <Typography variant="h6" fontWeight={700} sx={{ mb: 0.5 }}>
-            More is on the way for {name}
+          <Typography variant="h6" fontWeight={700} sx={{ mb: 3 }}>
+            {quickActionsLabel}
           </Typography>
-          <Typography fontSize={14} color="text.secondary" sx={{ mb: 3 }}>
-            Events &amp; Ticketing is live today. Here's what's coming next.
-          </Typography>
-          <Grid container spacing={2.5}>
-            {ROADMAP.map((r) => (
-              <Grid item xs={12} sm={6} md={4} key={r.title}>
-                <Card
-                  variant="outlined"
-                  sx={{ height: '100%', borderRadius: 2, borderStyle: 'dashed', position: 'relative' }}
-                >
-                  <Chip
-                    label="Coming Soon"
-                    size="small"
-                    sx={{
-                      position: 'absolute', top: 12, right: 12,
-                      fontSize: 10, fontWeight: 700, height: 22,
-                      bgcolor: 'rgba(148,163,184,0.15)', color: 'text.secondary',
-                    }}
-                  />
-                  <CardContent sx={{ p: 3 }}>
-                    <Box
-                      sx={{
-                        width: 44, height: 44, borderRadius: 1.5,
-                        border: `2px solid ${r.color}`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: r.color, mb: 2,
-                      }}
-                    >
-                      {r.icon}
-                    </Box>
-                    <Typography fontWeight={700} fontSize={15} mb={0.5}>{r.title}</Typography>
-                    <Typography fontSize={13} color="text.secondary" lineHeight={1.55}>{r.desc}</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+            {slots.map((s) => (
+              <Button
+                key={s.title}
+                component={Link}
+                to={s.path}
+                variant="outlined"
+                startIcon={s.icon}
+                sx={{
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  borderColor: s.color,
+                  color: s.color,
+                  '&:hover': { borderColor: s.color, bgcolor: `${s.color}14` },
+                }}
+              >
+                {s.cta} →
+              </Button>
             ))}
-          </Grid>
+          </Box>
         </Container>
       </Box>
 

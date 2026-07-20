@@ -8,15 +8,14 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import PhoneIcon from '@mui/icons-material/Phone';
 import EventIcon from '@mui/icons-material/Event';
 import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
-import GroupsIcon from '@mui/icons-material/Groups';
 import SecurityIcon from '@mui/icons-material/Security';
-import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import QrCodeIcon from '@mui/icons-material/QrCode';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSociety } from '../contexts/SocietyContext';
 import { ROADMAP } from '../data/roadmap';
+import { ServicesGrid } from '../components/ServicesGrid';
 
 // The one live service today, shown alongside the roadmap so the overview
 // section reads as "one growing platform" rather than "an events app plus
@@ -36,28 +35,10 @@ const SERVICES_OVERVIEW = [
 
 const FEATURES = [
   {
-    icon: <EventIcon sx={{ fontSize: 36 }} />,
-    color: '#6366f1',
-    title: 'Browse Events',
-    desc: 'Festivals, sports days, wellness sessions and community governance meetings — all in one place.',
-  },
-  {
     icon: <ConfirmationNumberIcon sx={{ fontSize: 36 }} />,
     color: '#10b981',
     title: 'Book & Pay Online',
     desc: 'Reserve seats instantly and pay via UPI, card or net banking. Get a QR-code ticket on confirmation.',
-  },
-  {
-    icon: <GroupsIcon sx={{ fontSize: 36 }} />,
-    color: '#0ea5e9',
-    title: 'Community First',
-    desc: 'Stay connected with announcements and real-time updates from your society committee.',
-  },
-  {
-    icon: <NotificationsActiveIcon sx={{ fontSize: 36 }} />,
-    color: '#f59e0b',
-    title: 'Instant Notifications',
-    desc: 'Never miss an event. Get alerts for new events, booking confirmations, and reminders.',
   },
   {
     icon: <QrCodeIcon sx={{ fontSize: 36 }} />,
@@ -78,14 +59,6 @@ const STATS = [
   { value: '6', label: 'Society services' },
   { value: '24h', label: 'Approval turnaround' },
   { value: '100%', label: 'Digital & secure' },
-];
-
-const CATEGORIES = [
-  { label: '🎆 Festival', color: '#f59e0b' },
-  { label: '🏆 Sports', color: '#10b981' },
-  { label: '💜 Wellness', color: '#ec4899' },
-  { label: '🏛 Governance', color: '#6366f1' },
-  { label: '⭐ Kids', color: '#0ea5e9' },
 ];
 
 const HOW_IT_WORKS = [
@@ -312,52 +285,7 @@ export function Landing() {
             Events &amp; Ticketing is live today. Five more services are already on the roadmap for {name}.
           </Typography>
 
-          <Grid container spacing={3}>
-            {SERVICES_OVERVIEW.map((s) => (
-              <Grid item xs={12} sm={6} md={4} key={s.title}>
-                <Card
-                  variant="outlined"
-                  sx={{
-                    height: '100%',
-                    borderRadius: 2,
-                    position: 'relative',
-                    borderStyle: s.status === 'live' ? 'solid' : 'dashed',
-                    transition: 'box-shadow 0.25s, transform 0.25s',
-                    '&:hover': {
-                      boxShadow: s.status === 'live' ? 6 : 4,
-                      transform: `translateY(-${s.status === 'live' ? 4 : 3}px)`,
-                    },
-                  }}
-                >
-                  <Chip
-                    label={s.status === 'live' ? 'Live' : 'Coming Soon'}
-                    size="small"
-                    sx={{
-                      position: 'absolute', top: 14, right: 14,
-                      fontSize: 10, fontWeight: 700, height: 22,
-                      bgcolor: s.status === 'live' ? 'rgba(16,185,129,0.15)' : 'rgba(148,163,184,0.15)',
-                      color: s.status === 'live' ? '#059669' : 'text.secondary',
-                    }}
-                  />
-                  <CardContent sx={{ p: 3.5 }}>
-                    <Box
-                      sx={{
-                        width: 52, height: 52, borderRadius: 2, mb: 2.5,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        ...(s.status === 'live'
-                          ? { bgcolor: s.color, color: '#fff' }
-                          : { border: `2px solid ${s.color}`, color: s.color }),
-                      }}
-                    >
-                      {s.icon}
-                    </Box>
-                    <Typography fontWeight={700} fontSize={17} mb={1}>{s.title}</Typography>
-                    <Typography fontSize={14} color="text.secondary" lineHeight={1.6}>{s.desc}</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
+          <ServicesGrid services={SERVICES_OVERVIEW} />
 
           <Typography textAlign="center" fontSize={13} color="text.secondary" mt={4}>
             Have an idea for your society? Let your committee know.
@@ -383,24 +311,7 @@ export function Landing() {
             Everything below is already live and ready to use.
           </Typography>
 
-          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', justifyContent: 'center', mb: 6 }}>
-            {CATEGORIES.map((c) => (
-              <Chip
-                key={c.label}
-                label={c.label}
-                sx={{
-                  fontSize: 14, px: 1, py: 2.5, fontWeight: 600,
-                  bgcolor: 'background.paper',
-                  border: `2px solid ${c.color}`,
-                  color: c.color,
-                  '&:hover': { bgcolor: c.color, color: '#fff' },
-                  transition: 'all 0.2s',
-                }}
-              />
-            ))}
-          </Box>
-
-          <Grid container spacing={3}>
+          <Grid container spacing={3} sx={{ mb: 4 }}>
             {FEATURES.map((f) => (
               <Grid item xs={12} sm={6} md={4} key={f.title}>
                 <Card
@@ -431,6 +342,15 @@ export function Landing() {
               </Grid>
             ))}
           </Grid>
+
+          <Box sx={{ textAlign: 'center' }}>
+            <Link
+              to="/events"
+              style={{ color: '#6366f1', fontWeight: 600, fontSize: 14, textDecoration: 'none' }}
+            >
+              See all Events features →
+            </Link>
+          </Box>
         </Container>
       </Box>
 
@@ -472,86 +392,6 @@ export function Landing() {
               </Grid>
             ))}
           </Grid>
-        </Container>
-      </Box>
-
-      {/* ── Bottom CTA ───────────────────────────────────────────────── */}
-      <Box
-        sx={{
-          py: { xs: 7, md: 10 },
-          px: 3,
-          textAlign: 'center',
-          background: 'linear-gradient(135deg, #1e293b 0%, #312e81 100%)',
-          color: '#fff',
-        }}
-      >
-        <Container maxWidth="sm">
-          <Typography sx={{ fontSize: { xs: 40, md: 52 }, lineHeight: 1, mb: 2.5 }}>🏛</Typography>
-          <Typography variant="h4" fontWeight={800} mb={1.5} sx={{ fontSize: { xs: 22, md: 30 }, color: '#fff' }}>
-            Join the {name} community
-          </Typography>
-          <Typography sx={{ color: '#c7d2fe', fontSize: 15, mb: 5, maxWidth: 420, mx: 'auto' }}>
-            Already a resident? Register your account and get started today.
-          </Typography>
-
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" alignItems="center" sx={{ mb: 2 }}>
-            <Button
-              variant="contained"
-              size="large"
-              startIcon={<PersonAddIcon />}
-              onClick={register}
-              sx={{
-                px: 5, py: 1.75, fontWeight: 700, fontSize: 15,
-                bgcolor: '#6366f1',
-                boxShadow: '0 4px 20px rgba(99,102,241,0.5)',
-                '&:hover': { bgcolor: '#4f46e5' },
-                minWidth: 220,
-              }}
-            >
-              Register as Member
-            </Button>
-            <Button
-              variant="text"
-              size="large"
-              startIcon={<LoginIcon />}
-              onClick={() => login()}
-              sx={{ color: '#c7d2fe', fontWeight: 600, fontSize: 15, '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.08)' }, minWidth: 160 }}
-            >
-              Sign In
-            </Button>
-          </Stack>
-          {showGoogleLogin && (
-            <Button
-              variant="contained"
-              size="large"
-              onClick={loginWithGoogle}
-              sx={{
-                px: 4, py: 1.4, fontWeight: 600, fontSize: 14,
-                bgcolor: '#ffffff',
-                color: '#3c4043',
-                border: '1px solid #dadce0',
-                boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
-                borderRadius: '8px',
-                gap: 1.5,
-                textTransform: 'none',
-                '&:hover': { bgcolor: '#f8f9fa', boxShadow: '0 2px 8px rgba(0,0,0,0.18)', borderColor: '#c1c7cd' },
-              }}
-              startIcon={
-                <Box
-                  component="img"
-                  src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z' fill='%234285F4'/%3E%3Cpath d='M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z' fill='%2334A853'/%3E%3Cpath d='M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z' fill='%23FBBC05'/%3E%3Cpath d='M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z' fill='%23EA4335'/%3E%3C/svg%3E"
-                  alt=""
-                  sx={{ width: 18, height: 18 }}
-                />
-              }
-            >
-              Continue with Google
-            </Button>
-          )}
-
-          <Typography sx={{ mt: 3, fontSize: 12, color: 'rgba(165,180,252,0.7)' }}>
-            New members require residency verification · Typically activated within 24 hours
-          </Typography>
         </Container>
       </Box>
 
