@@ -91,6 +91,76 @@ async def list_channels() -> list[dict]:
     return resp.json()
 
 
+async def create_channel(name: str, credentials: dict, is_active: bool = False) -> dict:
+    """Provision a per-event IMAP channel on the sibling service, mirroring an event's
+    own committee_registry.imap_* fields so verify_screenshot/verify_refund_screenshot
+    can search that organizer's own inbox instead of a single shared channel. Defaults
+    to is_active=False — these on-demand endpoints don't require it, and it keeps
+    per-event channels out of the sibling's background polling monitor_loop."""
+    token = _mint_service_token()
+    url = f"{settings.reconciliation_service_base_url}/channels"
+    payload = {
+        "name": name,
+        "channel_type": "EMAIL",
+        "provider": "IMAP",
+        "credentials": credentials,
+        "is_active": is_active,
+    }
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            resp = await client.post(url, json=payload, headers={"Authorization": f"Bearer {token}"})
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=502, detail=f"Payment reconciliation service unreachable: {exc}")
+
+    _raise_for_error(resp)
+    return resp.json()
+
+
+async def update_channel(channel_id: str, credentials: dict) -> dict:
+    """Push updated IMAP credentials to an already-provisioned per-event channel."""
+    token = _mint_service_token()
+    url = f"{settings.reconciliation_service_base_url}/channels/{channel_id}"
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            resp = await client.patch(
+                url, json={"credentials": credentials}, headers={"Authorization": f"Bearer {token}"}
+            )
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=502, detail=f"Payment reconciliation service unreachable: {exc}")
+
+    _raise_for_error(resp)
+    return resp.json()
+
+
+async def test_channel(channel_id: str, limit: int = 3) -> dict:
+    """Live, read-only check that the sibling service can actually log into and read this
+    event's channel — used by the Collector & Email tab's 'Test via Reconciliation Service'
+    button, distinct from this repo's own direct IMAP test (test_event_imap in registry.py):
+    this one confirms the *sibling's* copy of the credentials (as synced by
+    _sync_reconciliation_channel) still works, not just this repo's own. mark_seen stays
+    False so testing never consumes unread messages the real scan would still need."""
+    token = _mint_service_token()
+    url = f"{settings.reconciliation_service_base_url}/channels/test-fetch"
+    payload = {
+        "channel_id": channel_id,
+        "limit": limit,
+        "include_seen": True,
+        "mark_seen": False,
+    }
+    # Same reasoning as parse_screenshot/verify_screenshot's timeouts below: this
+    # endpoint runs Ollama over every fetched message (their own code notes up to
+    # ~30s per model call), gathered concurrently but still capped by the slowest
+    # one — 30s was measured to be too tight and produced real timeouts here.
+    async with httpx.AsyncClient(timeout=60) as client:
+        try:
+            resp = await client.post(url, json=payload, headers={"Authorization": f"Bearer {token}"})
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=502, detail=f"Payment reconciliation service unreachable: {exc}")
+
+    _raise_for_error(resp)
+    return resp.json()
+
+
 # No concrete example date/time here on purpose — an earlier version included one
 # ("e.g. 27 Jun 2026, 7:56 PM") and the vision model echoed that exact literal string
 # back as the "extracted" timestamp on a test image that had no date/time text on it

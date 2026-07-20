@@ -7,7 +7,7 @@ import { UserApproval } from './pages/UserApproval';
 import { LeaveRequests } from './pages/LeaveRequests';
 import { BuildingStructure } from './pages/BuildingStructure';
 import { UnitManagement } from './pages/UnitManagement';
-import { CollectorRegistry } from './pages/CollectorRegistry';
+import { CategoryManagement } from './pages/CategoryManagement';
 import { ReconciliationConsole } from './pages/ReconciliationConsole';
 import { RefundTasks } from './pages/RefundTasks';
 
@@ -28,7 +28,7 @@ interface AdminRoutesProps {
   role?: string;
 }
 
-const COMMITTEE_PAGES = new Set(['payments', 'collector-registry', 'reconciliation', 'pay-refunds']);
+const COMMITTEE_PAGES = new Set(['payments', 'reconciliation', 'pay-refunds']);
 
 export function AdminRoutes({ token = null, onLogin, page, role }: AdminRoutesProps) {
   const isCommittee = role === 'committee_member';
@@ -52,9 +52,9 @@ export function AdminRoutes({ token = null, onLogin, page, role }: AdminRoutesPr
   if (effectivePage === 'building')          return <BuildingStructure token={token} />;
   if (effectivePage === 'units')             return <UnitManagement token={token} />;
   if (effectivePage === 'sponsors')          return <SponsorManagement token={token} />;
+  if (effectivePage === 'categories')        return <CategoryManagement token={token} />;
   if (effectivePage === 'refunds')           return <SponsorshipRefunds token={token} />;
   if (effectivePage === 'payments')          return <PaymentApprovals token={token} role={role} />;
-  if (effectivePage === 'collector-registry') return <CollectorRegistry token={token} />;
   if (effectivePage === 'reconciliation')    return <ReconciliationConsole token={token} role={role} />;
   if (effectivePage === 'pay-refunds')       return <RefundTasks token={token} />;
   return <ComingSoon />;

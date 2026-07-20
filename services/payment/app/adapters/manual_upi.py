@@ -62,6 +62,25 @@ class ManualUpiAdapter(PaymentProcessor):
                 return {"txn_ref": existing["txn_ref"], "payee_upi": payee_upi, "amount": amount,
                         "upi_intent_uri": upi_intent_uri, "status": "pending"}
 
+            if existing and existing["status"] == "cancelled":
+                # A prior screenshot for this same registration was rejected — reopen
+                # this SAME row for the resident's retry instead of inserting a second
+                # row, which would violate the idempotency_key UNIQUE constraint.
+                await conn.execute(
+                    "UPDATE payment_transaction SET status='pending', screenshot_path=NULL, "
+                    "parsed_amount=NULL, parsed_upi_ref=NULL, parsed_rrn=NULL, parsed_bank=NULL, "
+                    "parsed_timestamp=NULL, updated_at=now() WHERE id=$1::uuid",
+                    existing["id"],
+                )
+                await conn.execute(
+                    """INSERT INTO payment_audit_log (txn_id, from_status, to_status, updated_by, note)
+                       VALUES ($1::uuid, 'cancelled', 'pending', $2, 'Resident resubmitted after rejection')""",
+                    existing["id"], user_id,
+                )
+                upi_intent_uri = _build_upi_uri(payee_upi, upi_name, amount, event_title, existing["txn_ref"])
+                return {"txn_ref": existing["txn_ref"], "payee_upi": payee_upi, "amount": amount,
+                        "upi_intent_uri": upi_intent_uri, "status": "pending"}
+
             txn_ref = "TXN" + secrets.token_hex(8).upper()
 
             txn_id = await conn.fetchval(
@@ -125,7 +144,7 @@ class ManualUpiAdapter(PaymentProcessor):
                 )
         return {"status": "verified", "utr": utr}
 
-    async def process_refund(self, txn_ref: str, refund_utr: str) -> dict:
+    async def process_refund(self, txn_ref: str, refund_utr: str, refund_screenshot_path: str | None = None) -> dict:
         pool = await get_pool()
         async with pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -137,8 +156,9 @@ class ManualUpiAdapter(PaymentProcessor):
                 raise HTTPException(status_code=400, detail=f"Cannot refund transaction in status: {row['status']}")
 
             await conn.execute(
-                "UPDATE payment_transaction SET status='refunded', refund_utr=$1, updated_at=now() WHERE txn_ref=$2",
-                refund_utr, txn_ref,
+                "UPDATE payment_transaction SET status='refunded', refund_utr=$1, "
+                "refund_screenshot_path=COALESCE($2, refund_screenshot_path), updated_at=now() WHERE txn_ref=$3",
+                refund_utr, refund_screenshot_path, txn_ref,
             )
             await conn.execute(
                 """INSERT INTO payment_audit_log (txn_id, from_status, to_status, updated_by, note)

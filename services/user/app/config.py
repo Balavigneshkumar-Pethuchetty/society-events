@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     otp_bridge_client_id: str = "otp-bridge"
     otp_bridge_client_secret: str = ""
 
+    # Gmail SMTP — shared credential with services/payment and services/registration,
+    # used to email admins about leave-society events (request submitted / finalized).
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    gmail_smtp_user: str = ""
+    gmail_app_password: str = ""
+    smtp_from_name: str = "GM Global Techies Town"
+
     @property
     def database_url(self) -> str:
         return (

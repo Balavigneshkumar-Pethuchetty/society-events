@@ -2,7 +2,6 @@
 from fastapi import APIRouter, Depends
 
 from app.auth import require_role
-from app.config import settings
 from app.database import get_pool
 from app.models import ReconciliationStatus, ScanResult
 from app.reconciliation import inbox
@@ -11,7 +10,7 @@ router = APIRouter()
 
 
 @router.post("/scan", response_model=ScanResult,
-             summary="Trigger inbox fetch + parse + match (idempotent, NFR-01)")
+             summary="Trigger inbox fetch + parse + match across every configured event (idempotent, NFR-01)")
 async def scan(
     claims: dict = Depends(require_role("admin", "committee_member")),
 ):
@@ -29,10 +28,14 @@ async def status(
         pending = await conn.fetchval(
             "SELECT COUNT(*) FROM payment_transaction WHERE status = 'pending'"
         )
+        configured_events = await conn.fetchval(
+            """SELECT COUNT(*) FROM committee_registry
+               WHERE imap_host <> '' AND imap_user <> '' AND imap_password <> ''"""
+        )
     state = inbox.get_state()
     return ReconciliationStatus(
         last_run_at=state["last_run_at"],
         pending_count=int(pending),
         last_matched_utrs=state["last_matched_utrs"],
-        imap_configured=bool(settings.imap_host and settings.imap_user),
+        imap_configured_events=int(configured_events),
     )

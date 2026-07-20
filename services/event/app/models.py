@@ -49,6 +49,13 @@ class EventListItem(BaseModel):
     category_color: Optional[str] = None
     organizer_id: str
     organizer_name: str
+    # Names of active (non-revoked) event_permission grantees — co-organizers/"person in
+    # charge" who share edit access to this specific event alongside the organizer.
+    approved_members: list[str] = []
+    # True only when the caller IS the organizer — meaningful on `mine=true` responses only,
+    # so the frontend can hide organizer-only actions (e.g. managing who else has access)
+    # from an approved member who shares edit access but isn't the organizer themselves.
+    is_organizer: bool = False
     registration_count: int
     confirmed_tickets: int
     spots_remaining: Optional[int] = None
@@ -60,6 +67,10 @@ class EventListItem(BaseModel):
 class EventDetail(EventListItem):
     announcements: list["AnnouncementOut"] = []
     ticket_types: list["TicketTypeOut"] = []
+    # Whether the caller (organizer or an approved member) may edit/publish/cancel/complete/
+    # delete this specific event — mirrors require_event_access()'s absolute per-event check,
+    # so the frontend can hide edit affordances instead of letting them 403 on click.
+    has_access: bool = False
 
 
 class EventCreate(BaseModel):

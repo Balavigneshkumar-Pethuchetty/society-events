@@ -59,14 +59,17 @@ function ClickHandler({ onPositionChange }: { onPositionChange: (lat: number, ln
 interface Props {
   lat: number;
   lng: number;
-  onPositionChange: (lat: number, lng: number) => void;
+  onPositionChange?: (lat: number, lng: number) => void;
   height?: number;
+  // Plain display mode for viewers (e.g. the resident-facing event detail page) — no
+  // draggable/clickable marker, since there's nothing for a viewer to relocate.
+  readOnly?: boolean;
 }
 
-export function InteractiveMap({ lat, lng, onPositionChange, height = 320 }: Props) {
+export function InteractiveMap({ lat, lng, onPositionChange, height = 320, readOnly = false }: Props) {
   const handleDragEnd = (e: L.DragEndEvent) => {
     const pos: LatLng = (e.target as L.Marker).getLatLng();
-    onPositionChange(
+    onPositionChange?.(
       parseFloat(pos.lat.toFixed(6)),
       parseFloat(pos.lng.toFixed(6)),
     );
@@ -77,9 +80,14 @@ export function InteractiveMap({ lat, lng, onPositionChange, height = 320 }: Pro
       center={[lat, lng]}
       zoom={16}
       style={{ height, width: '100%', borderRadius: 8 }}
-      scrollWheelZoom
+      scrollWheelZoom={!readOnly}
+      dragging={!readOnly}
+      zoomControl={!readOnly}
+      doubleClickZoom={!readOnly}
+      touchZoom={!readOnly}
     >
-      {/* OpenStreetMap tiles — free, no API key */}
+      {/* OpenStreetMap tiles — free, no API key. Attribution deliberately omits OSM's
+          default "Make a Donation" link that ships with their embed.html iframe. */}
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -89,14 +97,14 @@ export function InteractiveMap({ lat, lng, onPositionChange, height = 320 }: Pro
       <MapRecentre lat={lat} lng={lng} />
 
       {/* Click anywhere to relocate the marker */}
-      <ClickHandler onPositionChange={onPositionChange} />
+      {!readOnly && <ClickHandler onPositionChange={(la, ln) => onPositionChange?.(la, ln)} />}
 
-      {/* Draggable venue marker */}
+      {/* Venue marker — draggable only in edit mode */}
       <Marker
         position={[lat, lng]}
         icon={RED_ICON}
-        draggable
-        eventHandlers={{ dragend: handleDragEnd }}
+        draggable={!readOnly}
+        eventHandlers={readOnly ? {} : { dragend: handleDragEnd }}
       />
     </MapContainer>
   );

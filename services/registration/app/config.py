@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     keycloak_public_url: str = "https://auth.gm-global-techies-town.club"
     internal_api_key: str
     society_id: str = "11100000-0000-0000-0000-000000000001"
+    # App's public URL — used to build deep links into notification messages
+    # (e.g. straight to the payment approval / refund queue for a given registration).
+    app_public_url: str = "http://localhost:8080"
 
     splunk_hec_url: str = "http://splunk:8088/services/collector/event"
     splunk_hec_token: str = ""

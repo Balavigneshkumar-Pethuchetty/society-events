@@ -25,16 +25,10 @@ import DoneAllIcon            from '@mui/icons-material/DoneAll';
 import BlockIcon              from '@mui/icons-material/BlockOutlined';
 import SaveIcon               from '@mui/icons-material/Save';
 import GroupAddIcon           from '@mui/icons-material/GroupAddOutlined';
+import PersonOutlineIcon      from '@mui/icons-material/PersonOutline';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWalletOutlined';
 import MyLocationIcon         from '@mui/icons-material/MyLocation';
 import { useTheme, alpha }    from '@mui/material/styles';
-// Lazy-loaded so @mui/x-date-pickers only evaluates once mounted — same reason
-// InteractiveMap below is lazy: an eagerly-imported heavy third-party dependency
-// in a federated remote's exposed module can execute before this remote's shared
-// React/MUI singletons finish resolving, throwing a bare "Cannot read properties
-// of null (reading 'useContext')" instead of any MUI-specific error.
-const AppDateTimePicker = lazy(() => import('./components/AppDateTimePicker'));
-
 // Lazy-load so Leaflet CSS is only injected when the Location tab is opened —
 // same component ManageEvents.tsx (mfe-admin) uses, copied here so residents get
 // the identical create/edit form (mfe-admin and mfe-events are independently
@@ -68,10 +62,15 @@ interface EventItem {
   cancel_freeze_at: string | null;
   category_id: string | null; category_name: string | null; category_color: string | null;
   organizer_name: string;
+  approved_members: string[];
+  is_organizer: boolean;
   registration_count: number; confirmed_tickets: number;
   spots_remaining: number | null; is_sold_out: boolean;
   announcements?: Announcement[];
   ticket_types?: TicketTypeSummary[];
+  // Only present on the detail response — true if the caller is this event's organizer or
+  // an approved member (mirrors the backend's absolute per-event access check, no role bypass).
+  has_access?: boolean;
 }
 
 interface NominatimResult { place_id: string; display_name: string; lat: string; lon: string }
@@ -208,6 +207,15 @@ function formatDate(iso: string) {
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
+// Same-day events collapse the end to just its time; multi-day events show both full dates.
+function formatDateTimeRange(startIso: string, endIso: string) {
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (start.toDateString() === end.toDateString()) {
+    return `${formatDate(startIso)} · ${formatTime(startIso)} – ${formatTime(endIso)}`;
+  }
+  return `${formatDate(startIso)} ${formatTime(startIso)} – ${formatDate(endIso)} ${formatTime(endIso)}`;
+}
 
 const STATUS_CHIP: Record<string, { label: string; bgcolor: string; color: string }> = {
   draft:     { label: 'Draft',     bgcolor: '#fef3c7', color: '#92400e' },
@@ -233,10 +241,10 @@ function SkeletonCard() {
 // ── Event Detail ──────────────────────────────────────────────────────────────
 
 function EventDetail({
-  eventId, token, role, societyName, onBack,
+  eventId, token, role, societyName, onBack, categories,
 }: {
   eventId: string; token: string | null; role: string | null;
-  societyName: string; onBack: () => void;
+  societyName: string; onBack: () => void; categories: Category[];
 }) {
   const [event,          setEvent]          = useState<EventItem | null>(null);
   const [loading,        setLoading]        = useState(true);
@@ -244,6 +252,7 @@ function EventDetail({
   const [qty,            setQty]            = useState(1);
   const [ticketQtys,     setTicketQtys]     = useState<Record<string, number>>({});
   const [checkoutSaving, setCheckoutSaving] = useState(false);
+  const [editOpen,       setEditOpen]       = useState(false);
   const theme = useTheme();
   const divider = theme.palette.divider;
   const panelBg = theme.palette.action.hover;
@@ -259,16 +268,30 @@ function EventDetail({
 
   const isManager = role === 'admin' || role === 'committee_member';
 
-  useEffect(() => {
+  const loadEvent = useCallback(() => {
     setLoading(true);
     setError(null);
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch(`${apiBase()}/events/${eventId}`, { headers })
+    return fetch(`${apiBase()}/events/${eventId}`, { headers })
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((d: EventItem) => { setEvent(d); setLoading(false); })
       .catch((e: Error) => { setError(e.message); setLoading(false); });
   }, [eventId, token]);
+
+  useEffect(() => { void loadEvent(); }, [loadEvent]);
+
+  const transition = async (action: 'publish' | 'cancel') => {
+    if (!token) return;
+    try {
+      await fetch(`${apiBase()}/events/${eventId}/${action}`, {
+        method: 'PATCH', headers: { Authorization: `Bearer ${token}` },
+      });
+    } finally {
+      setEditOpen(false);
+      void loadEvent();
+    }
+  };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress /></Box>;
 
@@ -287,6 +310,14 @@ function EventDetail({
   const color    = eventColor(event.category_color);
   const emoji    = categoryEmoji(event.category_name);
   const hasTypes = (event.ticket_types ?? []).length > 0;
+  // Edit affordances need both: the caller must actually have per-event access (organizer or
+  // an approved member — admin/committee_member get no automatic bypass, see require_event_access()
+  // in the event service), and the event must still be in an editable state — a completed or
+  // cancelled event can never be edited/reopened again (backend rejects it with 409 either way).
+  // Deliberately NOT gated on isManager: an organizer/approved-member resident (e.g. someone
+  // who isn't admin/committee_member but organizes their own event) must see this too.
+  const canEditThisEvent = event.has_access === true &&
+    (event.status === 'draft' || event.status === 'published');
   // Detail endpoint returns full TicketType; cast is safe here
   const sortedTypes = ([...(event.ticket_types ?? [])] as TicketType[])
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
@@ -300,7 +331,8 @@ function EventDetail({
     return sum + (tt.is_free ? 0 : Number(tt.price) * q);
   }, 0);
   const typedCount = Object.values(ticketQtys).reduce((a, b) => a + b, 0);
-  const canProceed = event.status === 'published' && !event.is_sold_out &&
+  const hasEnded   = new Date(event.end_time) < new Date();
+  const canProceed = event.status === 'published' && !event.is_sold_out && !hasEnded &&
     (hasTypes ? typedCount > 0 : (event.is_free || qty > 0));
   const statusChip = STATUS_CHIP[event.status];
 
@@ -314,11 +346,11 @@ function EventDetail({
             sx={{ border: 'none', background: 'none', cursor: 'pointer', color: '#6366f1', fontWeight: 600, fontSize: 14, p: 0, mr: 'auto' }}>
             ← Back to Events
           </Box>
-          {isManager && (
-            <Tooltip title="Edit this event in the management console">
+          {canEditThisEvent && (
+            <Tooltip title="Edit this event">
               <Button
                 size="small" variant="outlined" startIcon={<EditIcon />}
-                onClick={() => { window.location.href = '/manage'; }}
+                onClick={() => setEditOpen(true)}
                 sx={{ fontWeight: 600, fontSize: 12 }}>
                 Edit Event
               </Button>
@@ -361,7 +393,7 @@ function EventDetail({
           </Box>
           <Typography variant="h4" fontWeight={800} sx={{ fontSize: { xs: 22, md: 32 } }}>{event.title}</Typography>
           <Typography sx={{ mt: 1, opacity: 0.85, fontSize: { xs: 13, md: 15 } }}>
-            {formatDate(event.start_time)} · {formatTime(event.start_time)} · {event.venue}
+            {formatDateTimeRange(event.start_time, event.end_time)} · {event.venue}
           </Typography>
         </Box>
 
@@ -379,8 +411,10 @@ function EventDetail({
                 <Typography fontSize={12} fontWeight={600} color="text.secondary" textTransform="uppercase" letterSpacing={0.5} mb={1.5}>
                   Event Details
                 </Typography>
-                {[
+                {([
                   ['Organiser',    event.organizer_name],
+                  event.approved_members.length > 0
+                    ? ['In charge', event.approved_members.join(', ')] : null,
                   ['Date',         formatDate(event.start_time)],
                   ['Time',         `${formatTime(event.start_time)} – ${formatTime(event.end_time)}`],
                   ['Venue',        event.venue],
@@ -390,7 +424,7 @@ function EventDetail({
                     : event.spots_remaining != null
                       ? `${event.spots_remaining} spots left`
                       : 'Open'],
-                ].map(([label, val]) => (
+                ].filter(Boolean) as [string, string][]).map(([label, val]) => (
                   <Box key={label} sx={{ display: 'flex', gap: 2, mb: 0.75, flexWrap: 'wrap' }}>
                     <Typography fontSize={13} color="text.secondary" sx={{ minWidth: 90, flexShrink: 0 }}>{label}</Typography>
                     <Typography fontSize={13} fontWeight={500}>{val}</Typography>
@@ -412,18 +446,12 @@ function EventDetail({
                     </Typography>
                   )}
 
-                  {/* OpenStreetMap embed — no API key required */}
+                  {/* OpenStreetMap tiles rendered directly via Leaflet (not OSM's embed.html
+                      iframe) so the attribution bar doesn't carry OSM's "Make a Donation" link. */}
                   <Box sx={{ borderRadius: 2, overflow: 'hidden', border: '1px solid', borderColor: divider, mb: 1.5 }}>
-                    <Box
-                      component="iframe"
-                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${event.venue_lng - 0.006},${event.venue_lat - 0.004},${event.venue_lng + 0.006},${event.venue_lat + 0.004}&layer=mapnik&marker=${event.venue_lat},${event.venue_lng}`}
-                      width="100%"
-                      height="260"
-                      frameBorder={0}
-                      loading="lazy"
-                      title="Venue location map"
-                      sx={{ display: 'block', border: 'none' }}
-                    />
+                    <Suspense fallback={<Box sx={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover' }}><CircularProgress size={28} /></Box>}>
+                      <InteractiveMap lat={event.venue_lat} lng={event.venue_lng} height={260} readOnly />
+                    </Suspense>
                   </Box>
 
                   <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -662,22 +690,24 @@ function EventDetail({
                     }}>
                     {checkoutSaving
                       ? 'Saving…'
-                      : event.is_sold_out
-                        ? 'Sold Out'
-                        : event.status !== 'published'
-                          ? 'Registrations Closed'
-                          : hasTypes
-                            ? (typedCount === 0 ? 'Select at least one ticket' : `Proceed to Checkout (${typedCount} ticket${typedCount > 1 ? 's' : ''})`)
-                            : event.is_free
-                              ? 'Register for Free'
-                              : 'Proceed to Checkout'}
+                      : hasEnded
+                        ? 'Event Ended'
+                        : event.is_sold_out
+                          ? 'Sold Out'
+                          : event.status !== 'published'
+                            ? 'Registrations Closed'
+                            : hasTypes
+                              ? (typedCount === 0 ? 'Select at least one ticket' : `Proceed to Checkout (${typedCount} ticket${typedCount > 1 ? 's' : ''})`)
+                              : event.is_free
+                                ? 'Register for Free'
+                                : 'Proceed to Checkout'}
                   </Box>
 
-                  {/* Edit shortcut for managers */}
-                  {isManager && (
+                  {/* Edit shortcut for the organizer/approved member managing this event */}
+                  {canEditThisEvent && (
                     <Button fullWidth variant="outlined" startIcon={<EditIcon />} size="small"
                       sx={{ mt: 1.5, fontSize: 12 }}
-                      onClick={() => { window.location.href = '/manage'; }}>
+                      onClick={() => setEditOpen(true)}>
                       Edit this event
                     </Button>
                   )}
@@ -688,6 +718,16 @@ function EventDetail({
           </Grid>
         </Box>
       </Container>
+
+      {editOpen && token && (
+        <EventForm
+          open={editOpen} initial={event} token={token} categories={categories}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => { setEditOpen(false); void loadEvent(); }}
+          onPublish={() => void transition('publish')}
+          onCancel={() => void transition('cancel')}
+        />
+      )}
     </Box>
   );
 }
@@ -1117,6 +1157,106 @@ function TicketTypesTab({ eventId, token }: { eventId: string | undefined; token
   );
 }
 
+// ── Event Payment Settings tab (organizer self-service UPI collector) ────────
+// Port of ManageEvents.tsx's tab of the same name — same duplication rationale as
+// EventForm/LocationTab/TicketTypesTab above.
+
+interface CollectorSettings {
+  event_id: string;
+  member_id: string | null;
+  member_name: string | null;
+  upi_id: string | null;
+  imap_host: string;
+  imap_port: number;
+  imap_user: string;
+  imap_password_set: boolean;
+  imap_mailbox: string;
+  assigned_at: string | null;
+  reconciliation_channel_configured: boolean;
+}
+
+function PaymentSettingsTab({ eventId, token }: { eventId: string | undefined; token: string }) {
+  const [cfg,     setCfg]     = useState<CollectorSettings | null>(null);
+  const [upiId,   setUpiId]   = useState('');
+  const [loading, setLoading] = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
+  const [saved,   setSaved]   = useState(false);
+
+  const load = useCallback(() => {
+    if (!eventId) return;
+    setLoading(true); setError(null);
+    paymentsApiFetch<CollectorSettings>(`/registry/${eventId}/settings`, token)
+      .then(d => { setCfg(d); setUpiId(d.upi_id ?? ''); })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [eventId, token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (!eventId) {
+    return <Alert severity="info">Save step 1 first, then come back here to set this event's payment collection UPI ID.</Alert>;
+  }
+
+  const save = async () => {
+    setSaving(true); setError(null); setSaved(false);
+    try {
+      // Carry forward any existing IMAP/email config untouched — this tab only edits UPI.
+      await paymentsApiMutate(`/registry/${eventId}/settings`, token, 'PUT', {
+        upi_id: upiId,
+        imap_host: cfg?.imap_host ?? '',
+        imap_port: cfg?.imap_port ?? 993,
+        imap_user: cfg?.imap_user ?? '',
+        imap_mailbox: cfg?.imap_mailbox ?? 'INBOX',
+      });
+      setSaved(true);
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>;
+
+  return (
+    <Stack spacing={2.5} sx={{ pt: 1, maxWidth: 480 }}>
+      <Box>
+        <Typography fontWeight={700} mb={0.5}>Event Payment Settings</Typography>
+        <Typography variant="body2" color="text.secondary">
+          Assign a UPI ID to each event to manage registration fees and collections.
+        </Typography>
+      </Box>
+
+      {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+      {saved && <Alert severity="success" onClose={() => setSaved(false)}>Payment settings saved.</Alert>}
+
+      <TextField
+        label="UPI ID" size="small" fullWidth value={upiId}
+        onChange={e => setUpiId(e.target.value)}
+        placeholder="name@bankname"
+        helperText="The UPI ID residents pay into for this event's registration fees."
+      />
+      {cfg?.member_name && (
+        <Typography variant="caption" color="text.secondary">
+          Collector on record: {cfg.member_name}
+        </Typography>
+      )}
+
+      <Box>
+        <Button
+          variant="contained" size="small" onClick={() => void save()}
+          disabled={saving || upiId.trim().length < 5}
+          startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
+        >
+          {saving ? 'Saving…' : 'Save Payment Settings'}
+        </Button>
+      </Box>
+    </Stack>
+  );
+}
+
 // ── Event form dialog (3-step save flow — identical to mfe-admin's) ──────────
 
 interface FormState {
@@ -1214,7 +1354,7 @@ function EventForm({
   const isDraft     = initial ? initial.status === 'draft' : hasId;
   const isPublished = initial ? initial.status === 'published' : false;
 
-  const STEP_LABELS = ['1. Event Details', '2. Location', '3. Ticket Types'];
+  const STEP_LABELS = ['1. Event Details', '2. Location', '3. Ticket Types', '4. Payment Settings'];
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -1249,23 +1389,20 @@ function EventForm({
             <TextField label="Venue / Location Name *" size="small" fullWidth value={form.venue}
               onChange={e => patch({ venue: e.target.value })} placeholder="e.g. Society Clubhouse, Rooftop Garden Block A" />
             <Stack direction="row" spacing={2}>
-              <Suspense fallback={<TextField label="Start Date & Time *" size="small" fullWidth sx={{ flex: 1 }} disabled />}>
-                <AppDateTimePicker label="Start Date & Time *" required sx={{ flex: 1 }}
-                  value={form.start_time ? new Date(form.start_time).toISOString() : ''}
-                  onChange={iso => patch({ start_time: iso ? toLocalDT(iso) : '' })} />
-              </Suspense>
-              <Suspense fallback={<TextField label="End Date & Time *" size="small" fullWidth sx={{ flex: 1 }} disabled />}>
-                <AppDateTimePicker label="End Date & Time *" required sx={{ flex: 1 }}
-                  value={form.end_time ? new Date(form.end_time).toISOString() : ''}
-                  onChange={iso => patch({ end_time: iso ? toLocalDT(iso) : '' })} />
-              </Suspense>
+              <TextField label="Start Date & Time *" type="datetime-local" size="small" fullWidth sx={{ flex: 1 }}
+                InputLabelProps={{ shrink: true }} value={form.start_time}
+                onChange={e => patch({ start_time: e.target.value })} />
+              <TextField label="End Date & Time *" type="datetime-local" size="small" fullWidth sx={{ flex: 1 }}
+                InputLabelProps={{ shrink: true }} value={form.end_time}
+                onChange={e => patch({ end_time: e.target.value })} />
             </Stack>
-            <Suspense fallback={<TextField label="Ticket Cancellation Freeze Time (optional)" size="small" fullWidth disabled />}>
-              <AppDateTimePicker label="Ticket Cancellation Freeze Time (optional)"
-                value={form.cancel_freeze_at ? new Date(form.cancel_freeze_at).toISOString() : ''}
-                onChange={iso => { freezeTouchedRef.current = true; patch({ cancel_freeze_at: iso ? toLocalDT(iso) : '' }); }}
-                helperText="Defaults to 1 day before the start time; clear it to let residents cancel a confirmed ticket any time before the event starts. Must be before the start time." />
-            </Suspense>
+            <TextField
+              label="Ticket Cancellation Freeze Time (optional)"
+              type="datetime-local" size="small" fullWidth
+              InputLabelProps={{ shrink: true }} value={form.cancel_freeze_at}
+              onChange={e => { freezeTouchedRef.current = true; patch({ cancel_freeze_at: e.target.value }); }}
+              helperText="Defaults to 1 day before the start time; clear it to let residents cancel a confirmed ticket any time before the event starts. Must be before the start time."
+            />
             <Stack direction="row" spacing={2}>
               <TextField label="Capacity (blank = unlimited)" type="number" size="small" fullWidth sx={{ flex: 1 }} value={form.capacity} onChange={e => patch({ capacity: e.target.value })} />
               <TextField label="Category" select size="small" fullWidth sx={{ flex: 2 }} value={form.category_id} onChange={e => patch({ category_id: e.target.value })}>
@@ -1325,6 +1462,8 @@ function EventForm({
             </Box>
           </Stack>
         )}
+
+        {tab === 3 && <PaymentSettingsTab eventId={savedId} token={token} />}
       </DialogContent>
 
       <DialogActions sx={{ px: 3, py: 2, justifyContent: 'space-between' }}>
@@ -1343,7 +1482,7 @@ function EventForm({
         <Stack direction="row" spacing={1}>
           <Button onClick={onClose}>Close</Button>
           {tab > 0 && <Button variant="outlined" onClick={() => setTab(tab - 1)}>← Back</Button>}
-          {tab < 2 ? (
+          {tab < 3 ? (
             <Button variant="contained" onClick={() => void handleSave(tab + 1)} disabled={saving}
               startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}>
               {saving ? 'Saving…' : 'Save & Next →'}
@@ -1696,7 +1835,8 @@ function MyEvents({ token, categories, onClose }: { token: string; categories: C
         </Box>
 
         <Alert severity="info" sx={{ mb: 3, borderRadius: 1.5 }}>
-          You organize the events below. You can edit, publish, cancel, or complete them and set up ticket
+          Events below are ones you organize, or where you've been added as a person in
+          charge. You can edit, publish, cancel, or complete them and set up ticket
           types — this does not give you access to any other event.
         </Alert>
 
@@ -1771,11 +1911,13 @@ function MyEvents({ token, categories, onClose }: { token: string; categories: C
                           </IconButton>
                         </Tooltip>
                       )}
-                      <Tooltip title="Manage access">
-                        <IconButton size="small" onClick={() => setAccessTarget(ev)}>
-                          <GroupAddIcon sx={{ fontSize: 18 }} />
-                        </IconButton>
-                      </Tooltip>
+                      {ev.is_organizer && (
+                        <Tooltip title="Manage access">
+                          <IconButton size="small" onClick={() => setAccessTarget(ev)}>
+                            <GroupAddIcon sx={{ fontSize: 18 }} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                       <Tooltip title="Funds">
                         <IconButton size="small" onClick={() => setFundsTarget(ev)}>
                           <AccountBalanceWalletIcon sx={{ fontSize: 18 }} />
@@ -1909,6 +2051,7 @@ export function EventsApp({
       <EventDetail
         eventId={selectedId} token={token} role={role}
         societyName={societyName} onBack={() => setSelectedId(null)}
+        categories={categories}
       />
     );
   }
@@ -1953,7 +2096,7 @@ export function EventsApp({
 
         <Box sx={{ mb: 3, display: 'flex', alignItems: 'flex-end', gap: 2 }}>
           <Box sx={{ flex: 1 }}>
-            <Typography variant="h4" fontWeight={800} color="#0f172a" sx={{ fontSize: { xs: 24, md: 32 } }}>
+            <Typography variant="h4" fontWeight={800} color="text.primary" sx={{ fontSize: { xs: 24, md: 32 } }}>
               {isManager ? 'All Events' : 'Upcoming Events'}
             </Typography>
             <Typography color="text.secondary" mt={0.5} fontSize={14}>{societyName} · {city}</Typography>
@@ -2117,8 +2260,8 @@ export function EventsApp({
                         </Box>
 
                         <Stack spacing={0.5} sx={{ mb: 1.5 }}>
-                          {[
-                            [<CalendarTodayIcon sx={{ fontSize: 13 }} />, `${formatDate(event.start_time)} · ${formatTime(event.start_time)}`],
+                          {([
+                            [<CalendarTodayIcon sx={{ fontSize: 13 }} />, formatDateTimeRange(event.start_time, event.end_time)],
                             [<LocationOnIcon    sx={{ fontSize: 13 }} />, event.venue],
                             [<PeopleIcon        sx={{ fontSize: 13 }} />,
                               event.is_sold_out
@@ -2126,7 +2269,11 @@ export function EventsApp({
                                 : event.spots_remaining != null
                                   ? `${event.spots_remaining} spots left`
                                   : `${event.registration_count} registered`],
-                          ].map(([icon, text], i) => (
+                            [<PersonOutlineIcon sx={{ fontSize: 13 }} />, `By ${event.organizer_name}`],
+                            event.approved_members.length > 0
+                              ? [<GroupAddIcon sx={{ fontSize: 13 }} />, `In charge: ${event.approved_members.join(', ')}`]
+                              : null,
+                          ].filter(Boolean) as [React.ReactElement, string][]).map(([icon, text], i) => (
                             <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                               {icon}
                               <Typography fontSize={13} color="text.secondary" noWrap>{text as string}</Typography>

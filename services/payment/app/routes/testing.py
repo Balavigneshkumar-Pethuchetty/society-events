@@ -79,6 +79,12 @@ async def seed_transaction(
             if not event:
                 raise HTTPException(status_code=400, detail="No events exist to attach the test transaction to")
 
+        collector = await conn.fetchrow(
+            "SELECT reconciliation_channel_id::text AS reconciliation_channel_id "
+            "FROM committee_registry WHERE event_id = $1::uuid",
+            event["id"],
+        )
+
     intent = await reconciliation_client.create_payment_intent({
         "ctx_type": "EVENT",
         "amount": _TEST_AMOUNT,
@@ -93,11 +99,14 @@ async def seed_transaction(
     })
     transaction_id = intent["transaction_id"]
 
-    channel_id = None
-    channels = await reconciliation_client.list_channels()
-    active = next((c for c in channels if c.get("is_active")), None)
-    if active:
-        channel_id = active["id"]
+    channel_id = collector["reconciliation_channel_id"] if collector else None
+    if not channel_id:
+        # Event predates this feature or never configured a mailbox — fall back to
+        # any shared active channel, same as this endpoint's previous behavior.
+        channels = await reconciliation_client.list_channels()
+        active = next((c for c in channels if c.get("is_active")), None)
+        if active:
+            channel_id = active["id"]
 
     ext = _TEST_SCREENSHOT.suffix.lstrip(".") or "jpg"
     filename = f"{uuid.uuid4()}.{ext}"

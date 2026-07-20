@@ -1,7 +1,8 @@
 import json
 import math
+from decimal import Decimal
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from app.auth import _has_event_access, get_current_claims, get_optional_claims, require_event_access, require_role, require_role_or_organizer
 from app.config import settings
 from app.database import get_pool
@@ -11,6 +12,7 @@ from app.models import (
     EventPermissionGrant, EventPermissionOut,
     TicketTypeOut, TicketTypeCreate, TicketTypeUpdate,
 )
+from app.notifications import notify_all_users, send_channels
 
 router = APIRouter()
 
@@ -54,7 +56,13 @@ _EVENT_COLS = """
         )::text
         FROM ticket_type tt
         WHERE tt.event_id = e.id AND tt.is_active = TRUE
-    )                    AS ticket_types_json
+    )                    AS ticket_types_json,
+    (
+        SELECT json_agg(pu.name ORDER BY ep.granted_at)::text
+        FROM event_permission ep
+        JOIN users pu ON pu.id = ep.user_id
+        WHERE ep.event_id = e.id AND ep.revoked_at IS NULL
+    )                    AS approved_member_names_json
 """
 
 _REG_CTE = """
@@ -68,7 +76,7 @@ WITH reg_counts AS (
 """
 
 
-def _to_event_item(row) -> dict:
+def _to_event_item(row, caller_user_id: Optional[str] = None) -> dict:
     d = dict(row)
     capacity  = d.get("capacity")
     remaining = d.get("spots_remaining")
@@ -76,7 +84,57 @@ def _to_event_item(row) -> dict:
     # Parse ticket types JSON (returned as text from the subquery)
     raw = d.pop("ticket_types_json", None)
     d["ticket_types"] = json.loads(raw) if raw else []
+    raw_am = d.pop("approved_member_names_json", None)
+    d["approved_members"] = json.loads(raw_am) if raw_am else []
+    # Only meaningful on `mine=true` list responses — lets the frontend hide organizer-only
+    # actions (e.g. managing who else has access) from an approved member who isn't the
+    # organizer themselves. Left False when the caller isn't resolved (e.g. get_event).
+    d["is_organizer"] = caller_user_id is not None and d.get("organizer_id") == caller_user_id
     return d
+
+
+def _fmt_dt(dt) -> str:
+    return dt.strftime("%d %b %Y, %I:%M %p") if dt else "—"
+
+
+def _fmt_field(field: str, val) -> str:
+    if field in ("start_time", "end_time"):
+        return _fmt_dt(val)
+    if field == "ticket_price":
+        return f"₹{Decimal(val):,.2f}"
+    if field == "is_free":
+        return "Free" if val else "Paid"
+    return str(val) if val not in (None, "") else "—"
+
+
+# Fields worth telling every user about when an organizer edits a *published*
+# event — internal-only bookkeeping fields (venue_lat/lng/place_id,
+# cancel_freeze_at, category_id) are deliberately left out of the broadcast.
+_NOTIFIABLE_FIELDS = [
+    ("title",          "Title"),
+    ("venue",          "Venue"),
+    ("venue_address",  "Address"),
+    ("start_time",     "Start"),
+    ("end_time",       "End"),
+    ("capacity",       "Capacity"),
+    ("ticket_price",   "Price"),
+    ("is_free",        "Pricing"),
+]
+
+
+def _describe_changes(before: dict, body: "EventUpdate") -> list[str]:
+    lines = []
+    for field, label in _NOTIFIABLE_FIELDS:
+        new_val = getattr(body, field)
+        if new_val is None:
+            continue
+        old_val = before.get(field)
+        if str(old_val) == str(new_val):
+            continue
+        lines.append(f"{label}: {_fmt_field(field, old_val)} → {_fmt_field(field, new_val)}")
+    if body.description is not None and body.description != before.get("description"):
+        lines.append("Description: updated")
+    return lines
 
 
 # ── GET /events ───────────────────────────────────────────────────────────────
@@ -90,7 +148,7 @@ async def list_events(
     status:      Optional[str]  = Query(None),
     is_free:     Optional[bool] = Query(None),
     sort:        str            = Query("date_asc"),
-    mine:        bool           = Query(False, description="Only events organized by the caller, any status"),
+    mine:        bool           = Query(False, description="Only events the caller organizes or is an approved member of, any status"),
     claims:      Optional[dict] = Depends(get_optional_claims),
 ):
     order_map = {
@@ -109,6 +167,11 @@ async def list_events(
 
     pool = await get_pool()
 
+    is_manager = False
+    if claims:
+        realm_roles: list[str] = claims.get("realm_access", {}).get("roles", [])
+        is_manager = any(r in realm_roles for r in ("admin", "committee_member"))
+
     # Resolve the caller's internal user id once — used both for `mine=true` and, below, to
     # let a draft's organizer/approved members still see it in the general listing while
     # everyone else can't (drafts aren't "published to everyone" yet, per the isolation model).
@@ -119,13 +182,11 @@ async def list_events(
         if caller:
             caller_user_id = str(caller["id"])
 
-    organizer_user_id: Optional[str] = None
     if mine:
         if not claims:
             raise HTTPException(status_code=401, detail="Authentication required")
         if not caller_user_id:
             raise HTTPException(status_code=404, detail="User record not found")
-        organizer_user_id = caller_user_id
 
     conditions = ["e.society_id = $1"]
     params: list = [_SOCIETY]
@@ -136,11 +197,18 @@ async def list_events(
         params.append(status)
         idx += 1
 
-    if organizer_user_id:
-        conditions.append(f"e.organizer_id = ${idx}::uuid")
-        params.append(organizer_user_id)
+    if mine:
+        # "My Events" — the organizer, or a "person in charge" (active event_permission
+        # grantee) sees exactly the events they can actually edit, nothing more.
+        conditions.append(
+            f"(e.organizer_id = ${idx}::uuid OR EXISTS ("
+            f"  SELECT 1 FROM event_permission ep "
+            f"  WHERE ep.event_id = e.id AND ep.user_id = ${idx}::uuid AND ep.revoked_at IS NULL"
+            f"))"
+        )
+        params.append(caller_user_id)
         idx += 1
-    elif not mine:
+    else:
         # Hide draft events from everyone except their organizer/approved members —
         # only "mine=true" (handled above) or organizer/approved-member access reveals a draft.
         if caller_user_id:
@@ -154,6 +222,13 @@ async def list_events(
             idx += 1
         else:
             conditions.append("e.status != 'draft'")
+
+    if not is_manager and not mine:
+        # Non-managers browsing the general listing (residents, sponsors, security_guard,
+        # unauthenticated) never see events that have already ended — admin/committee_member
+        # still need past events visible for management/records, and "mine" is an explicit
+        # request for the caller's own history regardless of date.
+        conditions.append("e.end_time >= now()")
 
     if search:
         conditions.append(f"(e.title ILIKE ${idx} OR e.title % ${idx})")
@@ -199,7 +274,7 @@ async def list_events(
     total = total or 0
     total_pages = max(1, math.ceil(total / limit))
     return EventListResponse(
-        events=[_to_event_item(r) for r in rows],
+        events=[_to_event_item(r, caller_user_id) for r in rows],
         total=total,
         page=page,
         limit=limit,
@@ -228,10 +303,12 @@ async def get_event(
         if not row:
             raise HTTPException(status_code=404, detail="Event not found")
 
+        has_access = await _has_event_access(conn, claims.get("sub") if claims else None, event_id)
+
         # A draft isn't "published to everyone" yet — hide it from anyone who isn't its
         # organizer or an approved member, same as it's hidden from the general listing.
         # 404 (not 403) so it doesn't even reveal the draft exists.
-        if row["status"] == "draft" and not await _has_event_access(conn, claims.get("sub") if claims else None, event_id):
+        if row["status"] == "draft" and not has_access:
             raise HTTPException(status_code=404, detail="Event not found")
 
         ann_rows = await conn.fetch(
@@ -252,6 +329,7 @@ async def get_event(
     event_dict = _to_event_item(row)
     event_dict["announcements"] = [dict(r) for r in ann_rows]
     event_dict["ticket_types"]  = [dict(r) for r in tt_rows]
+    event_dict["has_access"]    = has_access
     return event_dict
 
 
@@ -307,14 +385,20 @@ async def create_event(
 
 @router.put("/{event_id}", summary="Update event details (admin/committee/organizer)")
 async def update_event(
-    event_id: str,
-    body:     EventUpdate,
-    claims:   dict = Depends(require_event_access()),
+    event_id:          str,
+    body:               EventUpdate,
+    background_tasks:  BackgroundTasks,
+    claims:            dict = Depends(require_event_access()),
 ):
     pool = await get_pool()
+    recipients: list[dict] = []
+    notify_message = ""
+    notify_title = ""
     async with pool.acquire() as conn:
         event = await conn.fetchrow(
-            "SELECT status, start_time FROM event WHERE id=$1::uuid AND society_id=$2::uuid",
+            "SELECT status, title, description, venue, venue_address, start_time, end_time, "
+            "capacity, ticket_price, is_free "
+            "FROM event WHERE id=$1::uuid AND society_id=$2::uuid",
             event_id, _SOCIETY,
         )
         if not event:
@@ -356,6 +440,24 @@ async def update_event(
             f"WHERE id=${idx}::uuid AND society_id=${idx+1}::uuid",
             *params,
         )
+
+        # Only a *published* event is something residents may already have registered
+        # for / planned around — a draft edit has nothing to broadcast yet.
+        if event["status"] == "published":
+            changes = _describe_changes(dict(event), body)
+            if changes:
+                notify_title = f'"{event["title"]}" was updated'
+                notify_message = (
+                    f'The event "{event["title"]}" has been updated:\n' + "\n".join(changes) +
+                    f"\n\nView: {settings.app_public_url}/events"
+                )
+                recipients = await notify_all_users(
+                    conn, event_id, "event_updated", notify_title, notify_message, related_id=event_id,
+                )
+
+    if recipients:
+        background_tasks.add_task(send_channels, recipients, notify_message, notify_title)
+
     return {"id": event_id, "updated": True}
 
 
@@ -364,17 +466,34 @@ async def update_event(
 @router.patch("/{event_id}/publish", summary="Publish a draft event")
 async def publish_event(
     event_id: str,
+    background_tasks: BackgroundTasks,
     claims:   dict = Depends(require_event_access()),
 ):
     pool = await get_pool()
+    recipients: list[dict] = []
+    notify_message = ""
+    notify_title = ""
     async with pool.acquire() as conn:
-        result = await conn.execute(
+        row = await conn.fetchrow(
             "UPDATE event SET status='published' "
-            "WHERE id=$1::uuid AND society_id=$2::uuid AND status='draft'",
+            "WHERE id=$1::uuid AND society_id=$2::uuid AND status='draft' "
+            "RETURNING title",
             event_id, _SOCIETY,
         )
-    if result == "UPDATE 0":
-        raise HTTPException(status_code=409, detail="Event not found or not in draft state")
+        if not row:
+            raise HTTPException(status_code=409, detail="Event not found or not in draft state")
+
+        notify_title = f'New event: "{row["title"]}"'
+        notify_message = (
+            f'A new event "{row["title"]}" has been published. '
+            f"View: {settings.app_public_url}/events"
+        )
+        recipients = await notify_all_users(
+            conn, event_id, "event_published", notify_title, notify_message, related_id=event_id,
+        )
+
+    if recipients:
+        background_tasks.add_task(send_channels, recipients, notify_message, notify_title)
     return {"id": event_id, "status": "published"}
 
 

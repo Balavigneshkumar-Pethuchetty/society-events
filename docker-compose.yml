@@ -128,6 +128,8 @@ services:
       AUTH_SERVICE_API_KEY:      ${AUTH_SERVICE_API_KEY:-}
       OTP_BRIDGE_CLIENT_ID:      ${OTP_BRIDGE_CLIENT_ID:-otp-bridge}
       OTP_BRIDGE_CLIENT_SECRET:  ${OTP_BRIDGE_CLIENT_SECRET:-}
+      GMAIL_SMTP_USER:           ${GMAIL_SMTP_USER:-}
+      GMAIL_APP_PASSWORD:        ${GMAIL_APP_PASSWORD:-}
     volumes:
       - user_uploads:/app/uploads
     depends_on:
@@ -160,6 +162,7 @@ services:
       KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL}
       INTERNAL_API_KEY:          ${INTERNAL_API_KEY}
       SOCIETY_ID:                11100000-0000-0000-0000-000000000001
+      APP_PUBLIC_URL:            ${APP_PUBLIC_URL}
       SPLUNK_HEC_URL:            http://host.containers.internal:8088/services/collector/event
       SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
       SOCIETY_UPI_ID:            ${SOCIETY_UPI_ID:-}
@@ -168,6 +171,10 @@ services:
       SOCIETY_BANK_ACCOUNT:      ${SOCIETY_BANK_ACCOUNT:-}
       SOCIETY_BANK_IFSC:         ${SOCIETY_BANK_IFSC:-}
       SOCIETY_BANK_BENEFICIARY:  ${SOCIETY_BANK_BENEFICIARY:-}
+      AUTH_SERVICE_URL:          ${AUTH_SERVICE_URL:-http://host.containers.internal:8000}
+      AUTH_SERVICE_API_KEY:      ${AUTH_SERVICE_API_KEY:-}
+      GMAIL_SMTP_USER:           ${GMAIL_SMTP_USER:-}
+      GMAIL_APP_PASSWORD:        ${GMAIL_APP_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -196,6 +203,7 @@ services:
       KEYCLOAK_URL:              ${KEYCLOAK_URL:-https://auth.gm-global-techies-town.club}
       KEYCLOAK_REALM:            society-events
       KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL}
+      APP_PUBLIC_URL:            ${APP_PUBLIC_URL}
       INTERNAL_API_KEY:          ${INTERNAL_API_KEY}
       SOCIETY_ID:                11100000-0000-0000-0000-000000000001
       SPLUNK_HEC_URL:            http://host.containers.internal:8088/services/collector/event
@@ -272,15 +280,11 @@ services:
       KEYCLOAK_URL:              ${KEYCLOAK_URL:-https://auth.gm-global-techies-town.club}
       KEYCLOAK_REALM:            society-events
       KEYCLOAK_PUBLIC_URL:       ${KEYCLOAK_PUBLIC_URL}
+      APP_PUBLIC_URL:            ${APP_PUBLIC_URL}
       INTERNAL_API_KEY:          ${INTERNAL_API_KEY}
       SOCIETY_ID:                11100000-0000-0000-0000-000000000001
       PAYMENT_PROVIDER:          ${PAYMENT_PROVIDER:-MANUAL_UPI}
-      IMAP_HOST:                 ${IMAP_HOST:-}
-      IMAP_PORT:                 ${IMAP_PORT:-993}
-      IMAP_USER:                 ${IMAP_USER:-}
-      IMAP_PASSWORD:             ${IMAP_PASSWORD:-}
-      IMAP_MAILBOX:              ${IMAP_MAILBOX:-INBOX}
-      RECONCILIATION_INTERVAL_SECONDS: ${RECONCILIATION_INTERVAL_SECONDS:-300}
+      PAYMENT_SECRET_KEY:        ${PAYMENT_SECRET_KEY}
       SPLUNK_HEC_URL:            http://host.containers.internal:8088/services/collector/event
       SPLUNK_HEC_TOKEN:          ${SPLUNK_HEC_TOKEN:-}
       AUTH_SERVICE_URL:          ${AUTH_SERVICE_URL:-http://host.containers.internal:8000}
@@ -293,6 +297,8 @@ services:
       ANTHROPIC_API_KEY:         ${ANTHROPIC_API_KEY:-}
       CLAUDE_MODEL:              ${CLAUDE_MODEL:-claude-sonnet-4-6}
       PAYMENT_SERVICE_ENV:       ${PAYMENT_SERVICE_ENV:-production}
+      GMAIL_SMTP_USER:           ${GMAIL_SMTP_USER:-}
+      GMAIL_APP_PASSWORD:        ${GMAIL_APP_PASSWORD:-}
     volumes:
       - payment_uploads:/app/uploads
     depends_on:

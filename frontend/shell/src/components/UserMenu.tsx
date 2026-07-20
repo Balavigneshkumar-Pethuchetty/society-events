@@ -8,6 +8,7 @@ import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import ApartmentIcon from '@mui/icons-material/Apartment';
 import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
 import DashboardIcon from '@mui/icons-material/Dashboard';
+import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import LogoutIcon from '@mui/icons-material/Logout';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { useAuth } from '../contexts/AuthContext';
@@ -111,6 +112,11 @@ export function UserMenu() {
         )}
 
         <Divider />
+
+        <MenuItem dense onClick={() => navigate('/profile#leave-society')} sx={{ gap: 1.25, py: 1.25, color: 'error.main' }}>
+          <ListItemIcon sx={{ minWidth: 0, color: 'error.main' }}><ExitToAppIcon fontSize="small" /></ListItemIcon>
+          Leave Society
+        </MenuItem>
 
         <MenuItem dense onClick={logout} sx={{ gap: 1.25, py: 1.25, color: 'error.main' }}>
           <ListItemIcon sx={{ minWidth: 0, color: 'error.main' }}><LogoutIcon fontSize="small" /></ListItemIcon>

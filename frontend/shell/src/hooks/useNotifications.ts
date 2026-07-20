@@ -5,12 +5,14 @@ import { userService, NotificationItem } from '../api/userService';
 const SW_PATH = '/notification-sw.js';
 
 export function useNotifications() {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
   const [unreadCount, setUnreadCount]       = useState(0);
   const [notifications, setNotifications]   = useState<NotificationItem[]>([]);
   const [notifLoading, setNotifLoading]     = useState(false);
   const tokenRef = useRef<string | null>(null);
   tokenRef.current = token ?? null;
+  const logoutRef = useRef(logout);
+  logoutRef.current = logout;
 
   // ── Register Service Worker once and listen for background messages ────────
   useEffect(() => {
@@ -25,6 +27,13 @@ export function useNotifications() {
 
       if (type === 'UNREAD_COUNT') {
         setUnreadCount((event.data as { count: number }).count);
+      }
+
+      // Leave request got approved while this tab was open — the account is
+      // headed for deletion once the user confirms, so log out immediately
+      // instead of leaving them able to keep using a soon-to-be-gone account.
+      if (type === 'FORCE_LOGOUT') {
+        logoutRef.current();
       }
 
       // SW woke after browser killed it — re-send token

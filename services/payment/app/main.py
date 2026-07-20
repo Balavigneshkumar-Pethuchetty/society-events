@@ -13,7 +13,7 @@ from app.config import settings
 from app.database import close_pool, get_pool, wait_for_db
 from app.middleware.splunk import SplunkLoggingMiddleware
 from app.reconciliation import inbox as reconciliation_inbox
-from app.routes import audit, funds, payments, reconciliation, refunds, registry, settings as recon_settings, sponsors, testing
+from app.routes import audit, funds, payments, quick_review, reconciliation, refunds, registry, settings as recon_settings, sponsors, testing
 from app.swagger_theme import themed_swagger_ui_html
 
 _OPENAPI_URL     = "openapi.json"
@@ -79,6 +79,7 @@ app.include_router(audit.router,           prefix="/audit",           tags=["aud
 app.include_router(recon_settings.router,  prefix="/recon-settings",  tags=["reconciliation-settings"])
 app.include_router(funds.router,           prefix="/funds",           tags=["funds"])
 app.include_router(sponsors.router,        prefix="/sponsors",        tags=["sponsors"])
+app.include_router(quick_review.router,    prefix="/quick-review",    tags=["quick-review"])
 
 if settings.is_testing:
     app.include_router(testing.router, prefix="/test", tags=["testing"])

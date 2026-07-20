@@ -1,17 +1,14 @@
-"""Notify whoever manages an event (organizer + active event_permission
-grantees) via in-app notification, SMS, Telegram, and email — used when a
-resident submits a payment-verification screenshot, cancels a booking, or
-that cancellation triggers a refund request. See ~/auth-service's
-/api/sms/send and /api/telegram/send for the SMS/Telegram delivery
-transport; email is sent directly via app.email's Gmail SMTP.
+"""Broadcast an event-details change to every active account, including the
+organizer who made the edit — everyone should get a copy confirming what
+changed. Distinct from require_event_access()'s narrow organizer/permission-
+grantee circle — an edited *published* event (date, venue, price, etc.
+changed) is public-facing information residents may have already acted on.
 
-Split in two so the outbound HTTP/SMTP fan-out never happens while a pooled
-DB connection is held open (max_size — see database.py):
-  - resolve_and_record() runs inside the caller's existing
-    `async with pool.acquire() as conn:` block.
-  - send_channels() runs after that block exits, via BackgroundTasks, since
-    auth-service's SMS failover chain (and SMTP) can take several seconds
-    worst case and must not sit on the resident's request/response cycle.
+Split in two for the same reason as the other services' notification modules
+(registration-service, payment-service): resolve_and_record() runs inside the
+caller's pooled DB connection, send_channels() fans out SMS/Telegram/email
+afterward via BackgroundTasks so the outbound HTTP/SMTP calls never hold the
+connection open.
 """
 import asyncio
 
@@ -26,15 +23,12 @@ def _mask_phone(phone: str) -> str:
     return "*" * max(0, len(phone) - 4) + phone[-4:] if len(phone) >= 4 else "***"
 
 
-async def resolve_and_record(
-    conn, event_id: str, actor_user_id: str, type_: str, title: str, message: str, related_id: str | None = None,
+async def notify_all_users(
+    conn, event_id: str, type_: str, title: str, message: str,
+    related_id: str | None = None,
 ) -> list[dict]:
     rows = await conn.fetch(
-        "SELECT u.id, u.phone, u.email FROM users u "
-        "WHERE (u.id = (SELECT organizer_id FROM event WHERE id = $1::uuid) "
-        "   OR u.id IN (SELECT user_id FROM event_permission WHERE event_id = $1::uuid AND revoked_at IS NULL)) "
-        "  AND u.id != $2::uuid",
-        event_id, actor_user_id,
+        "SELECT id, phone, email FROM users WHERE is_active = TRUE AND role != 'guest'",
     )
     for r in rows:
         await conn.execute(
@@ -42,10 +36,10 @@ async def resolve_and_record(
             "VALUES ($1, $2::uuid, $3, $4, $5, $6)",
             r["id"], event_id, type_, title, message, related_id,
         )
-    return [{"id": str(r["id"]), "phone": r["phone"], "email": r["email"], "title": title} for r in rows]
+    return [dict(r) for r in rows]
 
 
-async def send_channels(recipients: list[dict], message: str) -> None:
+async def send_channels(recipients: list[dict], message: str, title: str) -> None:
     """Sends one recipient at a time (not fanned out concurrently) so a
     broadcast to hundreds/thousands of users doesn't fire a burst of
     simultaneous SMTP logins or HTTP calls — see send_notification_emails_sequential
@@ -55,7 +49,7 @@ async def send_channels(recipients: list[dict], message: str) -> None:
         return
 
     if settings.gmail_smtp_user and settings.gmail_app_password:
-        email_recipients = [(r["email"], r.get("title") or "Notification") for r in recipients if r.get("email")]
+        email_recipients = [(r["email"], title) for r in recipients if r.get("email")]
         if email_recipients:
             failures = await asyncio.to_thread(send_notification_emails_sequential, email_recipients, message)
             for email, error in failures:

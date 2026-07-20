@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchEventSource } from '@microsoft/fetch-event-source';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   Alert, Box, Button, Chip, CircularProgress, Container,
   Dialog, DialogContent, Divider, IconButton, Paper, Stack, Step, StepLabel,
@@ -8,19 +8,16 @@ import {
 import AccountBalanceIcon  from '@mui/icons-material/AccountBalance';
 import CheckCircleIcon     from '@mui/icons-material/CheckCircle';
 import CloseIcon           from '@mui/icons-material/Close';
+import CloudUploadIcon     from '@mui/icons-material/CloudUpload';
 import ContentCopyIcon     from '@mui/icons-material/ContentCopy';
+import EditIcon            from '@mui/icons-material/Edit';
 import ErrorOutlineIcon    from '@mui/icons-material/ErrorOutline';
+import FullscreenIcon      from '@mui/icons-material/Fullscreen';
 import HourglassTopIcon    from '@mui/icons-material/HourglassTop';
 import InfoOutlinedIcon    from '@mui/icons-material/InfoOutlined';
-import OpenInFullIcon      from '@mui/icons-material/OpenInFull';
 import PaymentIcon         from '@mui/icons-material/Payment';
 import QrCode2Icon         from '@mui/icons-material/QrCode2';
-import UploadFileIcon      from '@mui/icons-material/UploadFile';
 import VerifiedIcon        from '@mui/icons-material/Verified';
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const PAY_BASE = 'https://pay.gm-global-techies-town.club';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -44,55 +41,27 @@ interface Transaction {
   txn_ref: string; status: string; amount: number;
   payee_upi: string | null; payer_upi: string | null;
   payment_utr: string | null; event_title: string;
+  registration_id: string | null;
 }
 
+// Shape returned by POST /payments/initiate (ManualUpiAdapter) — a locally-built UPI
+// intent, verified manually by an admin/committee member (no AI/reconciliation service).
 interface PaymentIntentResp {
-  transaction_id: string;
-  status: string;
+  txn_ref: string;
+  payee_upi: string;
   amount: number;
-  upi_qr_data: string;   // data:image/png;base64,...
-  upi_vpa: string;
-  expiry_at: string;
-  checksum_hash: string;
+  upi_intent_uri: string;
+  status: string;
 }
 
-interface VerifyResult {
-  verdict: string;       // CONFIRMED | AMOUNT_MISMATCH | PENDING
-  confidence: string;
-  upiRef: string | null;
-  amount: number | null;
-}
-
-interface MatchCandidate {
-  transaction_id: string;
-  amount: number | null;
-  payer_id: string | null;
-  upi_vpa: string | null;
-  ctx_type: string | null;
-  reference: string | null;
-  created_at: string | null;
-  match_score: number;
-  match_signals: string[];
-  auto_reconcile: boolean;
-}
-
-interface ExtractedFields {
-  parse_id: string | null;
-  source_type: string | null;
-  extracted_amount: number | null;
-  extracted_upi_ref: string | null;
-  extracted_rrn: string | null;
-  extracted_bank: string | null;
-  extracted_timestamp: string | null;
-  extracted_status: string | null;
-  is_reconciled: boolean | null;
-  parse_method: string | null;
-  match_candidates: MatchCandidate[];
-}
-
-interface VerifyScreenshotResponse {
-  verification: { verdict: string; confidence: string; message: string };
-  screenshot: { amount: number | null; upi_ref: string | null };
+// Shape returned by POST /payments/{txn_ref}/screenshot — the screenshot plus
+// whatever the AI extraction could read off it (any field may be null).
+interface ScreenshotAnalysis {
+  screenshot_url: string | null;
+  parsed_amount: number | null;
+  parsed_upi_ref: string | null;
+  parsed_rrn: string | null;
+  parsed_timestamp: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -109,32 +78,21 @@ function fmtAmount(n: number, currency = 'INR') {
   return `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 0 })}`;
 }
 
-// datetime-local inputs always edit/display in the browser's LOCAL time (their value
-// string has no timezone in it) — but the underlying state stays UTC ISO everywhere
-// else in this app, matching the frontend<->backend contract. Only this widget's
-// display format is local; nothing is ever sent to the backend in local time.
-function isoToDatetimeLocal(iso: string): string {
+// <input type="datetime-local"> takes/returns "YYYY-MM-DDTHH:mm" with no timezone
+// (interpreted as local time) — renders as 12h or 24h purely per the browser/OS
+// locale, same as the datetime-local fields already used in ManageEvents.tsx.
+function isoToLocalInputValue(iso: string | null): string {
+  if (!iso) return '';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function datetimeLocalToIso(local: string): string {
-  if (!local) return '';
+function localInputValueToIso(local: string): string | null {
+  if (!local) return null;
   const d = new Date(local);
-  return isNaN(d.getTime()) ? '' : d.toISOString();
-}
-
-// Size the bank-email search window around the resident-confirmed payment date,
-// since the reconciliation API has no separate "search around this date" field —
-// search_days is the only lever, so widen it to cover an older payment date instead
-// of always defaulting to the last 3 days. Falls back to 3 if the text doesn't parse.
-function computeSearchDays(timestampText: string): number {
-  const parsed = new Date(timestampText);
-  if (isNaN(parsed.getTime())) return 3;
-  const daysAgo = Math.ceil((Date.now() - parsed.getTime()) / (1000 * 60 * 60 * 24));
-  return Math.min(14, Math.max(3, daysAgo + 1));
+  return isNaN(d.getTime()) ? null : d.toISOString();
 }
 
 function CopyText({ value, mono = false }: { value: string; mono?: boolean }) {
@@ -186,8 +144,12 @@ async function apiFetch(path: string, token: string, opts: RequestInit = {}) {
 }
 
 // ── Checkout flow ─────────────────────────────────────────────────────────────
+// Manual-only: a resident pays via the UPI QR/intent built from POST /payments/initiate,
+// then an admin/committee member confirms the payment_transaction from the admin
+// Reconciliation Console (approve/verify). There is no AI screenshot verification or
+// live push here — see ReportFindings/CLAUDE.md history for the disabled auto flow.
 
-const STEPS = ['Confirm Booking', 'Scan & Pay', 'Upload Proof', 'Done'];
+const STEPS = ['Confirm Booking', 'Scan & Pay', 'Upload Payment Screenshot', 'Done'];
 
 function CheckoutFlow({ token }: { token: string }) {
   const [step, setStep]               = useState(0);
@@ -195,71 +157,20 @@ function CheckoutFlow({ token }: { token: string }) {
   const [cartLoading, setCartLoading] = useState(true);
   const [registration, setRegistration] = useState<Registration | null>(null);
   const [paymentIntent, setPaymentIntent] = useState<PaymentIntentResp | null>(null);
-  // Mirrors of the two state values above, kept in sync at every setRegistration/
-  // setPaymentIntent call. openSse() is invoked imperatively once per checkout —
-  // its onmessage closure captures registration/paymentIntent as they were AT THAT
-  // CALL (both still null, since the setState calls just above it haven't taken
-  // effect in this render yet), and that closure is never recreated on later
-  // renders. Reading these refs instead of the closed-over state inside
-  // markTicketPurchased sidesteps the stale closure regardless of which path
-  // (SSE vs. the direct verify-screenshot response) invokes it.
-  const registrationRef               = useRef<Registration | null>(null);
-  const paymentIntentRef              = useRef<PaymentIntentResp | null>(null);
-  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
-  const [screenshotPreviewUrl, setScreenshotPreviewUrl] = useState<string | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [extracting, setExtracting]   = useState(false);
-  const [extracted, setExtracted]     = useState<ExtractedFields | null>(null);
-  const [reviewAmount, setReviewAmount] = useState('');
-  const [reviewUpiRef, setReviewUpiRef] = useState('');
-  const [reviewTimestamp, setReviewTimestamp] = useState('');
-  const [reviewPayerUpi, setReviewPayerUpi] = useState('');
-  const [amountError, setAmountError] = useState('');
-  const [utrError, setUtrError] = useState('');
-  const [timestampError, setTimestampError] = useState('');
-  const [verifying, setVerifying]     = useState(false);
-  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [error, setError]             = useState<string | null>(null);
   const [loading, setLoading]         = useState(false);
-  const sseAbortRef                   = useRef<AbortController | null>(null);
-  // Guards against double-processing: the verify-screenshot HTTP response now
-  // resolves the verdict directly (SSE is fragile as the sole source of truth —
-  // a missed/late event previously left the UI spinning forever with no fallback).
-  // SSE stays subscribed as a backup for a later async confirmation, so both paths
-  // check this before acting.
-  const resolvedRef                   = useRef(false);
-  // Hard cap: if neither the direct response nor SSE resolves within 30s, give up
-  // rather than let the resident sit on a spinner indefinitely.
-  const verifyTimeoutRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fileInputRef                  = useRef<HTMLInputElement | null>(null);
-
-  // Close SSE and cancel the verify timeout when the component unmounts
-  useEffect(() => () => {
-    sseAbortRef.current?.abort();
-    if (verifyTimeoutRef.current) clearTimeout(verifyTimeoutRef.current);
-  }, []);
-
-  // Build/revoke an object URL for the screenshot preview as the file changes
-  useEffect(() => {
-    if (!screenshotFile) { setScreenshotPreviewUrl(null); return; }
-    const url = URL.createObjectURL(screenshotFile);
-    setScreenshotPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [screenshotFile]);
-
-  // Auto-redirect once we have a verdict — to My Tickets when confirmed, or to My
-  // Registrations when not (so the resident can retry from there once admin/committee
-  // reviews it manually) — a bit longer delay so there's time to read the popup.
-  useEffect(() => {
-    if (!verifyResult) return;
-    const confirmed = verifyResult.verdict === 'CONFIRMED';
-    const delay = confirmed ? 3000 : 6000;
-    const t = setTimeout(() => { window.location.href = confirmed ? '/tickets' : '/registrations'; }, delay);
-    return () => clearTimeout(t);
-  }, [verifyResult]);
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [uploading, setUploading]     = useState(false);
+  const [analyzed, setAnalyzed]       = useState<ScreenshotAnalysis | null>(null);
+  const [editing, setEditing]         = useState(false);
+  const [confirming, setConfirming]   = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [reviewDatetime, setReviewDatetime] = useState('');
+  const [reviewReference, setReviewReference] = useState('');
+  const [reviewAmount, setReviewAmount]       = useState('');
 
   // Resuming an existing pending registration (from "Upload Payment" / "Re-upload" on
-  // My Registrations) skips the cart entirely — go straight to the screenshot step with
+  // My Registrations) skips the cart entirely — go straight to the Scan & Pay step with
   // a fresh payment intent, instead of the normal Confirm Booking → Scan & Pay flow.
   useEffect(() => {
     const resumeId = new URLSearchParams(window.location.search).get('registration_id');
@@ -294,7 +205,6 @@ function CheckoutFlow({ token }: { token: string }) {
           registered_at: reg.registered_at,
         };
         setRegistration(resumedRegistration);
-        registrationRef.current = resumedRegistration;
         // Synthetic single-line cart so `total`/`isFree` below still compute correctly
         // if the resident navigates back to the QR step — there's no real cart to read.
         setCheckoutData({
@@ -307,15 +217,13 @@ function CheckoutFlow({ token }: { token: string }) {
           }],
         });
 
-        const intent: PaymentIntentResp = await apiFetch('/api/payments/payments/checkout-intent', token, {
+        const intent: PaymentIntentResp = await apiFetch('/api/payments/payments/initiate', token, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ event_id: reg.event_id, registration_id: reg.id }),
         });
         setPaymentIntent(intent);
-        paymentIntentRef.current = intent;
-        openSse(intent.transaction_id);
-        setStep(2);
+        setStep(1);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'Could not resume this registration.');
       } finally {
@@ -369,18 +277,16 @@ function CheckoutFlow({ token }: { token: string }) {
       }
 
       setRegistration(reg);
-      registrationRef.current = reg;
       fetch('/api/registrations/registrations/cart', {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
 
       if (reg.status === 'confirmed') { setStep(1); return; }
 
-      // Create payment intent via our own backend, which resolves this event's
-      // collector UPI from committee_registry before calling the centralized
-      // reconciliation service — amount is also resolved server-side from the
-      // registration, not trusted from the client.
-      const intent: PaymentIntentResp = await apiFetch('/api/payments/payments/checkout-intent', token, {
+      // Build a manual UPI payment intent via our own backend, which resolves this
+      // event's collector UPI from committee_registry — amount is resolved
+      // server-side from the registration, not trusted from the client.
+      const intent: PaymentIntentResp = await apiFetch('/api/payments/payments/initiate', token, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -389,10 +295,6 @@ function CheckoutFlow({ token }: { token: string }) {
         }),
       });
       setPaymentIntent(intent);
-      paymentIntentRef.current = intent;
-
-      // Open SSE before user uploads proof so we never miss the event
-      openSse(intent.transaction_id);
       setStep(1);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Registration failed');
@@ -407,7 +309,6 @@ function CheckoutFlow({ token }: { token: string }) {
     if (!registration) return;
     if (!window.confirm('Cancel this registration and choose different tickets? You have not paid yet, so this is safe.')) return;
 
-    sseAbortRef.current?.abort();
     try {
       await fetch(`/api/registrations/registrations/${registration.id}`, {
         method: 'DELETE',
@@ -417,260 +318,76 @@ function CheckoutFlow({ token }: { token: string }) {
     window.location.href = `/events/${registration.event_id}`;
   }
 
-  // ── SSE listener ──────────────────────────────────────────────────────────
+  // ── Upload & Analyze — attaches the resident's UPI screenshot as proof to the
+  // pending transaction from /initiate, then runs it through AI extraction so the
+  // resident can review/correct the transaction datetime, reference number, and
+  // amount before the organizer is notified (see handleConfirmDetails below).
 
-  function openSse(transactionId: string) {
-    sseAbortRef.current?.abort();
-    const abort = new AbortController();
-    sseAbortRef.current = abort;
-
-    fetchEventSource(`${PAY_BASE}/events/subscribe`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: abort.signal,
-      openWhenHidden: true,
-      async onmessage(ev) {
-        if (ev.event !== 'payment_verified') return;
-        if (resolvedRef.current) return; // already resolved via the direct HTTP response
-        let data: Record<string, unknown>;
-        try { data = JSON.parse(ev.data); }
-        catch { return; }
-
-        if (data.transaction_id !== transactionId) return;
-
-        const result: VerifyResult = {
-          verdict:    String(data.verdict    ?? 'PENDING'),
-          confidence: String(data.confidence ?? ''),
-          upiRef:     (data.upi_ref as string | null) ?? null,
-          amount:     (data.amount as number | null) ?? null,
-        };
-
-        resolvedRef.current = true;
-        clearVerifyTimeout();
-        if (result.verdict === 'CONFIRMED') {
-          await markTicketPurchased(result);
-        } else {
-          setVerifyResult(result);
-          setVerifying(false);
-          setStep(3);
-        }
-      },
-      onerror(err) {
-        console.warn('SSE error:', err);
-        // returning undefined causes fetchEventSource to reconnect automatically
-      },
-    });
-  }
-
-  function clearVerifyTimeout() {
-    if (verifyTimeoutRef.current) { clearTimeout(verifyTimeoutRef.current); verifyTimeoutRef.current = null; }
-  }
-
-  async function markTicketPurchased(result: VerifyResult) {
-    // Read from the refs, not the closed-over registration/paymentIntent state — this
-    // function is called both from a fresh per-render closure (handleScreenshotUpload)
-    // and from openSse()'s onmessage, which is registered once, imperatively, right
-    // after setRegistration/setPaymentIntent are called and before that state update
-    // is visible in this render's closure. The refs are updated synchronously at the
-    // same call sites, so they're always current regardless of which closure calls in.
-    const currentRegistration  = registrationRef.current;
-    const currentPaymentIntent = paymentIntentRef.current;
-    if (!currentRegistration || !currentPaymentIntent) {
-      // Should be impossible on this code path (both are set before Step 2 renders
-      // at all) — logged loudly because a silent return here previously looked
-      // identical to a successful confirm: reconciliation succeeds server-side,
-      // but nothing ever marks the local registration/payment_transaction as paid.
-      console.error('markTicketPurchased: missing registration or paymentIntent', {
-        hasRegistration: !!currentRegistration, hasPaymentIntent: !!currentPaymentIntent, result,
+  async function handleAnalyzeScreenshot() {
+    if (!paymentIntent || !screenshotFile) return;
+    setUploading(true); setError(null);
+    try {
+      const form = new FormData();
+      form.append('file', screenshotFile);
+      const res = await fetch(`/api/payments/payments/${paymentIntent.txn_ref}/screenshot`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
       });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error((b as { detail?: string }).detail ?? `HTTP ${res.status}`);
+      }
+      const result: ScreenshotAnalysis = await res.json();
+      setAnalyzed(result);
+      setReviewDatetime(isoToLocalInputValue(result.parsed_timestamp));
+      setReviewReference(result.parsed_upi_ref || result.parsed_rrn || '');
+      setReviewAmount(result.parsed_amount != null ? String(result.parsed_amount) : String(total));
+      // Nothing usable extracted at all — start the reviewer unlocked so the
+      // resident can just type the details in directly instead of "editing" blanks.
+      setEditing(!result.parsed_amount && !result.parsed_upi_ref && !result.parsed_rrn && !result.parsed_timestamp);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not upload your payment screenshot.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  // ── Submit Payment — the resident's final confirmation of the (possibly
+  // corrected) screenshot details; this is what actually notifies the organizer.
+
+  async function handleConfirmDetails() {
+    if (!paymentIntent) return;
+    const referenceDigits = reviewReference.trim();
+    if (!/^\d{12}$/.test(referenceDigits)) {
+      setError('Reference number must be exactly 12 digits.');
       return;
     }
-    clearVerifyTimeout();
-
-    // The reconciliation service has already confirmed this payment by the time we get
-    // here — this call just mirrors that into our own DB (registration + payment_transaction).
-    // It used to be a single best-effort attempt with a silently swallowed failure, which
-    // left registrations permanently stuck 'pending_payment' with no visible error anywhere
-    // even though the resident's money was matched. Retry a few times before giving up.
-    const body = JSON.stringify({
-      event_id:              currentRegistration.event_id,
-      registration_id:       currentRegistration.id,
-      reconciliation_txn_id: currentPaymentIntent.transaction_id,
-      upi_ref:               result.upiRef ?? 'RECONCILED',
-      amount:                result.amount ?? currentPaymentIntent.amount,
-      payer_upi:             reviewPayerUpi.trim() || null,
-    });
-
-    const attempts = 3;
-    for (let attempt = 1; attempt <= attempts; attempt++) {
-      try {
-        await apiFetch('/api/payments/payments/auto-confirm', token, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body,
-        });
-        break;
-      } catch (e: unknown) {
-        console.error(`auto-confirm attempt ${attempt}/${attempts} failed:`, e);
-        if (attempt === attempts) {
-          // Backend reconciliation is real regardless — still show the resident their
-          // confirmed payment below. This registration is now the kind of stuck-pending
-          // row an admin can repair via POST /payments/{txn_ref}/sync-reconciliation.
-          break;
-        }
-        await new Promise(res => setTimeout(res, attempt * 1000));
-      }
+    const amountNum = Number(reviewAmount);
+    if (!reviewAmount || isNaN(amountNum) || amountNum <= 0) {
+      setError('Enter a valid amount.');
+      return;
     }
-
-    sseAbortRef.current?.abort();
-    setVerifyResult(result);
-    setVerifying(false);
-    setStep(3);
-  }
-
-  // ── Step 2: Select screenshot → extract details for review ──────────────────
-
-  async function handleFileSelect(file: File | null) {
-    setScreenshotFile(file);
-    setExtracted(null);
-    setReviewAmount('');
-    setReviewUpiRef('');
-    setReviewTimestamp('');
-    if (!file) return;
-
-    setExtracting(true); setError(null);
+    if (!reviewDatetime) {
+      setError('Enter the transaction date & time.');
+      return;
+    }
+    setConfirming(true); setError(null);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const result: ExtractedFields = await apiFetch('/api/payments/payments/parse-screenshot', token, {
+      await apiFetch(`/api/payments/payments/${paymentIntent.txn_ref}/confirm-details`, token, {
         method: 'POST',
-        body: fd,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reference_number: referenceDigits,
+          amount: amountNum,
+          transaction_datetime: localInputValueToIso(reviewDatetime),
+        }),
       });
-      setExtracted(result);
-      setReviewAmount(result.extracted_amount != null ? String(result.extracted_amount) : '');
-      setReviewUpiRef(result.extracted_upi_ref || result.extracted_rrn || '');
-      setReviewTimestamp(result.extracted_timestamp ?? '');
-    } catch (e: unknown) {
-      // Non-fatal — the resident can still fill the fields in manually below.
-      setExtracted({
-        parse_id: null, source_type: null, extracted_amount: null, extracted_upi_ref: null,
-        extracted_rrn: null, extracted_bank: null, extracted_timestamp: null,
-        extracted_status: null, is_reconciled: null, parse_method: 'failed', match_candidates: [],
-      });
-    } finally {
-      setExtracting(false);
-    }
-  }
-
-  // ── Step 2: Submit for verification (using the reviewed/corrected fields) ───
-
-  // UTR/RRN numbers are 6-22 alphanumeric characters across UPI apps (the AI
-  // extractor's own regex accepts 12-22, but some banks' RRNs run shorter) —
-  // not tied to a specific bank's format, just enough to catch empty/garbage input.
-  const UTR_PATTERN = /^[A-Za-z0-9]{6,22}$/;
-
-  function validateReviewFields(): boolean {
-    let ok = true;
-
-    const amt = Number(reviewAmount.trim());
-    if (!reviewAmount.trim() || !Number.isFinite(amt) || amt <= 0) {
-      setAmountError('Enter a valid amount greater than 0');
-      ok = false;
-    } else {
-      setAmountError('');
-    }
-
-    const utr = reviewUpiRef.trim();
-    if (!utr) {
-      setUtrError('UTR / RRN number is required');
-      ok = false;
-    } else if (!UTR_PATTERN.test(utr)) {
-      setUtrError('Enter a valid UTR / RRN number (6-22 letters/digits)');
-      ok = false;
-    } else {
-      setUtrError('');
-    }
-
-    if (!reviewTimestamp) {
-      setTimestampError('Payment date & time is required');
-      ok = false;
-    } else if (new Date(reviewTimestamp).getTime() > Date.now()) {
-      setTimestampError('Payment date & time cannot be in the future');
-      ok = false;
-    } else {
-      setTimestampError('');
-    }
-
-    return ok;
-  }
-
-  async function handleScreenshotUpload() {
-    if (!screenshotFile || !paymentIntent || !registration) return;
-    if (!validateReviewFields()) return;
-    resolvedRef.current = false;
-    setVerifying(true); setError(null);
-
-    clearVerifyTimeout();
-    // This has to stay longer than every layer verify-screenshot's own request can take
-    // to actually finish (nginx's proxy_read_timeout for /api/payments/ is 120s; the
-    // reconciliation service's AI extraction chain alone has been measured up to ~90s on
-    // this box's CPU-bound Ollama). 30s was firing on almost every real request — the
-    // backend would go on to genuinely reconcile the payment a minute later, but by then
-    // resolvedRef.current was already true, so that real CONFIRMED response got silently
-    // discarded below and auto-confirm was never called even though reconciliation
-    // actually succeeded. This is the single biggest cause of registrations stuck
-    // 'pending_payment' despite a successful backend reconciliation.
-    verifyTimeoutRef.current = setTimeout(() => {
-      if (resolvedRef.current) return;
-      resolvedRef.current = true;
-      sseAbortRef.current?.abort();
-      setVerifyResult({ verdict: 'TIMEOUT', confidence: '', upiRef: null, amount: null });
-      setVerifying(false);
       setStep(3);
-    }, 130000);
-
-    const fd = new FormData();
-    fd.append('file', screenshotFile);
-    fd.append('event_id', registration.event_id);
-    fd.append('registration_id', registration.id);
-    fd.append('txn_id', paymentIntent.transaction_id);
-    fd.append('search_days', String(computeSearchDays(reviewTimestamp)));
-    if (reviewUpiRef.trim()) fd.append('manual_upi_ref', reviewUpiRef.trim());
-    if (reviewAmount.trim()) fd.append('manual_amount', reviewAmount.trim());
-    if (reviewPayerUpi.trim()) fd.append('payer_upi', reviewPayerUpi.trim());
-
-    try {
-      // Resolve the verdict directly from this response instead of waiting on SSE —
-      // a missed or late SSE event previously left the UI spinning forever with no
-      // fallback, even though this same response already carries the answer.
-      const resp: VerifyScreenshotResponse = await apiFetch('/api/payments/payments/verify-screenshot', token, {
-        method: 'POST',
-        body: fd,
-      });
-      if (resolvedRef.current) return; // SSE or the 30s timeout beat us to it
-      resolvedRef.current = true;
-      clearVerifyTimeout();
-
-      const result: VerifyResult = {
-        verdict:    resp.verification?.verdict ?? 'PENDING',
-        confidence: resp.verification?.confidence ?? '',
-        upiRef:     resp.screenshot?.upi_ref ?? null,
-        amount:     resp.screenshot?.amount ?? null,
-      };
-
-      if (result.verdict === 'CONFIRMED') {
-        await markTicketPurchased(result);
-      } else {
-        sseAbortRef.current?.abort();
-        setVerifyResult(result);
-        setVerifying(false);
-        setStep(3);
-      }
     } catch (e: unknown) {
-      if (resolvedRef.current) return; // already timed out / resolved by SSE
-      resolvedRef.current = true;
-      clearVerifyTimeout();
-      setVerifying(false);
-      setError(e instanceof Error ? e.message : 'Verification request failed. Please try again.');
+      setError(e instanceof Error ? e.message : 'Could not submit your payment details.');
+    } finally {
+      setConfirming(false);
     }
   }
 
@@ -728,24 +445,20 @@ function CheckoutFlow({ token }: { token: string }) {
         </Paper>
       )}
 
-      {/* ── Step 1a: Scan & Pay ── */}
+      {/* ── Step 1: Scan & Pay ── */}
       {step === 1 && registration?.status !== 'confirmed' && paymentIntent && (
         <Stack spacing={3}>
           <Alert severity="info" icon={<QrCode2Icon />}>
             Scan the QR or copy the UPI ID below to pay <strong>{fmtAmount(total)}</strong>.
-            Then click <strong>"I've Paid"</strong> to upload your confirmation screenshot.
+            Once you've paid, continue to upload a screenshot as proof.
           </Alert>
 
           <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
             <Typography fontWeight={700} mb={2}>Pay via UPI</Typography>
             <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'flex-start' }}>
               <Box sx={{ textAlign: 'center', flexShrink: 0 }}>
-                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1, display: 'inline-block' }}>
-                  <img
-                    src={paymentIntent.upi_qr_data}
-                    alt="UPI QR Code"
-                    style={{ width: 160, height: 160, display: 'block' }}
-                  />
+                <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1, display: 'inline-block', bgcolor: 'common.white' }}>
+                  <QRCodeSVG value={paymentIntent.upi_intent_uri} size={160} />
                 </Box>
                 <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
                   Scan with any UPI app
@@ -761,18 +474,18 @@ function CheckoutFlow({ token }: { token: string }) {
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">Pay to UPI ID</Typography>
-                  <Box><CopyText value={paymentIntent.upi_vpa} mono /></Box>
+                  <Box><CopyText value={paymentIntent.payee_upi} mono /></Box>
                 </Box>
                 <Box>
                   <Typography variant="caption" color="text.secondary">Transaction ID</Typography>
-                  <Box><CopyText value={paymentIntent.transaction_id} mono /></Box>
+                  <Box><CopyText value={paymentIntent.txn_ref} mono /></Box>
                 </Box>
               </Stack>
             </Box>
           </Paper>
 
           <Button fullWidth variant="contained" size="large" onClick={() => setStep(2)}>
-            I've Paid — Upload Screenshot
+            I've Paid — Continue
           </Button>
 
           <Button fullWidth variant="text" color="error" onClick={handleCancelRegistration}>
@@ -781,229 +494,176 @@ function CheckoutFlow({ token }: { token: string }) {
         </Stack>
       )}
 
-      {/* ── Step 1a fallback: reconciliation service unavailable ── */}
+      {/* ── Step 1 fallback: could not create a payment intent ── */}
       {step === 1 && !isFree && registration?.status !== 'confirmed' && !paymentIntent && (
         <Alert severity="warning" icon={<AccountBalanceIcon />}>
           Could not connect to the payment service. Please try again or contact an admin.
         </Alert>
       )}
 
-      {/* ── Step 2: Upload Proof ── */}
-      {step === 2 && paymentIntent && (
+      {/* ── Step 2a: Upload Payment Screenshot (before analysis) ── */}
+      {step === 2 && paymentIntent && !analyzed && (
         <Stack spacing={3}>
-          <Alert severity="info">
-            Upload a screenshot of your UPI payment confirmation. We'll match it against the
-            society bank notification email automatically — this takes up to 30 seconds.
+          <Alert severity="info" icon={<CloudUploadIcon />}>
+            Upload a screenshot of your successful payment — we'll read the transaction
+            details off it automatically so you can just double-check them.
           </Alert>
 
           <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-            <Typography fontWeight={700} mb={2}>Payment Screenshot</Typography>
-            <Box
-              component="label"
-              sx={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5,
-                border: '2px dashed',
-                borderColor: screenshotFile ? 'success.main' : 'divider',
-                borderRadius: 2, p: 3,
-                cursor: verifying ? 'not-allowed' : 'pointer',
-                opacity: verifying ? 0.6 : 1,
-                pointerEvents: verifying ? 'none' : 'auto',
-                transition: 'border-color 0.2s',
-                '&:hover': { borderColor: verifying ? undefined : 'primary.main', bgcolor: verifying ? undefined : 'action.hover' },
-              }}
+            <Typography fontWeight={700} mb={1.5}>Upload Payment Screenshot</Typography>
+            <Button
+              component="label" variant="outlined" startIcon={<CloudUploadIcon />}
+              fullWidth sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+              disabled={uploading}
             >
+              {screenshotFile ? screenshotFile.name : 'Choose screenshot to upload'}
               <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                hidden
-                disabled={verifying}
-                onChange={e => void handleFileSelect(e.target.files?.[0] ?? null)}
+                type="file" hidden accept="image/*,.pdf"
+                onChange={e => setScreenshotFile(e.target.files?.[0] ?? null)}
               />
-              {screenshotFile && screenshotPreviewUrl ? (
-                <Box sx={{ width: '100%', textAlign: 'center' }}>
-                  <Box sx={{ position: 'relative', display: 'inline-block' }}>
-                    <Box
-                      component="img"
-                      src={screenshotPreviewUrl}
-                      alt="Screenshot preview"
-                      sx={{ maxWidth: '100%', maxHeight: 220, borderRadius: 1, display: 'block' }}
-                    />
-                    <IconButton
-                      size="small"
-                      onClick={e => { e.preventDefault(); e.stopPropagation(); setPreviewOpen(true); }}
-                      sx={{ position: 'absolute', top: 4, right: 4, bgcolor: 'background.paper', boxShadow: 1, '&:hover': { bgcolor: 'background.paper' } }}
-                    >
-                      <OpenInFullIcon fontSize="small" />
-                    </IconButton>
-                  </Box>
-                  <Typography variant="body2" color="success.main" textAlign="center" mt={1}>
-                    {screenshotFile.name}
-                  </Typography>
-                  <Button
-                    size="small" variant="outlined" startIcon={<UploadFileIcon fontSize="small" />}
-                    disabled={extracting || verifying}
-                    onClick={e => { e.preventDefault(); e.stopPropagation(); fileInputRef.current?.click(); }}
-                    sx={{ mt: 1.5 }}
-                  >
-                    Re-upload Screenshot
-                  </Button>
-                </Box>
-              ) : (
-                <>
-                  <UploadFileIcon sx={{ fontSize: 40, color: 'text.secondary' }} />
-                  <Typography variant="body2" color="text.secondary" textAlign="center">
-                    Click to select screenshot (JPG, PNG, WebP)
-                  </Typography>
-                </>
-              )}
-            </Box>
+            </Button>
+            <Typography variant="caption" color="text.secondary" display="block" mt={1}>
+              A screenshot of the successful UPI payment (bank/app confirmation screen).
+            </Typography>
           </Paper>
 
-          {extracting && (
-            <Alert severity="info" icon={<CircularProgress size={16} />}>
-              Reading your screenshot…
-            </Alert>
-          )}
-
-          {extracted && !extracting && (
-            <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-              <Typography fontWeight={700} mb={1}>Review Extracted Details</Typography>
-              <Typography variant="caption" color="text.secondary" display="block" mb={2}>
-                AI-read from your screenshot — double-check these match your payment before submitting,
-                and correct anything that looks wrong.
-              </Typography>
-
-              {extracted.parse_method === 'failed' && (
-                <Alert severity="warning" sx={{ mb: 2 }}>
-                  Couldn't automatically read this screenshot. Please fill in the amount and UTR/reference number manually.
-                </Alert>
-              )}
-
-              {extracted.match_candidates.length > 0
-                && paymentIntent
-                && !extracted.match_candidates.some(c => c.transaction_id === paymentIntent.transaction_id) && (
-                <Alert severity="warning" sx={{ mb: 2 }}>
-                  This screenshot looks like it might belong to a different payment
-                  ({extracted.match_candidates[0].reference ?? 'another transaction'}
-                  {extracted.match_candidates[0].amount != null && ` · ${fmtAmount(extracted.match_candidates[0].amount)}`}).
-                  Make sure you uploaded the screenshot for <strong>this</strong> booking.
-                </Alert>
-              )}
-
-              <Stack spacing={2}>
-                <TextField
-                  label="Amount Paid (₹)" size="small" fullWidth type="number" required
-                  value={reviewAmount}
-                  onChange={e => { setReviewAmount(e.target.value); if (amountError) setAmountError(''); }}
-                  disabled={verifying}
-                  error={!!amountError}
-                  helperText={amountError || undefined}
-                />
-                <TextField
-                  label="UTR / RRN Number" size="small" fullWidth required
-                  value={reviewUpiRef}
-                  onChange={e => { setReviewUpiRef(e.target.value); if (utrError) setUtrError(''); }}
-                  disabled={verifying}
-                  error={!!utrError}
-                  helperText={utrError || 'The UTR / RRN reference number from your payment app'}
-                />
-                <TextField
-                  label="Payment Date & Time" size="small" fullWidth required
-                  type="datetime-local"
-                  InputLabelProps={{ shrink: true }}
-                  value={isoToDatetimeLocal(reviewTimestamp)}
-                  onChange={e => { setReviewTimestamp(datetimeLocalToIso(e.target.value)); if (timestampError) setTimestampError(''); }}
-                  disabled={verifying}
-                  error={!!timestampError}
-                  helperText={timestampError || 'Shown in your local time — as shown on your screenshot, used to widen the bank-email search if the payment wasn\'t made today'}
-                />
-                <TextField
-                  label="Your UPI ID (optional)" size="small" fullWidth
-                  value={reviewPayerUpi} onChange={e => setReviewPayerUpi(e.target.value)} disabled={verifying}
-                  placeholder="e.g. yourname@okhdfcbank"
-                  helperText="The UPI ID you paid FROM — not auto-extracted, enter it yourself for the payment record"
-                />
-                {(extracted.extracted_bank || extracted.extracted_status) && (
-                  <Typography variant="caption" color="text.secondary">
-                    {extracted.extracted_bank && <>Bank: {extracted.extracted_bank}</>}
-                    {extracted.extracted_bank && extracted.extracted_status && ' · '}
-                    {extracted.extracted_status && <>Status: {extracted.extracted_status}</>}
-                  </Typography>
-                )}
-              </Stack>
-            </Paper>
-          )}
-
-          {verifying && (
-            <Alert severity="info" icon={<CircularProgress size={16} />}>
-              Verifying your payment against the bank email. This can take up to 2 minutes —
-              please keep this tab open and don't refresh.
-            </Alert>
-          )}
-
           <Button
-            fullWidth variant="contained" size="large" color="success"
-            disabled={!screenshotFile || extracting || verifying
-              || !reviewAmount.trim() || !reviewUpiRef.trim() || !reviewTimestamp}
-            onClick={handleScreenshotUpload}
+            fullWidth variant="contained" size="large"
+            disabled={!screenshotFile || uploading}
+            onClick={handleAnalyzeScreenshot}
           >
-            {verifying
-              ? <CircularProgress size={22} color="inherit" />
-              : 'Submit Proof for Verification'}
+            {uploading
+              ? <><CircularProgress size={20} color="inherit" sx={{ mr: 1.5 }} />Analyzing screenshot — this can take up to a minute…</>
+              : 'Upload & Analyze'}
           </Button>
 
-          <Button variant="text" size="small" disabled={verifying} onClick={() => setStep(1)}>
-            ← Back to QR
+          <Button fullWidth variant="text" onClick={() => setStep(1)} disabled={uploading}>
+            Back to Scan & Pay
           </Button>
         </Stack>
       )}
 
-      {/* ── Step 3: Done ── */}
-      {step === 3 && verifyResult?.verdict === 'CONFIRMED' && (
-        <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
-          <CheckCircleIcon sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
-          <Typography variant="h6" fontWeight={700}>Payment Confirmed!</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 0.5 }}>
-            {verifyResult.upiRef && <>UTR: <strong>{verifyResult.upiRef}</strong><br /></>}
-            Redirecting to My Tickets in 3 seconds…
-          </Typography>
-          <Button variant="contained" sx={{ mt: 3 }}
-            onClick={() => { window.location.href = '/tickets'; }}>
-            View My Tickets
+      {/* ── Step 2b: Review & confirm the extracted details ── */}
+      {step === 2 && paymentIntent && analyzed && (
+        <Stack spacing={3}>
+          <Alert severity="info" icon={<InfoOutlinedIcon />}>
+            Check the details below against your screenshot. They're locked by default —
+            click <strong>Edit</strong> if anything looks wrong, then submit.
+          </Alert>
+
+          {analyzed.screenshot_url && (
+            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, position: 'relative' }}>
+              <Box
+                component="img"
+                src={analyzed.screenshot_url}
+                alt="Payment screenshot"
+                sx={{ width: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 1, display: 'block' }}
+              />
+              <Tooltip title="View full screen">
+                <IconButton
+                  onClick={() => setPreviewOpen(true)}
+                  sx={{
+                    position: 'absolute', top: 12, right: 12,
+                    bgcolor: 'rgba(0,0,0,0.55)', color: 'common.white',
+                    '&:hover': { bgcolor: 'rgba(0,0,0,0.75)' },
+                  }}
+                  size="small"
+                >
+                  <FullscreenIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Paper>
+          )}
+
+          <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography fontWeight={700}>Transaction Details</Typography>
+              {!editing && (
+                <Button size="small" startIcon={<EditIcon />} onClick={() => setEditing(true)}>
+                  Edit
+                </Button>
+              )}
+            </Box>
+            <Stack spacing={2.5}>
+              <TextField
+                label="Transaction Date & Time"
+                type="datetime-local"
+                value={reviewDatetime}
+                onChange={e => setReviewDatetime(e.target.value)}
+                disabled={!editing}
+                fullWidth size="small"
+                InputLabelProps={{ shrink: true }}
+              />
+              <TextField
+                label="Reference Number (UTR / RRN)"
+                value={reviewReference}
+                onChange={e => setReviewReference(e.target.value.replace(/[^0-9]/g, '').slice(0, 12))}
+                disabled={!editing}
+                fullWidth size="small"
+                inputProps={{ inputMode: 'numeric', maxLength: 12 }}
+                helperText="12-digit reference number from your bank statement/UPI app"
+              />
+              <TextField
+                label="Amount Paid"
+                type="number"
+                value={reviewAmount}
+                onChange={e => setReviewAmount(e.target.value)}
+                disabled={!editing}
+                fullWidth size="small"
+                InputProps={{ startAdornment: <Typography sx={{ mr: 0.5 }}>₹</Typography> }}
+              />
+            </Stack>
+          </Paper>
+
+          <Button
+            fullWidth variant="contained" size="large"
+            disabled={confirming}
+            onClick={handleConfirmDetails}
+          >
+            {confirming ? <CircularProgress size={22} color="inherit" /> : 'Submit Payment'}
           </Button>
-        </Paper>
+
+          <Button
+            fullWidth variant="text" disabled={confirming}
+            onClick={() => {
+              setAnalyzed(null); setScreenshotFile(null); setEditing(false);
+              setReviewDatetime(''); setReviewReference(''); setReviewAmount('');
+            }}
+          >
+            Re-upload a different screenshot
+          </Button>
+        </Stack>
       )}
 
-      {/* ── Not auto-confirmed: apologetic popup, no retry — admin/committee reviews manually ── */}
-      <Dialog open={step === 3 && !!verifyResult && verifyResult.verdict !== 'CONFIRMED'} maxWidth="xs" fullWidth>
-        <DialogContent sx={{ textAlign: 'center', p: 4 }}>
-          <HourglassTopIcon sx={{ fontSize: 56, color: 'warning.main', mb: 2 }} />
-          <Typography variant="h6" fontWeight={700}>We're Sorry for the Inconvenience</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5, mb: 3 }}>
-            We couldn't automatically verify your payment just now, but please don't worry —
-            your screenshot has been saved, and an admin or committee member will manually
-            review it and mark your payment as paid shortly. No further action is needed from you.
+      {analyzed?.screenshot_url && previewOpen && (
+        <Dialog open onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth>
+          <DialogContent sx={{ p: 0, position: 'relative', bgcolor: 'common.black' }}>
+            <IconButton
+              onClick={() => setPreviewOpen(false)}
+              sx={{ position: 'absolute', top: 8, right: 8, color: 'common.white', bgcolor: 'rgba(0,0,0,0.5)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
+            >
+              <CloseIcon />
+            </IconButton>
+            <Box component="img" src={analyzed.screenshot_url} alt="Payment screenshot full view" sx={{ width: '100%', display: 'block' }} />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* ── Step 3: Pending admin verification ── */}
+      {step === 3 && (
+        <Paper variant="outlined" sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
+          <HourglassTopIcon sx={{ fontSize: 64, color: 'warning.main', mb: 2 }} />
+          <Typography variant="h6" fontWeight={700}>Payment Submitted</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 3 }}>
+            Thanks — your payment is now pending verification. An admin or committee
+            member will confirm it shortly and your registration will be updated
+            automatically. No further action is needed from you.
           </Typography>
           <Button variant="contained" onClick={() => { window.location.href = '/registrations'; }}>
             Go to My Registrations
           </Button>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="md" fullWidth>
-        <DialogContent sx={{ p: 0, position: 'relative', bgcolor: 'common.black' }}>
-          <IconButton
-            onClick={() => setPreviewOpen(false)}
-            sx={{ position: 'absolute', top: 8, right: 8, color: 'common.white', bgcolor: 'rgba(0,0,0,0.5)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
-          >
-            <CloseIcon />
-          </IconButton>
-          {screenshotPreviewUrl && (
-            <Box component="img" src={screenshotPreviewUrl} alt="Screenshot full view" sx={{ width: '100%', display: 'block' }} />
-          )}
-        </DialogContent>
-      </Dialog>
+        </Paper>
+      )}
     </Container>
   );
 }
@@ -1014,6 +674,13 @@ function MyPayments({ token }: { token: string }) {
   const [txns, setTxns]       = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
+
+  // Deep link from a notification (?txn_ref=...) — scroll to and highlight
+  // the specific transaction the resident was pointed at.
+  const [highlightRef] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('txn_ref'),
+  );
+  const highlightEl = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1029,6 +696,12 @@ function MyPayments({ token }: { token: string }) {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (highlightRef && highlightEl.current) {
+      highlightEl.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightRef, txns]);
+
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', pt: 8 }}><CircularProgress /></Box>;
 
   return (
@@ -1043,7 +716,9 @@ function MyPayments({ token }: { token: string }) {
       )}
       <Stack spacing={2}>
         {txns.map(txn => (
-          <Paper key={txn.txn_ref} variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+          <Paper key={txn.txn_ref} variant="outlined"
+            ref={txn.txn_ref === highlightRef ? highlightEl : undefined}
+            sx={{ p: 2.5, borderRadius: 2, ...(txn.txn_ref === highlightRef && { bgcolor: 'action.selected' }) }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1 }}>
               <Box>
                 <Typography fontWeight={700}>{txn.event_title}</Typography>
@@ -1056,7 +731,17 @@ function MyPayments({ token }: { token: string }) {
                   {txn.payment_utr && <> · UTR: <strong>{txn.payment_utr}</strong></>}
                 </Typography>
               </Box>
-              <StatusChip status={txn.status} />
+              <Stack spacing={1} alignItems="flex-end">
+                <StatusChip status={txn.status} />
+                {txn.status === 'cancelled' && txn.registration_id && (
+                  <Button
+                    size="small" variant="outlined" color="error"
+                    onClick={() => { window.location.href = `/checkout?registration_id=${txn.registration_id}`; }}
+                  >
+                    Re-upload & Retry
+                  </Button>
+                )}
+              </Stack>
             </Box>
           </Paper>
         ))}

@@ -1,19 +1,19 @@
-"""Notify whoever manages an event (organizer + active event_permission
-grantees) via in-app notification, SMS, Telegram, and email — used when a
-resident submits a payment-verification screenshot, cancels a booking, or
-that cancellation triggers a refund request. See ~/auth-service's
-/api/sms/send and /api/telegram/send for the SMS/Telegram delivery
-transport; email is sent directly via app.email's Gmail SMTP.
+"""Notify active admins about leave-society events (request submitted, member
+finalized) via in-app notification, SMS, Telegram, and email. See ~/auth-service's
+/api/sms/send and /api/telegram/send for the SMS/Telegram delivery transport;
+email is sent directly via app.email's Gmail SMTP.
 
-Split in two so the outbound HTTP/SMTP fan-out never happens while a pooled
-DB connection is held open (max_size — see database.py):
-  - resolve_and_record() runs inside the caller's existing
-    `async with pool.acquire() as conn:` block.
+Split in two so the outbound HTTP/SMTP fan-out never happens while a pooled DB
+connection is held open:
+  - notify_admins() runs inside the caller's existing
+    `async with pool.acquire() as conn:` block — it records the in-app
+    notification row for every active admin and returns their phone/email.
   - send_channels() runs after that block exits, via BackgroundTasks, since
     auth-service's SMS failover chain (and SMTP) can take several seconds
     worst case and must not sit on the resident's request/response cycle.
 """
 import asyncio
+from uuid import UUID
 
 import httpx
 
@@ -26,23 +26,23 @@ def _mask_phone(phone: str) -> str:
     return "*" * max(0, len(phone) - 4) + phone[-4:] if len(phone) >= 4 else "***"
 
 
-async def resolve_and_record(
-    conn, event_id: str, actor_user_id: str, type_: str, title: str, message: str, related_id: str | None = None,
+async def notify_admins(
+    conn, type_: str, title: str, message: str,
+    related_id: UUID | None = None, exclude_user_id: UUID | None = None,
 ) -> list[dict]:
-    rows = await conn.fetch(
-        "SELECT u.id, u.phone, u.email FROM users u "
-        "WHERE (u.id = (SELECT organizer_id FROM event WHERE id = $1::uuid) "
-        "   OR u.id IN (SELECT user_id FROM event_permission WHERE event_id = $1::uuid AND revoked_at IS NULL)) "
-        "  AND u.id != $2::uuid",
-        event_id, actor_user_id,
-    )
+    query = "SELECT id, phone, email FROM users WHERE role = 'admin' AND is_active = TRUE"
+    params: list = []
+    if exclude_user_id:
+        query += " AND id != $1"
+        params.append(exclude_user_id)
+    rows = await conn.fetch(query, *params)
+
     for r in rows:
         await conn.execute(
-            "INSERT INTO notification (user_id, event_id, type, title, message, related_id) "
-            "VALUES ($1, $2::uuid, $3, $4, $5, $6)",
-            r["id"], event_id, type_, title, message, related_id,
+            "INSERT INTO notification (user_id, type, title, message, related_id) VALUES ($1, $2, $3, $4, $5)",
+            r["id"], type_, title, message, related_id,
         )
-    return [{"id": str(r["id"]), "phone": r["phone"], "email": r["email"], "title": title} for r in rows]
+    return [{"phone": r["phone"], "email": r["email"], "title": title} for r in rows]
 
 
 async def send_channels(recipients: list[dict], message: str) -> None:

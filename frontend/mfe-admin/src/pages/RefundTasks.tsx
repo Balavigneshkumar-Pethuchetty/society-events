@@ -2,15 +2,16 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Box, Button, CircularProgress, Container,
   Dialog, DialogActions, DialogContent, DialogTitle,
-  IconButton, Paper, Stack, TextField, Typography,
+  IconButton, Paper, Stack, TextField, Tooltip, Typography,
 } from '@mui/material';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import CheckCircleIcon    from '@mui/icons-material/CheckCircle';
 import CloseIcon          from '@mui/icons-material/Close';
+import CloudUploadIcon    from '@mui/icons-material/CloudUpload';
 import ContentCopyIcon    from '@mui/icons-material/ContentCopy';
-import OpenInFullIcon     from '@mui/icons-material/OpenInFull';
+import EditIcon           from '@mui/icons-material/Edit';
+import FullscreenIcon     from '@mui/icons-material/Fullscreen';
 import QrCode2Icon        from '@mui/icons-material/QrCode2';
-import UploadFileIcon     from '@mui/icons-material/UploadFile';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -32,32 +33,14 @@ function fmtDate(iso: string) {
   });
 }
 
-// datetime-local inputs always edit/display in the browser's LOCAL time (their value
-// string has no timezone in it) — but the underlying state stays UTC ISO everywhere
-// else, matching the frontend<->backend contract. Only this widget's display format
-// is local; refund_timestamp is still sent to the backend as UTC ISO.
-function isoToDatetimeLocal(iso: string): string {
+// <input type="datetime-local"> takes/returns "YYYY-MM-DDTHH:mm" with no timezone
+// (interpreted as local time) — same helper used for the resident checkout review step.
+function isoToLocalInputValue(iso: string | null | undefined): string {
+  if (!iso) return '';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function datetimeLocalToIso(local: string): string {
-  if (!local) return '';
-  const d = new Date(local);
-  return isNaN(d.getTime()) ? '' : d.toISOString();
-}
-
-// Size the bank-email search window around the reviewed refund transfer date, same
-// reasoning as the resident checkout flow's computeSearchDays — the reconciliation
-// API has no separate "search around this date" field, search_days is the only
-// lever. Falls back to 3 if the text doesn't parse.
-function computeSearchDays(timestampText: string): number {
-  const parsed = new Date(timestampText);
-  if (isNaN(parsed.getTime())) return 3;
-  const daysAgo = Math.ceil((Date.now() - parsed.getTime()) / (1000 * 60 * 60 * 24));
-  return Math.min(14, Math.max(3, daysAgo + 1));
 }
 
 async function apiFetch(path: string, token: string, opts: RequestInit = {}) {
@@ -139,115 +122,85 @@ function RefundQrDialog({ task, token, onClose }: { task: RefundTask; token: str
 }
 
 // ── Complete Refund Dialog ────────────────────────────────────────────────────
-
-interface VerifyScreenshotResult {
-  verification?: { verdict: string; confidence: string; message: string };
-  screenshot?: { amount: number | null; upi_ref: string | null; rrn: string | null };
-  reconcile?: { new_status: string; refund_ref_id: string | null } | null;
-  local_status?: string;
-}
-
-interface MatchCandidate {
-  transaction_id: string;
-  amount: number | null;
-  payer_id: string | null;
-  upi_vpa: string | null;
-  ctx_type: string | null;
-  reference: string | null;
-  created_at: string | null;
-  match_score: number;
-  match_signals: string[];
-  auto_reconcile: boolean;
-}
-
-interface ExtractedFields {
-  parse_id: string | null;
-  source_type: string | null;
-  extracted_amount: number | null;
-  extracted_upi_ref: string | null;
-  extracted_rrn: string | null;
-  extracted_bank: string | null;
-  extracted_timestamp: string | null;
-  extracted_status: string | null;
-  is_reconciled: boolean | null;
-  parse_method: string | null;
-  match_candidates: MatchCandidate[];
-}
+// Manual-only: admin transfers the refund via UPI (QR or hand-copied ID), uploads a
+// screenshot of that transfer, then explicitly clicks Analyze to run the same
+// best-effort AI extraction as the resident checkout flow. Extracted fields land in
+// a locked review form (unlock via the Edit icon) — no bank-email cross-check, no
+// auto-completion, admin still confirms every field before submitting.
 
 function CompleteDialog({
   task, token, onClose, onDone,
 }: {
   task: RefundTask; token: string; onClose: () => void; onDone: (message: string) => void;
 }) {
-  // AI-verified screenshot mode is only possible when the original payment went
-  // through the centralized reconciliation flow (has a reconciliation_txn_id) —
-  // that's what the other side's refund check is keyed on.
-  const canVerifyByScreenshot = !!task.reconciliation_txn_id;
-  const [mode, setMode] = useState<'screenshot' | 'manual'>(canVerifyByScreenshot ? 'screenshot' : 'manual');
-
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl]   = useState<string | null>(null);
+  const [previewFullscreen, setPreviewFullscreen] = useState(false);
+  const [analyzing, setAnalyzing]     = useState(false);
+  const [analyzed, setAnalyzed]       = useState(false);
+  const [editing, setEditing]         = useState(false);
   const [refundUtr, setRefundUtr]     = useState('');
-  const [screenshotFile, setScreenshotFile]       = useState<File | null>(null);
-  const [screenshotPreviewUrl, setScreenshotPreviewUrl] = useState<string | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [extracting, setExtracting]   = useState(false);
-  const [extracted, setExtracted]     = useState<ExtractedFields | null>(null);
-  const [reviewAmount, setReviewAmount] = useState('');
-  const [reviewRef, setReviewRef]     = useState('');
-  const [reviewTimestamp, setReviewTimestamp] = useState('');
+  const [reviewDatetime, setReviewDatetime] = useState('');
+  const [reviewAmount, setReviewAmount]     = useState('');
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const [qrOpen, setQrOpen]           = useState(false);
-  const [verifyResult, setVerifyResult] = useState<VerifyScreenshotResult | null>(null);
 
-  // Build/revoke an object URL for the screenshot preview as the file changes —
-  // same pattern as the resident checkout flow's screenshot preview.
+  // Revokes the outgoing object URL whenever a new one is set (or on unmount) —
+  // handleFileChange only ever creates the new URL, this is the single place that frees it.
   useEffect(() => {
-    if (!screenshotFile) { setScreenshotPreviewUrl(null); return; }
-    const url = URL.createObjectURL(screenshotFile);
-    setScreenshotPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [screenshotFile]);
+    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
+  }, [previewUrl]);
 
-  async function handleFileSelect(file: File | null) {
+  function handleFileChange(file: File | null) {
+    setPreviewUrl(file ? URL.createObjectURL(file) : null);
     setScreenshotFile(file);
-    setExtracted(null);
+    setAnalyzed(false);
+    setEditing(false);
+    setRefundUtr('');
+    setReviewDatetime('');
     setReviewAmount('');
-    setReviewRef('');
-    setReviewTimestamp('');
-    setVerifyResult(null);
-    if (!file) return;
+    setError(null);
+  }
 
-    setExtracting(true); setError(null);
+  async function handleAnalyze() {
+    if (!screenshotFile) return;
+    setAnalyzing(true); setError(null);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const result: ExtractedFields = await apiFetch('/api/payments/payments/parse-screenshot', token, {
-        method: 'POST', body: fd,
+      const form = new FormData();
+      form.append('file', screenshotFile);
+      const result = await apiFetch(`/api/payments/refunds/${task.txn_ref}/extract-screenshot`, token, {
+        method: 'POST',
+        body: form,
       });
-      setExtracted(result);
-      setReviewAmount(result.extracted_amount != null ? String(result.extracted_amount) : '');
-      setReviewRef(result.extracted_upi_ref || result.extracted_rrn || '');
-      setReviewTimestamp(result.extracted_timestamp ?? '');
-    } catch {
-      // Non-fatal — admin can still fill amount/reference in manually below.
-      setExtracted({
-        parse_id: null, source_type: null, extracted_amount: null, extracted_upi_ref: null,
-        extracted_rrn: null, extracted_bank: null, extracted_timestamp: null,
-        extracted_status: null, is_reconciled: null, parse_method: 'failed', match_candidates: [],
-      });
+      const ref = result.parsed_upi_ref || result.parsed_rrn;
+      setRefundUtr(ref || '');
+      setReviewDatetime(isoToLocalInputValue(result.parsed_timestamp));
+      setReviewAmount(result.parsed_amount != null ? String(result.parsed_amount) : String(task.amount));
+      setAnalyzed(true);
+      // Nothing usable extracted at all — start the reviewer unlocked so the admin
+      // can just type the details in directly instead of "editing" blanks.
+      setEditing(!ref && result.parsed_amount == null && !result.parsed_timestamp);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not analyze the screenshot — you can still enter details manually.');
+      setAnalyzed(true);
+      setEditing(true);
     } finally {
-      setExtracting(false);
+      setAnalyzing(false);
     }
   }
 
   async function submitManual() {
     if (!refundUtr.trim()) { setError('Refund UTR is required.'); return; }
+    if (!screenshotFile) { setError('A screenshot of the refund transfer is required.'); return; }
     setLoading(true); setError(null);
     try {
+      const form = new FormData();
+      form.append('refund_utr', refundUtr.trim());
+      form.append('file', screenshotFile);
       await apiFetch(`/api/payments/refunds/${task.txn_ref}/complete`, token, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refund_utr: refundUtr.trim() }),
+        body: form,
       });
       onDone(`Refund of ₹${Number(task.amount).toLocaleString('en-IN')} for ${task.event_title} marked as complete.`);
     } catch (e: unknown) {
@@ -257,29 +210,7 @@ function CompleteDialog({
     }
   }
 
-  async function submitScreenshot() {
-    if (!screenshotFile) { setError('Choose a screenshot of the refund transfer first.'); return; }
-    setLoading(true); setError(null); setVerifyResult(null);
-    try {
-      const fd = new FormData();
-      fd.append('file', screenshotFile);
-      if (reviewRef.trim()) fd.append('manual_upi_ref', reviewRef.trim());
-      if (reviewAmount.trim()) fd.append('manual_amount', reviewAmount.trim());
-      if (reviewTimestamp.trim()) fd.append('refund_timestamp', reviewTimestamp.trim());
-      fd.append('search_days', String(computeSearchDays(reviewTimestamp)));
-      const result: VerifyScreenshotResult = await apiFetch(
-        `/api/payments/refunds/${task.txn_ref}/verify-screenshot`, token, { method: 'POST', body: fd },
-      );
-      setVerifyResult(result);
-      if (result.local_status === 'refunded') {
-        onDone(`Refund of ₹${Number(task.amount).toLocaleString('en-IN')} for ${task.event_title} verified and completed.`);
-      }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Verification failed');
-    } finally {
-      setLoading(false);
-    }
-  }
+  const reviewAmountNum = reviewAmount ? Number(reviewAmount) : null;
 
   return (
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
@@ -334,162 +265,159 @@ function CompleteDialog({
           )}
         </Stack>
 
-        {canVerifyByScreenshot && (
-          <Stack direction="row" spacing={1} mb={2}>
-            <Button size="small" variant={mode === 'screenshot' ? 'contained' : 'outlined'}
-              onClick={() => { setMode('screenshot'); setError(null); }}>
-              Upload Screenshot (AI-verified)
+        {/* ── Upload (before analysis) ── */}
+        {!previewUrl && (
+          <Button
+            component="label" variant="outlined" startIcon={<CloudUploadIcon />}
+            fullWidth sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+          >
+            Upload screenshot of the refund transfer
+            <input
+              type="file" hidden accept="image/*,.pdf"
+              onChange={e => handleFileChange(e.target.files?.[0] ?? null)}
+            />
+          </Button>
+        )}
+
+        {/* ── Preview + Analyze ── */}
+        {previewUrl && !analyzed && (
+          <Stack spacing={2}>
+            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, position: 'relative' }}>
+              <Box
+                component="img" src={previewUrl} alt="Refund transfer screenshot"
+                sx={{ width: '100%', maxHeight: 280, objectFit: 'contain', borderRadius: 1, display: 'block' }}
+              />
+              <Tooltip title="View full screen">
+                <IconButton
+                  onClick={() => setPreviewFullscreen(true)}
+                  sx={{
+                    position: 'absolute', top: 12, right: 12,
+                    bgcolor: 'rgba(0,0,0,0.55)', color: 'common.white',
+                    '&:hover': { bgcolor: 'rgba(0,0,0,0.75)' },
+                  }}
+                  size="small"
+                >
+                  <FullscreenIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Paper>
+
+            <Button size="small" variant="text" onClick={() => handleFileChange(null)} disabled={analyzing}
+              sx={{ alignSelf: 'flex-start' }}>
+              Choose a different screenshot
             </Button>
-            <Button size="small" variant={mode === 'manual' ? 'contained' : 'outlined'}
-              onClick={() => { setMode('manual'); setError(null); }}>
-              Enter UTR manually
+
+            <Button
+              fullWidth variant="contained" disabled={analyzing}
+              onClick={handleAnalyze}
+            >
+              {analyzing
+                ? <><CircularProgress size={18} color="inherit" sx={{ mr: 1.5 }} />Analyzing screenshot…</>
+                : 'Analyze'}
             </Button>
           </Stack>
         )}
 
-        {mode === 'screenshot' && canVerifyByScreenshot ? (
-          <Stack spacing={1.5}>
-            <Typography variant="body2" color="text.secondary">
-              After sending the refund, upload a screenshot of that transfer. The same AI
-              extraction + bank-email matching used to verify incoming payments checks it —
-              on a confirmed match this refund is closed out automatically, no UTR typing needed.
-            </Typography>
+        {/* ── Review & confirm the extracted details ── */}
+        {previewUrl && analyzed && (
+          <Stack spacing={2}>
+            <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, position: 'relative' }}>
+              <Box
+                component="img" src={previewUrl} alt="Refund transfer screenshot"
+                sx={{ width: '100%', maxHeight: 220, objectFit: 'contain', borderRadius: 1, display: 'block' }}
+              />
+              <Tooltip title="View full screen">
+                <IconButton
+                  onClick={() => setPreviewFullscreen(true)}
+                  sx={{
+                    position: 'absolute', top: 12, right: 12,
+                    bgcolor: 'rgba(0,0,0,0.55)', color: 'common.white',
+                    '&:hover': { bgcolor: 'rgba(0,0,0,0.75)' },
+                  }}
+                  size="small"
+                >
+                  <FullscreenIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Paper>
 
-            <Box
-              component="label"
-              sx={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5,
-                border: '2px dashed', borderColor: screenshotFile ? 'success.main' : 'divider',
-                borderRadius: 2, p: 3,
-                cursor: loading ? 'not-allowed' : 'pointer',
-                opacity: loading ? 0.6 : 1,
-                pointerEvents: loading ? 'none' : 'auto',
-                '&:hover': { borderColor: loading ? undefined : 'primary.main', bgcolor: loading ? undefined : 'action.hover' },
-              }}
-            >
-              <input type="file" accept="image/jpeg,image/png,image/webp" hidden disabled={loading}
-                onChange={e => void handleFileSelect(e.target.files?.[0] ?? null)} />
-              {screenshotFile && screenshotPreviewUrl ? (
-                <Box sx={{ width: '100%', textAlign: 'center' }}>
-                  <Box sx={{ position: 'relative', display: 'inline-block' }}>
-                    <Box component="img" src={screenshotPreviewUrl} alt="Refund screenshot preview"
-                      sx={{ maxWidth: '100%', maxHeight: 200, borderRadius: 1, display: 'block' }} />
-                    <IconButton size="small"
-                      onClick={e => { e.preventDefault(); e.stopPropagation(); setPreviewOpen(true); }}
-                      sx={{ position: 'absolute', top: 4, right: 4, bgcolor: 'background.paper', boxShadow: 1, '&:hover': { bgcolor: 'background.paper' } }}>
-                      <OpenInFullIcon fontSize="small" />
-                    </IconButton>
-                  </Box>
-                  <Typography variant="body2" color="success.main" mt={1}>{screenshotFile.name}</Typography>
-                </Box>
-              ) : (
-                <>
-                  <UploadFileIcon sx={{ fontSize: 36, color: 'text.secondary' }} />
-                  <Typography variant="body2" color="text.secondary">Click to select screenshot</Typography>
-                </>
-              )}
-            </Box>
-
-            {extracting && (
-              <Alert severity="info" icon={<CircularProgress size={16} />}>Reading screenshot…</Alert>
-            )}
-
-            {extracted && !extracting && (
-              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                <Typography fontWeight={700} fontSize={14} mb={0.5}>Review Extracted Details</Typography>
-                <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>
-                  AI-read from the screenshot — correct anything that looks wrong before verifying.
-                </Typography>
-                {extracted.parse_method === 'failed' && (
-                  <Alert severity="warning" sx={{ mb: 1.5, fontSize: 12 }}>
-                    Couldn't automatically read this screenshot. Fill in the amount and UTR/RRN manually.
-                  </Alert>
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography fontWeight={700}>Transaction Details</Typography>
+                {!editing && (
+                  <Button size="small" startIcon={<EditIcon />} onClick={() => setEditing(true)}>
+                    Edit
+                  </Button>
                 )}
-                {extracted.match_candidates.length > 0
-                  && task.reconciliation_txn_id
-                  && !extracted.match_candidates.some(c => c.transaction_id === task.reconciliation_txn_id) && (
-                  <Alert severity="warning" sx={{ mb: 1.5, fontSize: 12 }}>
-                    This screenshot looks like it might belong to a different payment
-                    ({extracted.match_candidates[0].reference ?? 'another transaction'}
-                    {extracted.match_candidates[0].amount != null && ` · ₹${extracted.match_candidates[0].amount}`}).
-                    Double-check it's the transfer for this refund.
-                  </Alert>
-                )}
-                <Stack spacing={1.5}>
-                  <TextField
-                    label="Refund Amount (₹)" size="small" fullWidth type="number"
-                    value={reviewAmount} onChange={e => setReviewAmount(e.target.value)} disabled={loading}
-                  />
-                  <TextField
-                    label="UTR / RRN" size="small" fullWidth
-                    value={reviewRef} onChange={e => setReviewRef(e.target.value)} disabled={loading}
-                    helperText="Whichever the app labeled it — UTR or RRN, same kind of reference number"
-                  />
-                  <TextField
-                    label="Refund Transaction Date & Time" size="small" fullWidth
-                    type="datetime-local"
-                    InputLabelProps={{ shrink: true }}
-                    value={isoToDatetimeLocal(reviewTimestamp)}
-                    onChange={e => setReviewTimestamp(datetimeLocalToIso(e.target.value))}
-                    disabled={loading}
-                    helperText="Shown in your local time — as shown on the screenshot, narrows the bank-email search window instead of the default last-3-days"
-                  />
-                  {(extracted.extracted_bank || extracted.extracted_status) && (
-                    <Typography variant="caption" color="text.secondary">
-                      {extracted.extracted_bank && <>Bank: {extracted.extracted_bank}</>}
-                      {extracted.extracted_bank && extracted.extracted_status && ' · '}
-                      {extracted.extracted_status && <>Status: {extracted.extracted_status}</>}
-                    </Typography>
-                  )}
-                </Stack>
-              </Paper>
-            )}
+              </Box>
+              <Stack spacing={2.5}>
+                <TextField
+                  label="Transaction Date & Time"
+                  type="datetime-local"
+                  value={reviewDatetime}
+                  onChange={e => setReviewDatetime(e.target.value)}
+                  disabled={!editing}
+                  fullWidth size="small"
+                  InputLabelProps={{ shrink: true }}
+                />
+                <TextField
+                  label="Refund UTR / Reference / RRN"
+                  value={refundUtr}
+                  onChange={e => setRefundUtr(e.target.value.replace(/[^0-9]/g, '').slice(0, 12))}
+                  disabled={!editing}
+                  fullWidth size="small"
+                  inputProps={{ inputMode: 'numeric', maxLength: 12 }}
+                  helperText="12-digit reference number from the bank statement/UPI app"
+                />
+                <TextField
+                  label="Amount"
+                  type="number"
+                  value={reviewAmount}
+                  onChange={e => setReviewAmount(e.target.value)}
+                  disabled={!editing}
+                  fullWidth size="small"
+                  InputProps={{ startAdornment: <Typography sx={{ mr: 0.5 }}>₹</Typography> }}
+                />
+              </Stack>
+            </Paper>
 
-            {loading && (
-              <Alert severity="info" icon={<CircularProgress size={16} />}>
-                Verifying against the bank email. This can take up to 2 minutes — please wait.
-              </Alert>
-            )}
-            {verifyResult && verifyResult.local_status !== 'refunded' && (
-              <Alert severity={verifyResult.verification?.verdict === 'CONFIRMED' ? 'warning' : 'error'}>
-                <strong>{verifyResult.verification?.verdict ?? 'Not confirmed'}:</strong>{' '}
-                {verifyResult.verification?.message ?? 'Could not verify this screenshot — try again or enter the UTR manually.'}
+            <Button size="small" variant="text" onClick={() => handleFileChange(null)} disabled={loading}
+              sx={{ alignSelf: 'flex-start' }}>
+              Choose a different screenshot
+            </Button>
+
+            {reviewAmountNum != null && !isNaN(reviewAmountNum) && Math.abs(reviewAmountNum - Number(task.amount)) > 0.5 && (
+              <Alert severity="warning" sx={{ fontSize: 12 }}>
+                The amount extracted from the screenshot (₹{reviewAmountNum.toLocaleString('en-IN')}) doesn't match
+                the refund amount (₹{Number(task.amount).toLocaleString('en-IN')}) — double-check you uploaded the right screenshot.
               </Alert>
             )}
           </Stack>
-        ) : (
-          <TextField
-            label="Refund UTR / Transaction Reference"
-            value={refundUtr} onChange={e => setRefundUtr(e.target.value)}
-            fullWidth size="small" autoFocus
-            placeholder="e.g. 123456789012"
-            helperText="Enter the UTR from your bank after sending the refund"
-          />
         )}
       </DialogContent>
       {qrOpen && <RefundQrDialog task={task} token={token} onClose={() => setQrOpen(false)} />}
-      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="md" fullWidth>
-        <DialogContent sx={{ p: 0, position: 'relative', bgcolor: 'common.black' }}>
-          <IconButton onClick={() => setPreviewOpen(false)}
-            sx={{ position: 'absolute', top: 8, right: 8, color: 'common.white', bgcolor: 'rgba(0,0,0,0.5)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
-            <CloseIcon />
-          </IconButton>
-          {screenshotPreviewUrl && (
-            <Box component="img" src={screenshotPreviewUrl} alt="Screenshot full view" sx={{ width: '100%', display: 'block' }} />
-          )}
-        </DialogContent>
-      </Dialog>
+      {previewUrl && previewFullscreen && (
+        <Dialog open onClose={() => setPreviewFullscreen(false)} maxWidth="lg" fullWidth>
+          <DialogContent sx={{ p: 0, position: 'relative', bgcolor: 'common.black' }}>
+            <IconButton
+              onClick={() => setPreviewFullscreen(false)}
+              sx={{ position: 'absolute', top: 8, right: 8, color: 'common.white', bgcolor: 'rgba(0,0,0,0.5)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
+            >
+              <CloseIcon />
+            </IconButton>
+            <Box component="img" src={previewUrl} alt="Refund transfer screenshot full view" sx={{ width: '100%', display: 'block' }} />
+          </DialogContent>
+        </Dialog>
+      )}
       <DialogActions sx={{ p: 2 }}>
         <Button onClick={onClose} disabled={loading}>Cancel</Button>
-        {mode === 'screenshot' && canVerifyByScreenshot ? (
-          <Button variant="contained" color="error" disabled={loading || !screenshotFile} onClick={submitScreenshot}>
-            {loading ? <CircularProgress size={18} color="inherit" /> : 'Verify & Complete'}
-          </Button>
-        ) : (
-          <Button variant="contained" color="error" disabled={loading} onClick={submitManual}>
-            {loading ? <CircularProgress size={18} color="inherit" /> : 'Mark as Refunded'}
-          </Button>
-        )}
+        <Button
+          variant="contained" color="error"
+          disabled={loading || !analyzed || !refundUtr.trim() || !screenshotFile}
+          onClick={submitManual}
+        >
+          {loading ? <CircularProgress size={18} color="inherit" /> : 'Mark as Refunded'}
+        </Button>
       </DialogActions>
     </Dialog>
   );
@@ -503,6 +431,13 @@ export function RefundTasks({ token }: { token?: string | null }) {
   const [error, setError]       = useState<string | null>(null);
   const [notice, setNotice]     = useState<string | null>(null);
   const [completing, setCompleting] = useState<RefundTask | null>(null);
+
+  // Deep link from a notification (?txn_id=...) — open the Complete Refund
+  // dialog directly for that specific task.
+  const [highlightId] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('txn_id'),
+  );
+  const [handledHighlight, setHandledHighlight] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -518,6 +453,13 @@ export function RefundTasks({ token }: { token?: string | null }) {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!highlightId || handledHighlight || tasks.length === 0) return;
+    const target = tasks.find(t => t.id === highlightId);
+    if (target) setCompleting(target);
+    setHandledHighlight(true);
+  }, [highlightId, handledHighlight, tasks]);
 
   if (!token) return <Box sx={{ p: 4, textAlign: 'center' }}><Typography color="text.secondary">Not authenticated.</Typography></Box>;
 
@@ -542,7 +484,11 @@ export function RefundTasks({ token }: { token?: string | null }) {
               </Box>
             )}
             {tasks.map(task => (
-              <Paper key={task.txn_ref} variant="outlined" sx={{ p: 2.5, borderRadius: 2, borderColor: 'error.200' }}>
+              <Paper key={task.txn_ref} variant="outlined"
+                sx={{
+                  p: 2.5, borderRadius: 2, borderColor: 'error.200',
+                  ...(task.id === highlightId && { bgcolor: 'action.selected' }),
+                }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
                   <Box sx={{ flex: 1, minWidth: 200 }}>
                     <Typography fontWeight={700}>{task.event_title}</Typography>

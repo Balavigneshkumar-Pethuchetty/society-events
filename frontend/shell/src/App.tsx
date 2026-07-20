@@ -420,7 +420,7 @@ function ThemedApp() {
 
   return (
     <ThemeProvider theme={theme}>
-      <CssBaseline />
+      <CssBaseline enableColorScheme />
       <AuthProvider>
         <UserServiceProvider>
           <SocietyProvider>

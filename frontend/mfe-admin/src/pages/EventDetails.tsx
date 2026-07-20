@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Container,
-  Grid, IconButton, MenuItem, Paper, Stack, Tab, Tabs, Table, TableBody, TableCell, TableHead,
-  TableRow, TextField, Typography,
+  Grid, IconButton, InputAdornment, Link, MenuItem, Paper, Stack, Tab, Tabs, Table, TableBody, TableCell, TableHead,
+  TableRow, TextField, Tooltip, Typography,
 } from '@mui/material';
 import ArrowBackIcon      from '@mui/icons-material/ArrowBack';
 import CalendarTodayIcon  from '@mui/icons-material/CalendarToday';
@@ -13,6 +13,11 @@ import CardGiftcardIcon   from '@mui/icons-material/CardGiftcard';
 import ReceiptIcon        from '@mui/icons-material/Receipt';
 import StorefrontIcon     from '@mui/icons-material/Storefront';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
+import EmailIcon          from '@mui/icons-material/Email';
+import CheckCircleIcon    from '@mui/icons-material/CheckCircle';
+import SyncIcon           from '@mui/icons-material/Sync';
+import VisibilityIcon     from '@mui/icons-material/Visibility';
+import VisibilityOffIcon  from '@mui/icons-material/VisibilityOff';
 import OpenInNewIcon      from '@mui/icons-material/OpenInNew';
 import DeleteIcon         from '@mui/icons-material/DeleteOutline';
 
@@ -114,6 +119,18 @@ function PurchasesTab({ registrations }: { registrations: Registration[] }) {
   const totalTickets = paid.reduce((s, r) => s + r.ticket_count, 0);
   const totalRevenue  = paid.reduce((s, r) => s + Number(r.total_amount), 0);
 
+  // Deep link from a notification (?registration_id=...) — scroll to and
+  // highlight the specific purchase the organizer was pointed at.
+  const [highlightId] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('registration_id'),
+  );
+  const highlightRef = useRef<HTMLTableRowElement | null>(null);
+  useEffect(() => {
+    if (highlightId && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightId, registrations]);
+
   return (
     <>
       <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -143,7 +160,9 @@ function PurchasesTab({ registrations }: { registrations: Registration[] }) {
               const key = r.user_email ?? r.user_name ?? '';
               const multi = countByEmail[key] > 1;
               return (
-                <TableRow key={r.id} hover>
+                <TableRow key={r.id} hover
+                  ref={r.id === highlightId ? highlightRef : undefined}
+                  sx={r.id === highlightId ? { bgcolor: 'action.selected' } : undefined}>
                   <TableCell>
                     <Stack direction="row" spacing={0.75} alignItems="center">
                       <Box>
@@ -736,6 +755,265 @@ function StatCard({ label, value, color }: { label: string; value: string | numb
   );
 }
 
+// ── Collector & Email tab ────────────────────────────────────────────────────
+
+interface CollectorSettings {
+  event_id: string;
+  member_id: string | null;
+  member_name: string | null;
+  upi_id: string | null;
+  imap_host: string;
+  imap_port: number;
+  imap_user: string;
+  imap_password_set: boolean;
+  imap_mailbox: string;
+  assigned_at: string | null;
+  reconciliation_channel_configured: boolean;
+}
+
+function CollectorSettingsTab({ eventId, token }: { eventId: string; token: string }) {
+  const [cfg, setCfg]           = useState<CollectorSettings | null>(null);
+  const [upiId, setUpiId]       = useState('');
+  const [imapHost, setImapHost] = useState('');
+  const [imapPort, setImapPort] = useState(993);
+  const [imapUser, setImapUser] = useState('');
+  const [imapPassword, setImapPassword] = useState('');
+  const [imapMailbox, setImapMailbox]   = useState('INBOX');
+  const [showPw, setShowPw]     = useState(false);
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState(false);
+  const [testing, setTesting]   = useState(false);
+  const [testingRecon, setTestingRecon] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+  const [msg, setMsg]           = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true); setError(null);
+    apiFetch<CollectorSettings>('payments', `/registry/${eventId}/settings`, token)
+      .then((d) => {
+        setCfg(d);
+        setUpiId(d.upi_id ?? '');
+        setImapHost(d.imap_host);
+        setImapPort(d.imap_port);
+        setImapUser(d.imap_user);
+        setImapMailbox(d.imap_mailbox);
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [eventId, token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async () => {
+    setSaving(true); setMsg(null);
+    try {
+      await apiMutate('payments', `/registry/${eventId}/settings`, token, 'PUT', {
+        upi_id: upiId,
+        imap_host: imapHost, imap_port: imapPort, imap_user: imapUser,
+        imap_password: imapPassword, imap_mailbox: imapMailbox,
+      });
+      setImapPassword('');
+      setMsg({ type: 'success', text: 'Collector & email settings saved.' });
+      load();
+    } catch (e) {
+      setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Save failed' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const useGmailDefaults = () => {
+    setImapHost('imap.gmail.com');
+    setImapPort(993);
+    setImapMailbox('INBOX');
+  };
+
+  const testImap = async () => {
+    setTesting(true); setMsg(null);
+    try {
+      const r = await apiMutate<{ mailbox: string; message_count: number }>(
+        'payments', `/registry/${eventId}/settings/test-imap`, token, 'POST',
+      );
+      setMsg({ type: 'success', text: `Connected! Mailbox "${r?.mailbox}" has ${r?.message_count} messages.` });
+    } catch (e) {
+      setMsg({ type: 'error', text: e instanceof Error ? e.message : 'IMAP test failed' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const testReconciliation = async () => {
+    setTestingRecon(true); setMsg(null);
+    try {
+      const r = await apiMutate<{ fetched: number }>(
+        'payments', `/registry/${eventId}/settings/test-reconciliation`, token, 'POST',
+      );
+      setMsg({
+        type: 'success',
+        text: `Reconciliation service connected — it read ${r?.fetched ?? 0} message(s) from your inbox just now.`,
+      });
+    } catch (e) {
+      setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Reconciliation service test failed' });
+    } finally {
+      setTestingRecon(false);
+    }
+  };
+
+  const scanNow = async () => {
+    setScanning(true); setMsg(null);
+    try {
+      const r = await apiMutate<{ emails_processed: number; matched: number; unmatched: number }>(
+        'payments', `/registry/${eventId}/settings/scan`, token, 'POST',
+      );
+      setMsg({
+        type: 'success',
+        text: `Scan complete: ${r?.matched ?? 0} matched, ${r?.unmatched ?? 0} unmatched from ${r?.emails_processed ?? 0} emails.`,
+      });
+    } catch (e) {
+      setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Scan failed' });
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>;
+  if (error) return <Alert severity="error">{error}</Alert>;
+
+  return (
+    <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, maxWidth: 640 }}>
+      <Stack spacing={3}>
+        {msg && <Alert severity={msg.type} onClose={() => setMsg(null)}>{msg.text}</Alert>}
+
+        <Box>
+          <Typography fontWeight={700} mb={1.5}>Receiver UPI ID</Typography>
+          <TextField
+            label="UPI ID"
+            value={upiId}
+            onChange={(e) => setUpiId(e.target.value)}
+            size="small"
+            fullWidth
+            placeholder="name@bankname"
+            helperText="The UPI ID residents pay into for this event. Can be changed at any time."
+          />
+          {cfg?.member_name && (
+            <Typography variant="caption" color="text.secondary" display="block" mt={1}>
+              Collector on record: {cfg.member_name}
+            </Typography>
+          )}
+        </Box>
+
+        <Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <EmailIcon color="primary" fontSize="small" />
+              <Typography fontWeight={700}>Payment-Verification Email Account</Typography>
+            </Box>
+            <Button size="small" onClick={useGmailDefaults}>Use Gmail</Button>
+          </Box>
+          <Typography variant="caption" color="text.secondary" display="block" mb={2}>
+            The inbox that receives your bank/UPI app's payment notification emails. The
+            reconciliation service scans this mailbox to auto-verify payments for this event only.
+          </Typography>
+          <Stack spacing={2}>
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                label="IMAP Host" value={imapHost} onChange={(e) => setImapHost(e.target.value)}
+                size="small" sx={{ flex: 3 }} placeholder="imap.gmail.com"
+              />
+              <TextField
+                label="Port" value={imapPort} onChange={(e) => setImapPort(Number(e.target.value))}
+                size="small" type="number" sx={{ flex: 1 }}
+              />
+            </Box>
+            <TextField
+              label="Email address" value={imapUser} onChange={(e) => setImapUser(e.target.value)}
+              size="small" fullWidth placeholder="you@gmail.com"
+            />
+            <TextField
+              label={cfg?.imap_password_set ? 'App password (leave blank to keep current)' : 'App password'}
+              value={imapPassword} onChange={(e) => setImapPassword(e.target.value)}
+              size="small" fullWidth type={showPw ? 'text' : 'password'}
+              placeholder={cfg?.imap_password_set ? '••••••••' : 'App password or IMAP password'}
+              InputProps={{
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setShowPw((v) => !v)}>
+                      {showPw ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <Alert severity="info" sx={{ py: 0.5 }}>
+              For Gmail, this is <strong>not</strong> your normal Google account password — Gmail
+              requires a 16-character <strong>App Password</strong> once 2-Step Verification is
+              on. Generate one at{' '}
+              <Link href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">
+                myaccount.google.com/apppasswords
+              </Link>{' '}
+              (enable 2-Step Verification first if you haven't) and paste the 16 characters here.
+              Other providers (Outlook, Yahoo, etc.) have their own equivalent "app password" page.
+            </Alert>
+            <TextField
+              label="Mailbox / Folder" value={imapMailbox} onChange={(e) => setImapMailbox(e.target.value)}
+              size="small" sx={{ maxWidth: 260 }} placeholder="INBOX"
+            />
+            <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+              <Box>
+                <Button
+                  variant="outlined" size="small" onClick={testImap}
+                  disabled={testing || !imapHost || !imapUser}
+                  startIcon={testing ? <CircularProgress size={14} /> : <CheckCircleIcon />}
+                >
+                  Test IMAP Connection
+                </Button>
+                <Typography variant="caption" color="text.secondary" display="block" mt={0.75} maxWidth={260}>
+                  Verifies the app password can actually log in and read this mailbox right now —
+                  use it before saving to confirm it works, and any time after to re-check access.
+                </Typography>
+              </Box>
+              <Box>
+                <Tooltip title={cfg?.reconciliation_channel_configured ? '' : 'Save your settings first (with host, address and password filled in) to provision this.'}>
+                  <span>
+                    <Button
+                      variant="outlined" size="small" color="secondary" onClick={testReconciliation}
+                      disabled={testingRecon || !cfg?.reconciliation_channel_configured}
+                      startIcon={testingRecon ? <CircularProgress size={14} /> : <SyncIcon />}
+                    >
+                      Test via Reconciliation Service
+                    </Button>
+                  </span>
+                </Tooltip>
+                <Typography variant="caption" color="text.secondary" display="block" mt={0.75} maxWidth={260}>
+                  Checks the optional payment reconciliation service's own copy of these
+                  credentials — the one that powers AI-assisted screenshot verification at
+                  checkout. If this fails while the test above succeeds, re-save your settings
+                  to re-sync it.
+                </Typography>
+              </Box>
+            </Box>
+          </Stack>
+        </Box>
+
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <Button variant="contained" onClick={save} disabled={saving || !upiId.trim()}
+            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}>
+            {saving ? 'Saving…' : 'Save'}
+          </Button>
+          <Button
+            variant="outlined" color="success" onClick={scanNow}
+            disabled={scanning || !imapHost || !imapUser}
+            startIcon={scanning ? <CircularProgress size={14} color="inherit" /> : <SyncIcon />}
+          >
+            {scanning ? 'Scanning…' : 'Scan Inbox Now'}
+          </Button>
+        </Box>
+      </Stack>
+    </Paper>
+  );
+}
+
 // ── Main component ───────────────────────────────────────────────────────────
 
 export function EventDetails({ token, id: eventId }: { token?: string | null; id?: string }) {
@@ -821,6 +1099,7 @@ export function EventDetails({ token, id: eventId }: { token?: string | null; id
                 <Tab icon={<ReceiptIcon fontSize="small" />} iconPosition="start" label="Finance & Expenses" />
                 <Tab icon={<StorefrontIcon fontSize="small" />} iconPosition="start" label="Vendors" />
                 <Tab icon={<AccountBalanceIcon fontSize="small" />} iconPosition="start" label="Revenue" />
+                <Tab icon={<EmailIcon fontSize="small" />} iconPosition="start" label="Collector & Email" />
               </Tabs>
             </>
           )}
@@ -839,6 +1118,7 @@ export function EventDetails({ token, id: eventId }: { token?: string | null; id
             {tab === 3 && <FinanceTab eventId={eventId} token={token} />}
             {tab === 4 && <VendorsTab eventId={eventId} token={token} />}
             {tab === 5 && <RevenueTab eventId={eventId} token={token} />}
+            {tab === 6 && <CollectorSettingsTab eventId={eventId} token={token} />}
           </>
         )}
       </Container>

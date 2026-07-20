@@ -2,9 +2,10 @@ from __future__ import annotations
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from asyncpg import Pool
 
+from app.config import settings
 from app.database import get_pool
 from app.auth import get_current_claims, require_role
 from app.models import (
@@ -13,6 +14,7 @@ from app.models import (
     LeaveRequestResponse,
     LeaveRequestListResponse,
 )
+from app.notifications import notify_admins, send_channels
 from app.routes.users import _keycloak_delete_user
 
 router = APIRouter()
@@ -105,6 +107,7 @@ _REQUEST_COLS = (
 @router.post("", response_model=LeaveRequestResponse, summary="Submit a leave-society request (self)")
 async def create_leave_request(
     body: LeaveRequestCreate,
+    background_tasks: BackgroundTasks,
     claims: dict = Depends(get_current_claims),
     pool: Pool = Depends(get_pool),
 ):
@@ -127,15 +130,17 @@ async def create_leave_request(
             user["id"], user["name"], user["email"], body.reason,
         )
 
-        admins = await conn.fetch("SELECT id FROM users WHERE role = 'admin' AND is_active = TRUE")
-        for admin in admins:
-            await _notify(
-                conn, admin["id"], "leave_request_submitted", "New Leave Request",
-                f'{user["name"]} has requested to leave the society.',
-                related_id=row["id"],
-            )
+        link = f"{settings.app_public_url}/admin/leave-requests?request_id={row['id']}"
+        message = f'{user["name"]} has requested to leave the society. Review: {link}'
+        recipients = await notify_admins(
+            conn, "leave_request_submitted", "New Leave Request", message,
+            related_id=row["id"], exclude_user_id=user["id"],
+        )
 
-        return await _to_response(conn, dict(row))
+        response = await _to_response(conn, dict(row))
+
+    background_tasks.add_task(send_channels, recipients, message)
+    return response
 
 
 @router.get("/me", response_model=Optional[LeaveRequestResponse], summary="Get your own latest leave request")
@@ -227,6 +232,7 @@ async def export_activity(
 )
 async def confirm_leave(
     request_id: UUID,
+    background_tasks: BackgroundTasks,
     claims: dict = Depends(get_current_claims),
     pool: Pool = Depends(get_pool),
 ):
@@ -248,6 +254,20 @@ async def confirm_leave(
             raise HTTPException(status_code=409, detail="; ".join(blockers))
 
         async with conn.transaction():
+            # Any still-open admin action-item notification pointing at this user's
+            # registrations/payment_transactions (cancellation/refund/verification
+            # requests) can never be resolved once those rows are gone below — clear
+            # them now instead of leaving permanently-orphaned cards in the popup.
+            await conn.execute(
+                "DELETE FROM notification WHERE type = 'cancellation_requested' "
+                "AND related_id IN (SELECT id FROM registration WHERE user_id = $1)",
+                user["id"],
+            )
+            await conn.execute(
+                "DELETE FROM notification WHERE type IN ('refund_requested', 'payment_verification_requested') "
+                "AND related_id IN (SELECT id FROM payment_transaction WHERE user_id = $1)",
+                user["id"],
+            )
             await conn.execute(
                 "DELETE FROM refund WHERE payment_id IN "
                 "(SELECT id FROM payment WHERE registration_id IN "
@@ -268,12 +288,26 @@ async def confirm_leave(
             )
             await conn.execute("DELETE FROM users WHERE id = $1", user["id"])
 
+        # user["id"] no longer exists in `users` at this point — capture the name/email
+        # above (already done) rather than re-querying, and don't try to exclude self
+        # from the admin list (a departing admin's own row is already gone).
+        link = f"{settings.app_public_url}/admin/leave-requests?request_id={request_id}"
+        message = (
+            f'{user["name"]} has left the society. Their account and all associated data '
+            f"have been deleted. Details: {link}"
+        )
+        recipients = await notify_admins(
+            conn, "leave_request_completed", "Member Left the Society", message,
+            related_id=request_id,
+        )
+
     if user["keycloak_sub"]:
         try:
             await _keycloak_delete_user(user["keycloak_sub"])
         except Exception:
             pass
 
+    background_tasks.add_task(send_channels, recipients, message)
     return {"status": "completed"}
 
 

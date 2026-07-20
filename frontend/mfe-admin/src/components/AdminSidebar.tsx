@@ -12,7 +12,6 @@ const SIDEBAR: { label: string; path: string; section?: string; adminOnly?: bool
   { label: 'Sponsors',             path: '/admin/sponsors',             adminOnly: true },
   { label: 'Categories',           path: '/admin/categories',           adminOnly: true },
   { label: 'Payment Approvals',    path: '/admin/payments',            section: 'Payments' },
-  { label: 'Collector Registry',   path: '/admin/collector-registry' },
   { label: 'Payment Requests',     path: '/admin/reconciliation' },
   { label: 'Refund Tasks',         path: '/admin/pay-refunds' },
   { label: 'Sponsorship Refunds',  path: '/admin/refunds',             section: 'Sponsors', adminOnly: true },

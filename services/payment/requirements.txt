@@ -4,6 +4,7 @@ asyncpg==0.30.0
 pydantic==2.10.4
 pydantic-settings==2.7.1
 python-jose[cryptography]==3.3.0
+cryptography==44.0.0
 httpx==0.28.1
 qrcode[pil]==8.0
 aioimaplib==1.1.0

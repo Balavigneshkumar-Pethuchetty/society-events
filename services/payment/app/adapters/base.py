@@ -18,7 +18,7 @@ class PaymentProcessor(ABC):
         """
 
     @abstractmethod
-    async def process_refund(self, txn_ref: str, refund_ref: str) -> dict:
-        """Mark a transaction REFUNDED given a refund UTR.
+    async def process_refund(self, txn_ref: str, refund_ref: str, refund_screenshot_path: str | None = None) -> dict:
+        """Mark a transaction REFUNDED given a refund UTR and optional proof screenshot.
         Returns: {status, refund_utr}
         """

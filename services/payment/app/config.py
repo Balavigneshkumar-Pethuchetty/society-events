@@ -14,16 +14,15 @@ class Settings(BaseSettings):
     keycloak_public_url: str = "https://auth.gm-global-techies-town.club"
     internal_api_key: str
     society_id: str = "11100000-0000-0000-0000-000000000001"
+    # App's public URL — used to build deep links into notification messages
+    # (e.g. straight to the reconciliation/refund console for a given txn_ref).
+    app_public_url: str = "http://localhost:8080"
 
     payment_provider: str = "MANUAL_UPI"
 
-    # IMAP inbox for automated reconciliation (FR-05)
-    imap_host: str = ""
-    imap_port: int = 993
-    imap_user: str = ""
-    imap_password: str = ""
-    imap_mailbox: str = "INBOX"
-    reconciliation_interval_seconds: int = 300
+    # Fernet key encrypting per-event IMAP passwords (committee_registry.imap_password).
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    payment_secret_key: str
 
     splunk_hec_url: str = ""
     splunk_hec_token: str = ""
@@ -48,6 +47,15 @@ class Settings(BaseSettings):
     reconciliation_service_audience: str = "payment-service"
 
     uploads_dir: str = "/app/uploads"
+
+    # Gmail SMTP — shared credential with services/registration, used to email
+    # residents/organizers a copy of payment/refund verdict notifications.
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    gmail_smtp_user: str = ""
+    gmail_app_password: str = ""
+    smtp_from_name: str = "GM Global Techies Town"
+    society_name: str = "GM Global Techies Town"
 
     # "testing" mounts the /test/* endpoints (clear-transactions, seed-transaction)
     # used to exercise the centralized reconciliation service's /parseEmail without a

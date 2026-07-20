@@ -41,6 +41,14 @@ async function doPoll() {
       if (!knownIds.has(n.id)) {
         knownIds.add(n.id);
 
+        if (n.type === 'leave_request_approved') {
+          // Approval means the account is about to be deleted once the user
+          // confirms — force any already-open tab to log out immediately
+          // rather than letting them keep browsing on a soon-to-be-gone account.
+          const clients = await self.clients.matchAll({ type: 'window' });
+          clients.forEach(c => c.postMessage({ type: 'FORCE_LOGOUT', reason: n.type }));
+        }
+
         if (Notification.permission === 'granted') {
           try {
             await self.registration.showNotification(n.title, {

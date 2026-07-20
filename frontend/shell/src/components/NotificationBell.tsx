@@ -26,6 +26,7 @@ type TypeMeta = { icon: React.ReactElement; color: string; bg: string };
 
 const TYPE_META: Record<string, TypeMeta> = {
   new_registration:   { icon: <PersonAddIcon fontSize="small" />,          color: '#7c3aed', bg: '#ede9fe' },
+  event_registration_created: { icon: <PersonAddIcon fontSize="small" />, color: '#7c3aed', bg: '#ede9fe' },
   event_reminder:     { icon: <EventNoteIcon fontSize="small" />,           color: '#0284c7', bg: '#e0f2fe' },
   event_created:      { icon: <EventNoteIcon fontSize="small" />,           color: '#0284c7', bg: '#e0f2fe' },
   event_cancelled:    { icon: <EventBusyIcon fontSize="small" />,           color: '#dc2626', bg: '#fee2e2' },
@@ -33,6 +34,7 @@ const TYPE_META: Record<string, TypeMeta> = {
   booking_cancelled:  { icon: <CancelOutlinedIcon fontSize="small" />,      color: '#dc2626', bg: '#fee2e2' },
   payment_success:    { icon: <PaymentIcon fontSize="small" />,             color: '#15803d', bg: '#dcfce7' },
   payment_received:   { icon: <PaymentIcon fontSize="small" />,             color: '#15803d', bg: '#dcfce7' },
+  payment_rejected:   { icon: <CancelOutlinedIcon fontSize="small" />,      color: '#dc2626', bg: '#fee2e2' },
   refund_processed:   { icon: <CurrencyRupeeIcon fontSize="small" />,       color: '#d97706', bg: '#fef3c7' },
   announcement:       { icon: <CampaignIcon fontSize="small" />,            color: '#0f766e', bg: '#ccfbf1' },
   role_changed:       { icon: <ManageAccountsIcon fontSize="small" />,      color: '#4f46e5', bg: '#eef2ff' },
@@ -81,10 +83,15 @@ function resolveTarget(n: NotificationItem): string | null {
     case 'booking_cancelled':       return '/registrations';
     case 'payment_success':
     case 'payment_received':
-    case 'refund_processed':
-    case 'payment_verification_requested':
+    case 'payment_rejected':
+    case 'refund_processed':        return '/payments';
+    // Organizer/committee-facing "needs your action" notification — takes the
+    // reviewer to the reconciliation queue where the screenshot is approved or
+    // rejected, not the resident's own payment history.
+    case 'payment_verification_requested': return '/admin/reconciliation';
     case 'refund_requested':        return '/payments';
     case 'cancellation_requested':  return '/registrations';
+    case 'event_registration_created': return n.event_id ? `/events/${n.event_id}` : '/registrations';
     default:                        return null;
   }
 }

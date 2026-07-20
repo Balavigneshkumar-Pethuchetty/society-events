@@ -121,16 +121,19 @@ def _generate_qr_svg(token: str) -> bytes:
 @router.post("", status_code=201, response_model=RegistrationOut,
              summary="Register for an event")
 async def create_registration(
+    background_tasks: BackgroundTasks,
     body: RegistrationCreate,
     claims: dict = Depends(get_current_claims),
 ):
     sub = claims.get("sub", "")
     pool = await get_pool()
+    recipients: list[dict] = []
+    reg_message = ""
     async with pool.acquire() as conn:
         user_id = await _get_db_user_id(conn, sub)
 
         event = await conn.fetchrow(
-            "SELECT id, title, ticket_price, price_currency, is_free, status, capacity "
+            "SELECT id, title, ticket_price, price_currency, is_free, status, capacity, end_time "
             "FROM event WHERE id = $1::uuid AND society_id = $2::uuid",
             body.event_id, _SOCIETY,
         )
@@ -138,6 +141,8 @@ async def create_registration(
             raise HTTPException(status_code=404, detail="Event not found")
         if event["status"] != "published":
             raise HTTPException(status_code=400, detail="Event is not open for registration")
+        if event["end_time"] < datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail="Event has already ended")
 
         # Capacity check
         if event["capacity"] is not None:
@@ -193,6 +198,26 @@ async def create_registration(
             )
 
         row = await conn.fetchrow(_REG_QUERY + " WHERE r.id = $1::uuid", reg_id)
+
+        # Paid registrations start as pending_payment with no screenshot yet —
+        # notifying the organizer now would be premature (they can't verify
+        # anything). That notification instead fires from upload_screenshot()
+        # once the resident has actually paid and submitted proof. Free
+        # registrations are confirmed immediately, so there's no payment step
+        # to wait for.
+        if is_free:
+            link = f"{settings.app_public_url}/manage/details/{body.event_id}?tab=purchases&registration_id={reg_id}"
+            reg_message = (
+                f"A resident registered for \"{event['title']}\" ({ticket_count} ticket(s)). "
+                f"View: {link}"
+            )
+            recipients = await resolve_and_record(
+                conn, body.event_id, user_id, "event_registration_created",
+                "New registration", reg_message, related_id=reg_id,
+            )
+
+    if is_free and recipients:
+        background_tasks.add_task(send_channels, recipients, reg_message)
 
     return _build_reg_out(dict(row))
 
@@ -328,7 +353,8 @@ async def cancel_registration(
         )
 
         event_title = row["event_title"] or "an event"
-        cancel_message = f"A resident cancelled their registration for \"{event_title}\"."
+        cancel_link = f"{settings.app_public_url}/manage/details/{row['event_id']}?tab=purchases&registration_id={reg_id}"
+        cancel_message = f"A resident cancelled their registration for \"{event_title}\". View: {cancel_link}"
         recipients = await resolve_and_record(
             conn, row["event_id"], user_id, "cancellation_requested",
             "Registration cancelled", cancel_message, related_id=reg_id,
@@ -356,7 +382,11 @@ async def cancel_registration(
                     txn["id"], sub,
                 )
                 refund_requested = True
-                refund_message = f"A refund was requested for the cancelled registration on \"{event_title}\"."
+                refund_link = f"{settings.app_public_url}/admin/pay-refunds?txn_id={txn['id']}"
+                refund_message = (
+                    f"A refund was requested for the cancelled registration on \"{event_title}\". "
+                    f"Process it: {refund_link}"
+                )
                 refund_recipients = await resolve_and_record(
                     conn, row["event_id"], user_id, "refund_requested",
                     "Refund requested", refund_message, related_id=txn["id"],
@@ -376,6 +406,7 @@ async def cancel_registration(
              summary="Upload payment screenshot")
 async def upload_screenshot(
     reg_id: str,
+    background_tasks: BackgroundTasks,
     utr_number: Optional[str] = Form(None),
     file: UploadFile = File(...),
     claims: dict = Depends(get_current_claims),
@@ -392,8 +423,10 @@ async def upload_screenshot(
         user_id = await _get_db_user_id(conn, sub)
 
         reg = await conn.fetchrow(
-            "SELECT r.id, r.user_id::text, r.status, p.id::text AS payment_id "
-            "FROM registration r LEFT JOIN payment p ON p.registration_id = r.id "
+            "SELECT r.id, r.event_id::text, r.user_id::text, r.status, p.id::text AS payment_id, "
+            "e.title AS event_title "
+            "FROM registration r JOIN event e ON e.id = r.event_id "
+            "LEFT JOIN payment p ON p.registration_id = r.id "
             "WHERE r.id = $1::uuid",
             reg_id,
         )
@@ -420,6 +453,22 @@ async def upload_screenshot(
         )
 
         row = await conn.fetchrow(_REG_QUERY + " WHERE r.id = $1::uuid", reg_id)
+
+        # Only now — payment actually made and proof attached — is the organizer
+        # worth notifying (see create_registration, which deliberately skips this
+        # for paid registrations).
+        screenshot_link = f"{settings.app_public_url}/admin/payments?registration_id={reg_id}"
+        screenshot_message = (
+            f"A resident submitted a payment screenshot for \"{reg['event_title']}\" — "
+            f"please review: {screenshot_link}"
+        )
+        recipients = await resolve_and_record(
+            conn, reg["event_id"], user_id, "payment_screenshot_submitted",
+            "Payment Screenshot Submitted", screenshot_message, related_id=reg_id,
+        )
+
+    if recipients:
+        background_tasks.add_task(send_channels, recipients, screenshot_message)
     return _build_reg_out(dict(row))
 
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert, Avatar, Box, Button, Chip, CircularProgress, Container,
   Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle,
@@ -90,6 +90,13 @@ export function LeaveRequests({ token }: LeaveRequestsProps) {
   const [revokeTarget, setRevokeTarget] = useState<LeaveRequest | null>(null);
   const [note,         setNote]         = useState('');
 
+  // Deep link from a notification (?request_id=...) — scroll to and highlight
+  // the specific request the admin was pointed at, instead of just the list.
+  const [highlightId] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('request_id'),
+  );
+  const highlightRef = useRef<HTMLTableRowElement | null>(null);
+
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true); setError(null);
@@ -101,6 +108,12 @@ export function LeaveRequests({ token }: LeaveRequestsProps) {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (highlightId && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightId, items]);
 
   const initials = (name: string) =>
     name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
@@ -198,7 +211,12 @@ export function LeaveRequests({ token }: LeaveRequestsProps) {
                       {openRequests.map(req => {
                         const busy = actionId === req.id;
                         return (
-                          <TableRow key={req.id} sx={{ '&:last-child td': { borderBottom: 0 } }}>
+                          <TableRow key={req.id}
+                            ref={req.id === highlightId ? highlightRef : undefined}
+                            sx={{
+                              '&:last-child td': { borderBottom: 0 },
+                              ...(req.id === highlightId && { bgcolor: 'action.selected' }),
+                            }}>
                             <TableCell>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                                 <Avatar sx={{ width: 30, height: 30, fontSize: 11, bgcolor: '#94a3b8' }}>{initials(req.user_name)}</Avatar>
@@ -278,7 +296,12 @@ export function LeaveRequests({ token }: LeaveRequestsProps) {
                     </TableHead>
                     <TableBody>
                       {closedRequests.map(req => (
-                        <TableRow key={req.id} sx={{ '&:last-child td': { borderBottom: 0 } }}>
+                        <TableRow key={req.id}
+                          ref={req.id === highlightId ? highlightRef : undefined}
+                          sx={{
+                            '&:last-child td': { borderBottom: 0 },
+                            ...(req.id === highlightId && { bgcolor: 'action.selected' }),
+                          }}>
                           <TableCell>
                             <Typography fontWeight={600} fontSize={14}>{req.user_name}</Typography>
                             <Typography fontSize={12} color="text.secondary">{req.user_email}</Typography>

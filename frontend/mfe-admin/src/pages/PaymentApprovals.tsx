@@ -249,6 +249,13 @@ export function PaymentApprovals({ token, role }: { token?: string | null; role?
   const [error, setError]         = useState<string | null>(null);
   const [reviewing, setReviewing] = useState<Registration | null>(null);
 
+  // Deep link from a notification (?registration_id=...) — land on the right
+  // tab and open the review dialog for that specific registration directly.
+  const [highlightId] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('registration_id'),
+  );
+  const [handledHighlight, setHandledHighlight] = useState(false);
+
   const load = useCallback(() => {
     if (!token) return;
     setLoading(true);
@@ -274,6 +281,19 @@ export function PaymentApprovals({ token, role }: { token?: string | null; role?
     { label: `Rejected (${rejected.length})`,        data: rejected },
     { label: `Dropped (${dropped.length})`,          data: dropped },
   ];
+
+  useEffect(() => {
+    if (!highlightId || handledHighlight || regs.length === 0) return;
+    const target = regs.find(r => r.id === highlightId);
+    if (!target) return;
+    const tabIndex = tabs.findIndex(t => t.data.some(r => r.id === highlightId));
+    if (tabIndex >= 0) setTab(tabIndex);
+    if (target.status !== 'cancelled' &&
+        (target.payment?.status === 'pending_review' || target.payment?.status === 'pending_screenshot')) {
+      setReviewing(target);
+    }
+    setHandledHighlight(true);
+  }, [highlightId, handledHighlight, regs, tabs]);
 
   if (!token) {
     return (

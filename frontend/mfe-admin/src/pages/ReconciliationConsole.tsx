@@ -5,6 +5,7 @@ import {
   Dialog, DialogActions, DialogContent, DialogTitle,
   Divider, IconButton, Paper, Stack, Tab, Tabs, TextField, Typography,
 } from '@mui/material';
+import AutoAwesomeIcon   from '@mui/icons-material/AutoAwesome';
 import CheckCircleIcon   from '@mui/icons-material/CheckCircle';
 import CloseIcon         from '@mui/icons-material/Close';
 import ContentCopyIcon   from '@mui/icons-material/ContentCopy';
@@ -25,6 +26,11 @@ interface Transaction {
   user_name: string | null; user_email: string | null;
   screenshot_url: string | null;
   refund_screenshot_url: string | null;
+  parsed_amount: number | null;
+  parsed_upi_ref: string | null;
+  parsed_rrn: string | null;
+  parsed_bank: string | null;
+  parsed_timestamp: string | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -225,18 +231,20 @@ function RejectDialog({
 // ── Transaction row ───────────────────────────────────────────────────────────
 
 function TxnRow({
-  txn, onApprove, onReject,
+  txn, onApprove, onReject, highlighted,
 }: {
   txn: Transaction;
   onApprove: (t: Transaction) => void;
   onReject: (t: Transaction) => void;
+  highlighted?: boolean;
 }) {
   // Tracks which of the two screenshots (original payment vs. outgoing refund transfer)
   // is open in the full-view dialog — null means closed.
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   return (
-    <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+    <Paper variant="outlined" id={`txn-${txn.txn_ref}`}
+      sx={{ p: 2.5, borderRadius: 2, ...(highlighted && { bgcolor: 'action.selected' }) }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
         {(txn.screenshot_url || txn.refund_screenshot_url) && (
           <Stack direction="row" spacing={1}>
@@ -273,6 +281,52 @@ function TxnRow({
               </Box>
             )}
           </Stack>
+        )}
+
+        {(txn.parsed_amount != null || txn.parsed_upi_ref || txn.parsed_rrn || txn.parsed_bank || txn.parsed_timestamp) && (
+          <Box sx={{ p: 1.5, borderRadius: 1.5, bgcolor: 'action.hover', minWidth: 180 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+              <AutoAwesomeIcon sx={{ fontSize: 14, color: 'primary.main' }} />
+              <Typography variant="caption" fontWeight={700} color="primary.main">
+                Extracted from screenshot
+              </Typography>
+            </Box>
+            <Stack spacing={0.25}>
+              {txn.parsed_amount != null && (
+                <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">Amount:</Typography>
+                  <CopyText value={String(txn.parsed_amount)} />
+                </Box>
+              )}
+              {txn.parsed_upi_ref && (
+                <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">UTR/Ref:</Typography>
+                  <CopyText value={txn.parsed_upi_ref} />
+                </Box>
+              )}
+              {txn.parsed_rrn && (
+                <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">RRN:</Typography>
+                  <CopyText value={txn.parsed_rrn} />
+                </Box>
+              )}
+              {txn.parsed_bank && (
+                <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">Bank:</Typography>
+                  <CopyText value={txn.parsed_bank} />
+                </Box>
+              )}
+              {txn.parsed_timestamp && (
+                <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">Time:</Typography>
+                  <CopyText value={txn.parsed_timestamp} />
+                </Box>
+              )}
+            </Stack>
+            <Typography variant="caption" color="text.secondary" display="block" mt={0.5} fontStyle="italic">
+              Copy and search in your bank statement — always double-check against the screenshot.
+            </Typography>
+          </Box>
         )}
 
         <Box sx={{ flex: 1, minWidth: 200 }}>
@@ -353,6 +407,13 @@ export function ReconciliationConsole({ token, role }: { token?: string | null; 
   const [approving, setApproving] = useState<Transaction | null>(null);
   const [rejecting, setRejecting] = useState<Transaction | null>(null);
 
+  // Deep link from a notification (?txn_ref=...) — land on the right tab and
+  // scroll to/highlight the specific transaction.
+  const [highlightRef] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('txn_ref'),
+  );
+  const [handledHighlight, setHandledHighlight] = useState(false);
+
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
@@ -383,6 +444,19 @@ export function ReconciliationConsole({ token, role }: { token?: string | null; 
     { label: `Refund Pending (${refundPending.length})`,    data: refundPending },
     { label: `Refunded (${refunded.length})`,               data: refunded },
   ];
+
+  useEffect(() => {
+    if (!highlightRef || handledHighlight || txns.length === 0) return;
+    const tabIndex = tabs.findIndex(t => t.data.some(t2 => t2.txn_ref === highlightRef));
+    if (tabIndex >= 0) setTab(tabIndex);
+    setHandledHighlight(true);
+  }, [highlightRef, handledHighlight, txns, tabs]);
+
+  useEffect(() => {
+    if (highlightRef && handledHighlight) {
+      document.getElementById(`txn-${highlightRef}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightRef, handledHighlight, tab]);
 
   return (
     <Box sx={{ display: 'flex' }}>
@@ -452,6 +526,7 @@ export function ReconciliationConsole({ token, role }: { token?: string | null; 
                 txn={txn}
                 onApprove={setApproving}
                 onReject={setRejecting}
+                highlighted={txn.txn_ref === highlightRef}
               />
             ))}
           </Stack>

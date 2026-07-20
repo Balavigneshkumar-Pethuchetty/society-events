@@ -1,7 +1,11 @@
 """IMAP inbox listener for auto-reconciliation.
 
-Settings are loaded from the DB on every scan so changes made via the
-admin UI take effect without restarting the service.
+Each event configures its own mailbox in `committee_registry` (imap_host/user/
+password/mailbox), settable/changeable at any time by that event's organizer via
+`PUT /registry/{event_id}/settings`. The background loop re-reads the list of
+configured mailboxes every tick, so changes take effect without restarting the
+service. Scan cadence and AI-parser config remain a single deployment-wide row
+(`payment_reconciliation_settings`).
 """
 import asyncio
 import email as email_lib
@@ -9,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from app.config import settings
+from app.crypto import decrypt
 from app.database import get_pool
 from app.reconciliation.parser import extract_all_ai, extract_all_claude, extract_all_regex
 
@@ -18,45 +23,87 @@ _last_matched_utrs: list[str] = []
 _lock = asyncio.Lock()
 
 
-# ── DB settings loader ────────────────────────────────────────────────────────
+# ── DB settings loaders ───────────────────────────────────────────────────────
 
-async def _load_settings() -> dict:
+async def _load_ai_settings() -> dict:
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            """SELECT imap_host, imap_port, imap_user, imap_password,
-                      imap_mailbox, poll_interval_s, use_ai_parser, ai_provider,
+            """SELECT poll_interval_s, use_ai_parser, ai_provider,
                       ollama_host, ollama_model
                FROM payment_reconciliation_settings WHERE id = 1"""
         )
     return dict(row) if row else {}
 
 
+async def _load_event_mailboxes() -> list[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT event_id::text, imap_host, imap_port, imap_user,
+                      imap_password, imap_mailbox
+               FROM committee_registry
+               WHERE imap_host <> '' AND imap_user <> '' AND imap_password <> ''"""
+        )
+    configs = []
+    for r in rows:
+        d = dict(r)
+        d["imap_password"] = decrypt(d["imap_password"])
+        configs.append(d)
+    return configs
+
+
 # ── Public entry points ───────────────────────────────────────────────────────
 
 async def reconciliation_loop() -> None:
     while True:
-        cfg = await _load_settings()
-        interval = cfg.get("poll_interval_s", 300)
+        ai_cfg = await _load_ai_settings()
+        interval = ai_cfg.get("poll_interval_s", 300)
         await asyncio.sleep(interval)
-        if cfg.get("imap_host") and cfg.get("imap_user") and cfg.get("imap_password"):
+        for event_cfg in await _load_event_mailboxes():
             try:
-                await _scan_once(cfg)
+                await _scan_once(event_cfg["event_id"], event_cfg, ai_cfg)
             except Exception as exc:
-                print(f"[reconciliation] inbox scan error: {exc}")
+                print(f"[reconciliation] inbox scan error (event {event_cfg['event_id']}): {exc}")
 
 
 async def manual_scan() -> dict:
-    """Triggered by POST /reconciliation/scan."""
-    cfg = await _load_settings()
-    if not (cfg.get("imap_host") and cfg.get("imap_user") and cfg.get("imap_password")):
-        return {"emails_processed": 0, "matched": 0, "unmatched": 0, "detail": "IMAP not configured"}
-    return await _scan_once(cfg)
+    """Triggered by POST /reconciliation/scan (admin, scans every configured event)."""
+    ai_cfg = await _load_ai_settings()
+    totals = {"emails_processed": 0, "matched": 0, "unmatched": 0}
+    for event_cfg in await _load_event_mailboxes():
+        try:
+            result = await _scan_once(event_cfg["event_id"], event_cfg, ai_cfg)
+            for k in totals:
+                totals[k] += result.get(k, 0)
+        except Exception as exc:
+            print(f"[reconciliation] inbox scan error (event {event_cfg['event_id']}): {exc}")
+    return totals
+
+
+async def manual_scan_event(event_id: str) -> dict:
+    """Triggered by POST /registry/{event_id}/settings/scan (event organizer)."""
+    ai_cfg = await _load_ai_settings()
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """SELECT event_id::text, imap_host, imap_port, imap_user,
+                      imap_password, imap_mailbox
+               FROM committee_registry
+               WHERE event_id = $1::uuid
+                 AND imap_host <> '' AND imap_user <> '' AND imap_password <> ''""",
+            event_id,
+        )
+    if not row:
+        return {"emails_processed": 0, "matched": 0, "unmatched": 0, "detail": "IMAP not configured for this event"}
+    cfg = dict(row)
+    cfg["imap_password"] = decrypt(cfg["imap_password"])
+    return await _scan_once(event_id, cfg, ai_cfg)
 
 
 # ── Core scan ─────────────────────────────────────────────────────────────────
 
-async def _scan_once(cfg: dict) -> dict:
+async def _scan_once(event_id: str, cfg: dict, ai_cfg: dict) -> dict:
     global _last_run_at, _last_matched_utrs
 
     try:
@@ -76,10 +123,10 @@ async def _scan_once(cfg: dict) -> dict:
     unmatched = 0
     new_utrs: list[str] = []
 
-    use_ai    = cfg.get("use_ai_parser", False)
-    provider  = cfg.get("ai_provider", "ollama")
-    ol_host   = cfg.get("ollama_host", "http://localhost:11434")
-    ol_model  = cfg.get("ollama_model", "llama3")
+    use_ai    = ai_cfg.get("use_ai_parser", False)
+    provider  = ai_cfg.get("ai_provider", "ollama")
+    ol_host   = ai_cfg.get("ollama_host", "http://localhost:11434")
+    ol_model  = ai_cfg.get("ollama_model", "llama3")
 
     for msg_id in msg_ids:
         mid = msg_id.decode()
@@ -97,7 +144,7 @@ async def _scan_once(cfg: dict) -> dict:
             utr, amount, payer_vpa = extract_all_regex(body)
 
         if utr and amount:
-            ok = await _match_and_verify(utr, amount, payer_vpa)
+            ok = await _match_and_verify(utr, amount, payer_vpa, event_id)
             if ok:
                 matched += 1
                 new_utrs.append(utr)
@@ -129,7 +176,7 @@ def _extract_body(msg) -> str:
 
 # ── Transaction matching ──────────────────────────────────────────────────────
 
-async def _match_and_verify(utr: str, amount: float, payer_vpa: Optional[str]) -> bool:
+async def _match_and_verify(utr: str, amount: float, payer_vpa: Optional[str], event_id: str) -> bool:
     pool = await get_pool()
     async with pool.acquire() as conn:
         # Idempotency: skip if UTR already recorded
@@ -139,30 +186,32 @@ async def _match_and_verify(utr: str, amount: float, payer_vpa: Optional[str]) -
         if exists:
             return False
 
-        # Try precise match first: payer VPA + amount
+        # Try precise match first: payer VPA + amount, scoped to this event
         row = None
         if payer_vpa:
             row = await conn.fetchrow(
                 """SELECT id::text, txn_ref, registration_id::text
                    FROM payment_transaction
                    WHERE status = 'pending'
-                     AND ABS(amount - $1::numeric) < 0.01
-                     AND LOWER(payer_upi) = $2
+                     AND event_id = $1::uuid
+                     AND ABS(amount - $2::numeric) < 0.01
+                     AND LOWER(payer_upi) = $3
                    ORDER BY created_at ASC
                    LIMIT 1""",
-                amount, payer_vpa,
+                event_id, amount, payer_vpa,
             )
 
-        # Fall back to amount-only if no VPA match
+        # Fall back to amount-only, still scoped to this event
         if not row:
             row = await conn.fetchrow(
                 """SELECT id::text, txn_ref, registration_id::text
                    FROM payment_transaction
                    WHERE status = 'pending'
-                     AND ABS(amount - $1::numeric) < 0.01
+                     AND event_id = $1::uuid
+                     AND ABS(amount - $2::numeric) < 0.01
                    ORDER BY created_at ASC
                    LIMIT 1""",
-                amount,
+                event_id, amount,
             )
 
         if not row:

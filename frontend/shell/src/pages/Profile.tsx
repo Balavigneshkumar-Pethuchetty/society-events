@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Alert, Avatar, Box, Button, Card, CardContent,
   Chip, CircularProgress, Container, Dialog, DialogActions,
@@ -1071,8 +1072,18 @@ function LeaveSocietyCard() {
 export function Profile() {
   const { user }                    = useAuth();
   const { dbUser, isSyncing, syncError } = useUserService();
+  const location = useLocation();
+  const leaveSectionRef = useRef<HTMLDivElement>(null);
 
   const role = user?.primaryRole ?? 'resident';
+
+  // Lets the avatar menu's "Leave Society" shortcut jump straight to that card instead of
+  // just landing on top of the profile page and making the user scroll to find it.
+  useEffect(() => {
+    if (location.hash === '#leave-society' && !isSyncing) {
+      leaveSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [location.hash, isSyncing]);
 
   return (
     <Box component="main">
@@ -1170,7 +1181,7 @@ export function Profile() {
               <Divider />
             </Grid>
 
-            <Grid item xs={12}>
+            <Grid item xs={12} ref={leaveSectionRef}>
               {isSyncing ? (
                 <Card variant="outlined" sx={{ borderRadius: 2 }}>
                   <CardContent sx={{ p: 3 }}>

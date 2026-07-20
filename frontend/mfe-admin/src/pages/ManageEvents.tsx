@@ -60,6 +60,40 @@ async function eventsApiFetch<T>(path: string, token: string, init?: RequestInit
   return res.json() as Promise<T>;
 }
 
+function paymentsApiBase(): string {
+  const { hostname, port, protocol, origin } = window.location;
+  const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+  if (isLocal && ['4004', '4005'].includes(port)) return `${origin}/api/payments`;
+  if (isLocal && port !== '8080' && port !== '80')
+    return `${protocol}//${hostname}:8080/api/payments`;
+  return `${origin}/api/payments`;
+}
+
+async function paymentsApiFetch<T>(path: string, token: string): Promise<T> {
+  const res = await fetch(`${paymentsApiBase()}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { detail?: string }).detail ?? `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function paymentsApiMutate<T>(
+  path: string, token: string, method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', body?: unknown,
+): Promise<T | null> {
+  const res = await fetch(`${paymentsApiBase()}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error((errBody as { detail?: string }).detail ?? `HTTP ${res.status}`);
+  }
+  if (res.status === 204) return null;
+  return res.json() as Promise<T>;
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Category { id: string; name: string; color_hex: string | null }
@@ -74,6 +108,7 @@ interface EventItem {
   cancel_freeze_at: string | null;
   category_id: string | null; category_name: string | null; category_color: string | null;
   organizer_name: string;
+  approved_members: string[];
   registration_count: number; confirmed_tickets: number;
   spots_remaining: number | null; is_sold_out: boolean;
 }
@@ -101,6 +136,19 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
   });
+}
+
+// Same-day events collapse the end to just its time (one line); multi-day events
+// return an explicit second line instead of relying on wrap, so the cell never
+// grows past two lines regardless of column width.
+function fmtDateRange(startIso: string, endIso: string): [string, string | null] {
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (start.toDateString() === end.toDateString()) {
+    const endTime = end.toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return [`${fmtDate(startIso)} – ${endTime}`, null];
+  }
+  return [fmtDate(startIso), `– ${fmtDate(endIso)}`];
 }
 
 function toLocalDT(iso: string) {
@@ -706,6 +754,104 @@ function TicketTypesTab({
   );
 }
 
+// ── Event Payment Settings tab (organizer self-service UPI collector) ────────
+
+interface CollectorSettings {
+  event_id: string;
+  member_id: string | null;
+  member_name: string | null;
+  upi_id: string | null;
+  imap_host: string;
+  imap_port: number;
+  imap_user: string;
+  imap_password_set: boolean;
+  imap_mailbox: string;
+  assigned_at: string | null;
+  reconciliation_channel_configured: boolean;
+}
+
+function PaymentSettingsTab({ eventId, token }: { eventId: string | undefined; token: string }) {
+  const [cfg,     setCfg]     = useState<CollectorSettings | null>(null);
+  const [upiId,   setUpiId]   = useState('');
+  const [loading, setLoading] = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState<string | null>(null);
+  const [saved,   setSaved]   = useState(false);
+
+  const load = useCallback(() => {
+    if (!eventId) return;
+    setLoading(true); setError(null);
+    paymentsApiFetch<CollectorSettings>(`/registry/${eventId}/settings`, token)
+      .then(d => { setCfg(d); setUpiId(d.upi_id ?? ''); })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [eventId, token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (!eventId) {
+    return <Alert severity="info">Save step 1 first, then come back here to set this event's payment collection UPI ID.</Alert>;
+  }
+
+  const save = async () => {
+    setSaving(true); setError(null); setSaved(false);
+    try {
+      // Carry forward any existing IMAP/email config untouched — this tab only edits UPI.
+      await paymentsApiMutate(`/registry/${eventId}/settings`, token, 'PUT', {
+        upi_id: upiId,
+        imap_host: cfg?.imap_host ?? '',
+        imap_port: cfg?.imap_port ?? 993,
+        imap_user: cfg?.imap_user ?? '',
+        imap_mailbox: cfg?.imap_mailbox ?? 'INBOX',
+      });
+      setSaved(true);
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>;
+
+  return (
+    <Stack spacing={2.5} sx={{ pt: 1, maxWidth: 480 }}>
+      <Box>
+        <Typography fontWeight={700} mb={0.5}>Event Payment Settings</Typography>
+        <Typography variant="body2" color="text.secondary">
+          Assign a UPI ID to each event to manage registration fees and collections.
+        </Typography>
+      </Box>
+
+      {error && <Alert severity="error" onClose={() => setError(null)}>{error}</Alert>}
+      {saved && <Alert severity="success" onClose={() => setSaved(false)}>Payment settings saved.</Alert>}
+
+      <TextField
+        label="UPI ID" size="small" fullWidth value={upiId}
+        onChange={e => setUpiId(e.target.value)}
+        placeholder="name@bankname"
+        helperText="The UPI ID residents pay into for this event's registration fees."
+      />
+      {cfg?.member_name && (
+        <Typography variant="caption" color="text.secondary">
+          Collector on record: {cfg.member_name}
+        </Typography>
+      )}
+
+      <Box>
+        <Button
+          variant="contained" size="small" onClick={() => void save()}
+          disabled={saving || upiId.trim().length < 5}
+          startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}
+        >
+          {saving ? 'Saving…' : 'Save Payment Settings'}
+        </Button>
+      </Box>
+    </Stack>
+  );
+}
+
 // ── Event form dialog (3-step save flow) ─────────────────────────────────────
 
 interface FormState {
@@ -814,7 +960,7 @@ function EventForm({
   const isDraft     = initial ? initial.status === 'draft'     : hasId;
   const isPublished = initial ? initial.status === 'published' : false;
 
-  const STEP_LABELS = ['1. Event Details', '2. Location', '3. Ticket Types'];
+  const STEP_LABELS = ['1. Event Details', '2. Location', '3. Ticket Types', '4. Payment Settings'];
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -960,6 +1106,9 @@ function EventForm({
             </Box>
           </Stack>
         )}
+
+        {/* ── Step 4: Payment Settings ──────────────────────────────────────── */}
+        {tab === 3 && <PaymentSettingsTab eventId={savedId} token={token} />}
       </DialogContent>
 
       <DialogActions sx={{ px: 3, py: 2, justifyContent: 'space-between' }}>
@@ -987,7 +1136,7 @@ function EventForm({
               ← Back
             </Button>
           )}
-          {tab < 2 ? (
+          {tab < 3 ? (
             <Button variant="contained" onClick={() => void handleSave(tab + 1)} disabled={saving}
               startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon />}>
               {saving ? 'Saving…' : 'Save & Next →'}
@@ -1202,6 +1351,14 @@ export function ManageEvents({ token, id }: Props) {
                         <GroupIcon sx={{ fontSize: 11, color: 'text.secondary' }} />
                         <Typography fontSize={12} color="text.secondary">By {ev.organizer_name}</Typography>
                       </Box>
+                      {ev.approved_members.length > 0 && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
+                          <GroupAddIcon sx={{ fontSize: 11, color: 'text.secondary' }} />
+                          <Typography fontSize={12} color="text.secondary">
+                            In charge: {ev.approved_members.join(', ')}
+                          </Typography>
+                        </Box>
+                      )}
                     </Box>
                     <Chip label={ss.label} color={ss.color} size="small" sx={{ fontWeight: 700, fontSize: 11, flexShrink: 0 }} />
                   </Box>
@@ -1214,9 +1371,13 @@ export function ManageEvents({ token, id }: Props) {
                   )}
 
                   <Stack spacing={0.75} sx={{ mb: 1.5 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                      <CalendarTodayIcon sx={{ fontSize: 13, color: 'text.secondary', flexShrink: 0 }} />
-                      <Typography fontSize={13}>{fmtDate(ev.start_time)}</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.75 }}>
+                      <CalendarTodayIcon sx={{ fontSize: 13, color: 'text.secondary', flexShrink: 0, mt: 0.25 }} />
+                      <Box>
+                        {fmtDateRange(ev.start_time, ev.end_time).map((line, i) => line && (
+                          <Typography key={i} fontSize={13}>{line}</Typography>
+                        ))}
+                      </Box>
                     </Box>
                     <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.75 }}>
                       <LocationOnIcon sx={{ fontSize: 14, color: hasLocation ? '#6366f1' : 'text.disabled', mt: 0.1, flexShrink: 0 }} />
@@ -1342,6 +1503,16 @@ export function ManageEvents({ token, id }: Props) {
                             <Typography fontSize={12} color="text.secondary" noWrap sx={{ minWidth: 0 }}>By {ev.organizer_name}</Typography>
                           </Tooltip>
                         </Box>
+                        {ev.approved_members.length > 0 && (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25, minWidth: 0 }}>
+                            <GroupAddIcon sx={{ fontSize: 11, color: 'text.secondary', flexShrink: 0 }} />
+                            <Tooltip title={ev.approved_members.join(', ')}>
+                              <Typography fontSize={12} color="text.secondary" noWrap sx={{ minWidth: 0 }}>
+                                In charge: {ev.approved_members.join(', ')}
+                              </Typography>
+                            </Tooltip>
+                          </Box>
+                        )}
                       </TableCell>
                       <TableCell>
                         {ev.category_name ? (
@@ -1349,10 +1520,14 @@ export function ManageEvents({ token, id }: Props) {
                             sx={{ bgcolor: ev.category_color ? `${ev.category_color}22` : 'action.hover', color: ev.category_color ?? 'text.secondary', fontWeight: 600, fontSize: 11 }} />
                         ) : <Typography fontSize={12} color="text.secondary">—</Typography>}
                       </TableCell>
-                      <TableCell sx={{ minWidth: 140 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <CalendarTodayIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
-                          <Typography fontSize={12}>{fmtDate(ev.start_time)}</Typography>
+                      <TableCell sx={{ minWidth: 150 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+                          <CalendarTodayIcon sx={{ fontSize: 12, color: 'text.secondary', mt: 0.25 }} />
+                          <Box>
+                            {fmtDateRange(ev.start_time, ev.end_time).map((line, i) => line && (
+                              <Typography key={i} fontSize={12}>{line}</Typography>
+                            ))}
+                          </Box>
                         </Box>
                       </TableCell>
                       <TableCell sx={{ maxWidth: 160, overflow: 'hidden' }}>
@@ -1382,8 +1557,8 @@ export function ManageEvents({ token, id }: Props) {
                       <TableCell>
                         <Chip label={ss.label} color={ss.color} size="small" sx={{ fontWeight: 700, fontSize: 11 }} />
                       </TableCell>
-                      <TableCell sx={{ whiteSpace: 'nowrap', minWidth: 230 }}>
-                        <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="nowrap">
+                      <TableCell sx={{ maxWidth: 140 }}>
+                        <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
                           {ev.status === 'draft' && (
                             <>
                               <Tooltip title="Edit draft">

@@ -4,28 +4,30 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
-# ── Registry ──────────────────────────────────────────────────────────────────
+# ── Per-event collector + email-parsing settings (organizer-editable) ─────────
 
-class RegistryCreate(BaseModel):
-    event_id: str
-    member_id: str
+class CollectorSettingsIn(BaseModel):
+    member_id: Optional[str] = None   # defaults to the caller when omitted
     upi_id: str = Field(..., min_length=5)
+    imap_host: str = ""
+    imap_port: int = 993
+    imap_user: str = ""
+    imap_password: str = ""   # empty string = keep existing password
+    imap_mailbox: str = "INBOX"
 
 
-class RegistryUpdate(BaseModel):
-    member_id: str
-    upi_id: str = Field(..., min_length=5)
-
-
-class RegistryOut(BaseModel):
-    id: str
+class CollectorSettingsOut(BaseModel):
     event_id: str
-    event_title: str
-    member_id: str
-    member_name: str
-    member_email: Optional[str]
-    upi_id: str
-    assigned_at: datetime
+    member_id: Optional[str]
+    member_name: Optional[str]
+    upi_id: Optional[str]
+    imap_host: str
+    imap_port: int
+    imap_user: str
+    imap_password_set: bool
+    imap_mailbox: str
+    assigned_at: Optional[datetime]
+    reconciliation_channel_configured: bool = False
 
 
 class CollectorOut(BaseModel):
@@ -35,13 +37,6 @@ class CollectorOut(BaseModel):
     event_title: str
     amount: float
     currency: str
-
-
-class MemberOut(BaseModel):
-    id: str
-    name: str
-    email: Optional[str]
-    role: str
 
 
 # ── Payments ──────────────────────────────────────────────────────────────────
@@ -75,6 +70,11 @@ class TransactionOut(BaseModel):
     user_email: Optional[str] = None
     screenshot_url: Optional[str] = None
     refund_screenshot_url: Optional[str] = None
+    parsed_amount: Optional[float] = None
+    parsed_upi_ref: Optional[str] = None
+    parsed_rrn: Optional[str] = None
+    parsed_bank: Optional[str] = None
+    parsed_timestamp: Optional[str] = None
 
 
 # ── Refunds ───────────────────────────────────────────────────────────────────
@@ -83,8 +83,12 @@ class RefundRequestBody(BaseModel):
     reason: str = Field(..., min_length=5)
 
 
-class RefundCompleteBody(BaseModel):
-    refund_utr: str = Field(..., min_length=6)
+class ScreenshotExtraction(BaseModel):
+    parsed_amount: Optional[float] = None
+    parsed_upi_ref: Optional[str] = None
+    parsed_rrn: Optional[str] = None
+    parsed_bank: Optional[str] = None
+    parsed_timestamp: Optional[str] = None
 
 
 # ── Reconciliation ────────────────────────────────────────────────────────────
@@ -93,7 +97,7 @@ class ReconciliationStatus(BaseModel):
     last_run_at: Optional[datetime]
     pending_count: int
     last_matched_utrs: list[str]
-    imap_configured: bool
+    imap_configured_events: int
 
 
 class ScanResult(BaseModel):
@@ -105,11 +109,6 @@ class ScanResult(BaseModel):
 # ── Reconciliation settings ───────────────────────────────────────────────────
 
 class ReconSettingsIn(BaseModel):
-    imap_host:        str  = ""
-    imap_port:        int  = 993
-    imap_user:        str  = ""
-    imap_password:    str  = ""    # empty string = keep existing password
-    imap_mailbox:     str  = "INBOX"
     poll_interval_s:  int  = 300
     use_ai_parser:    bool = False
     ai_provider:      str  = "ollama"   # "ollama" or "claude" — which backend use_ai_parser selects
@@ -118,11 +117,6 @@ class ReconSettingsIn(BaseModel):
 
 
 class ReconSettingsOut(BaseModel):
-    imap_host:        str
-    imap_port:        int
-    imap_user:        str
-    imap_password_set: bool   # True when a password is saved
-    imap_mailbox:     str
     poll_interval_s:  int
     use_ai_parser:    bool
     ai_provider:      str
